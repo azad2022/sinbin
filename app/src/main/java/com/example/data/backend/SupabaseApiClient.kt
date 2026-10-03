@@ -340,6 +340,16 @@ class SupabaseApiClient(
         }
     }
 
+    override suspend fun cancelViewSession(sessionId: String, callerUserId: String?): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject().apply { put("p_session_id", sessionId) }
+            val raw = callRpcRaw("cancel_view_session", body)
+            Result.success(raw.trim().equals("true", ignoreCase = true))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     override suspend fun cancelCampaign(campaignId: String, callerUserId: String?): Result<Long> = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().apply { put("p_campaign_id", campaignId) }
