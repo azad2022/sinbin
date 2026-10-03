@@ -95,7 +95,6 @@ class SupabaseApiClient(
             val request = Request.Builder()
                 .url("$supabaseUrl/rest/v1/duration_pricing?select=*&order=duration_seconds.asc")
                 .addHeader("apikey", supabasePublishableKey)
-                .addHeader("Authorization", "Bearer $supabasePublishableKey")
                 .get()
                 .build()
 
