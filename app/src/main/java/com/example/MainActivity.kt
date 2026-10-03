@@ -244,6 +244,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
             }
         }
     }
+    }
 }
 
 @Composable
