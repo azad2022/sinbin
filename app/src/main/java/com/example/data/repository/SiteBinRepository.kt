@@ -12,11 +12,6 @@ import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
 
-sealed interface ServerInitializationState {
-    data object Initializing : ServerInitializationState
-    data object Ready : ServerInitializationState
-    data class Failed(val message: String) : ServerInitializationState
-}
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +20,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
+
+sealed interface ServerInitializationState {
+    data object Initializing : ServerInitializationState
+    data object Ready : ServerInitializationState
+    data class Failed(val message: String) : ServerInitializationState
+}
 
 /**
  * SiteBinRepository — Clean MVVM Presentation Repository.
