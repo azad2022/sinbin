@@ -11,6 +11,12 @@ import com.example.data.model.CoinTransaction
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
+
+sealed interface ServerInitializationState {
+    data object Initializing : ServerInitializationState
+    data object Ready : ServerInitializationState
+    data class Failed(val message: String) : ServerInitializationState
+}
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +39,9 @@ class SiteBinRepository(
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val prefs = context.getSharedPreferences("sitebin_prefs", Context.MODE_PRIVATE)
+
+    private val _serverState = MutableStateFlow<ServerInitializationState>(ServerInitializationState.Initializing)
+    val serverState: StateFlow<ServerInitializationState> = _serverState.asStateFlow()
 
     private val _account = MutableStateFlow(
         UserAccount(
@@ -64,7 +73,7 @@ class SiteBinRepository(
     init {
         // Asynchronously initialize server-side identity & fetch server state
         scope.launch {
-            refreshServerState()
+            initializeServerState()
         }
     }
 
@@ -78,17 +87,52 @@ class SiteBinRepository(
     }
 
     /**
+     * Performs the mandatory startup handshake with the real backend.
+     * The app must not expose the main UI until authentication, pricing, and
+     * server-side account initialization have completed successfully.
+     */
+    suspend fun initializeServerState() {
+        _serverState.value = ServerInitializationState.Initializing
+        try {
+            refreshServerState()
+            _serverState.value = ServerInitializationState.Ready
+        } catch (e: Exception) {
+            _serverState.value = ServerInitializationState.Failed(
+                e.message ?: "ارتباط با سرور برای آماده‌سازی حساب ناموفق بود."
+            )
+        }
+    }
+
+    /**
      * Refreshes user account, ledger transactions, and campaigns from Server.
+     * Failures here are propagated so startup cannot silently fall back to a
+     * fake zero-balance account.
      */
     suspend fun refreshServerState() {
         val installId = getOrGenerateInstallId()
-        engine.fetchDurationPricing()
-        val initRes = engine.initAccount(installId)
-        initRes.onSuccess { acc ->
-            _account.value = acc
-            engine.fetchTransactions(acc.userId).onSuccess { _transactions.value = it }
-            engine.fetchCampaigns(acc.userId).onSuccess { _campaigns.value = it }
+
+        val pricingResult = engine.fetchDurationPricing()
+        if (pricingResult.isFailure) {
+            throw pricingResult.exceptionOrNull()
+                ?: IllegalStateException("قیمت‌گذاری سرور در دسترس نیست.")
         }
+
+        val initRes = engine.initAccount(installId)
+        if (initRes.isFailure) {
+            throw initRes.exceptionOrNull()
+                ?: IllegalStateException("راه‌اندازی حساب در سرور ناموفق بود.")
+        }
+
+        val acc = initRes.getOrThrow()
+        _account.value = acc
+
+        engine.fetchTransactions(acc.userId)
+            .onSuccess { _transactions.value = it }
+            .onFailure { throw it }
+
+        engine.fetchCampaigns(acc.userId)
+            .onSuccess { _campaigns.value = it }
+            .onFailure { throw it }
     }
 
     /**
