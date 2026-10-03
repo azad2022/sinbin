@@ -56,7 +56,6 @@ fun SettingsScreen(
     account: UserAccount,
     isDarkTheme: Boolean,
     onToggleDarkTheme: (Boolean) -> Unit,
-    onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var notificationsEnabled by remember { mutableStateOf(true) }
