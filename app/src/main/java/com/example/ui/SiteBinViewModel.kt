@@ -60,7 +60,8 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     val campaigns: StateFlow<List<Campaign>> = repository.campaigns
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val durationOptions: List<DurationOption> = repository.durationOptions
+    val durationOptions: List<DurationOption>
+        get() = repository.durationOptions
 
     private val prefs = application.applicationContext.getSharedPreferences("sitebin_secure_prefs", android.content.Context.MODE_PRIVATE)
 
@@ -109,20 +110,26 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     // --- Viewer Engine ---
 
     fun startViewing() {
-        val nextSession = repository.getNextViewSession()
-        if (nextSession == null) {
-            showMessage("در حال حاضر وب‌سایت جدیدی برای مشاهده موجود نیست. لطفاً دقایقی دیگر امتحان کنید.")
-            return
-        }
+        viewModelScope.launch {
+            val sessionResult = repository.getNextViewSession()
+            val nextSession = sessionResult.getOrNull()
+            if (nextSession == null) {
+                showMessage("در حال حاضر وب‌سایت جدیدی برای مشاهده موجود نیست. لطفاً دقایقی دیگر امتحان کنید.")
+                return@launch
+            }
 
-        _viewerState.value = ViewerState.Loading(nextSession)
-        _currentScreen.value = AppScreen.VIEWER
+            _viewerState.value = ViewerState.Loading(nextSession)
+            _currentScreen.value = AppScreen.VIEWER
+        }
     }
 
     fun onWebViewContentVisible() {
         val currentState = _viewerState.value
         if (currentState is ViewerState.Loading) {
             val session = currentState.session
+            viewModelScope.launch {
+                repository.signalContentReady(session.id)
+            }
             startCountdown(session)
         }
     }
@@ -144,9 +151,13 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
 
-            // Completed!
-            val reward = repository.completeViewSession(session)
-            _viewerState.value = ViewerState.Completed(session, reward)
+            // Server-authoritative view completion validation
+            val result = repository.completeViewSession(session)
+            result.onSuccess { reward ->
+                _viewerState.value = ViewerState.Completed(session, reward)
+            }.onFailure { err ->
+                _viewerState.value = ViewerState.Error(err.message ?: "اعتبارسنجی بازدید توسط سرور ناموفق بود.")
+            }
         }
     }
 
@@ -160,13 +171,16 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     fun skipCurrentSite() {
         cancelViewerTimer()
-        val next = repository.getNextViewSession()
-        if (next != null) {
-            _viewerState.value = ViewerState.Loading(next)
-        } else {
-            _viewerState.value = ViewerState.Idle
-            _currentScreen.value = AppScreen.HOME
-            showMessage("وب‌سایت دیگری یافت نشد.")
+        viewModelScope.launch {
+            val nextResult = repository.getNextViewSession()
+            val next = nextResult.getOrNull()
+            if (next != null) {
+                _viewerState.value = ViewerState.Loading(next)
+            } else {
+                _viewerState.value = ViewerState.Idle
+                _currentScreen.value = AppScreen.HOME
+                showMessage("وب‌سایت دیگری یافت نشد.")
+            }
         }
     }
 
@@ -229,38 +243,46 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         }
 
         isSubmittingCampaign.value = true
-        val result = repository.createCampaign(
-            rawUrl = url,
-            durationSeconds = selectedDuration.value,
-            targetViews = targetViewsInput.value
-        )
-        isSubmittingCampaign.value = false
+        viewModelScope.launch {
+            val result = repository.createCampaign(
+                rawUrl = url,
+                durationSeconds = selectedDuration.value,
+                targetViews = targetViewsInput.value
+            )
+            isSubmittingCampaign.value = false
 
-        result.onSuccess { campaign ->
-            urlInput.value = ""
-            showMessage("سفارش شما با موفقیت ثبت و فعال شد!")
-            onSuccess()
-        }.onFailure { error ->
-            showMessage(error.message ?: "خطا در ثبت سفارش")
+            result.onSuccess { campaign ->
+                urlInput.value = ""
+                showMessage("سفارش شما با موفقیت ثبت و فعال شد!")
+                onSuccess()
+            }.onFailure { error ->
+                showMessage(error.message ?: "خطا در ثبت سفارش")
+            }
         }
     }
 
     fun pauseCampaign(id: String) {
-        repository.pauseCampaign(id)
-        showMessage("سفارش با موفقیت متوقف شد.")
+        viewModelScope.launch {
+            repository.pauseCampaign(id)
+            showMessage("سفارش با موفقیت متوقف شد.")
+        }
     }
 
     fun resumeCampaign(id: String) {
-        repository.resumeCampaign(id)
-        showMessage("سفارش مجدداً فعال شد.")
+        viewModelScope.launch {
+            repository.resumeCampaign(id)
+            showMessage("سفارش مجدداً فعال شد.")
+        }
     }
 
     fun cancelCampaign(id: String) {
-        val result = repository.cancelCampaign(id)
-        result.onSuccess { refunded ->
-            showMessage("سفارش لغو و $refunded سکه به حسابتان بازگشت.")
-        }.onFailure {
-            showMessage(it.message ?: "خطا در لغو سفارش")
+        viewModelScope.launch {
+            val result = repository.cancelCampaign(id)
+            result.onSuccess { refunded ->
+                showMessage("سفارش لغو و $refunded سکه به حسابتان بازگشت.")
+            }.onFailure {
+                showMessage(it.message ?: "خطا در لغو سفارش")
+            }
         }
     }
 }

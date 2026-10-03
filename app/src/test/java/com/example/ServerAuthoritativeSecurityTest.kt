@@ -1,0 +1,332 @@
+package com.example
+
+import com.example.data.backend.ServerEmulatedEngine
+import com.example.data.model.Campaign
+import com.example.data.model.CampaignStatus
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import java.util.UUID
+
+class ServerAuthoritativeSecurityTest {
+
+    private lateinit var engine: ServerEmulatedEngine
+
+    @Before
+    fun setup() {
+        engine = ServerEmulatedEngine()
+    }
+
+    // =========================================================================
+    // 1. Welcome Bonus Tests
+    // =========================================================================
+
+    @Test
+    fun testWelcomeBonus_newAccountReceivesExactlyOneBonus() = runBlocking {
+        val installId = "inst_test_1"
+        val result = engine.initAccount(installId, handle = "user_alpha")
+
+        assertTrue(result.isSuccess)
+        val account = result.getOrThrow()
+        assertEquals(150L, account.availableCoins)
+        assertEquals(150L, account.lifetimeEarned)
+        assertEquals(0L, account.reservedCoins)
+
+        val txs = engine.fetchTransactions(account.userId).getOrThrow()
+        assertEquals(1, txs.size)
+        assertEquals(150L, txs[0].amount)
+    }
+
+    @Test
+    fun testWelcomeBonus_repeatedInitializationGivesNoSecondBonus() = runBlocking {
+        val installId = "inst_test_2"
+        val first = engine.initAccount(installId, handle = "user_beta").getOrThrow()
+        assertEquals(150L, first.availableCoins)
+
+        // Simulate app restart / repeated initialization
+        val second = engine.initAccount(installId, handle = "user_beta").getOrThrow()
+        assertEquals(150L, second.availableCoins)
+
+        val txs = engine.fetchTransactions(second.userId).getOrThrow()
+        // Must remain exactly 1 transaction
+        assertEquals(1, txs.size)
+    }
+
+    @Test
+    fun testWelcomeBonus_reinstallWithSameIdentityGivesNoSecondBonus() = runBlocking {
+        val userHandle = "user_gamma"
+        val firstInstall = engine.initAccount("inst_device_1", handle = userHandle).getOrThrow()
+        assertEquals(150L, firstInstall.availableCoins)
+
+        // User reinstalls app (new installId, but links to same server identity)
+        val secondInstall = engine.initAccount("inst_device_2", handle = userHandle).getOrThrow()
+        assertEquals(150L, secondInstall.availableCoins)
+
+        val txs = engine.fetchTransactions(userHandle).getOrThrow()
+        assertEquals(1, txs.size)
+    }
+
+    // =========================================================================
+    // 2. Campaign Validation & Budget Reservation Tests
+    // =========================================================================
+
+    @Test
+    fun testCampaign_insufficientCoinsRejected() = runBlocking {
+        val account = engine.initAccount("inst_camp_1", handle = "user_camp_1").getOrThrow()
+        // Welcome bonus is 150 coins. Let's request a campaign needing 1400 coins (100 views * 14 coins)
+        val result = engine.createCampaign(
+            url = "https://example.com",
+            normalizedUrl = "https://example.com",
+            domain = "example.com",
+            durationSeconds = 15,
+            targetViews = 100
+        )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("کافی نیست") == true)
+
+        // Balance must remain intact
+        val refetched = engine.fetchAccount(account.userId).getOrThrow()
+        assertEquals(150L, refetched.availableCoins)
+        assertEquals(0L, refetched.reservedCoins)
+    }
+
+    @Test
+    fun testCampaign_validCampaignCreatedAndBudgetReserved() = runBlocking {
+        val account = engine.initAccount("inst_camp_2", handle = "user_camp_2").getOrThrow()
+        // 10 views * 14 coins = 140 coins <= 150 available
+        val result = engine.createCampaign(
+            url = "https://example.com",
+            normalizedUrl = "https://example.com",
+            domain = "example.com",
+            durationSeconds = 15,
+            targetViews = 10
+        )
+
+        assertTrue(result.isSuccess)
+        val campaign = result.getOrThrow()
+        assertEquals(10, campaign.targetViews)
+        assertEquals(140L, campaign.totalBudget)
+        assertEquals(CampaignStatus.ACTIVE, campaign.status)
+
+        val refetched = engine.fetchAccount(account.userId).getOrThrow()
+        assertEquals(10L, refetched.availableCoins) // 150 - 140
+        assertEquals(140L, refetched.reservedCoins)
+
+        val txs = engine.fetchTransactions(account.userId).getOrThrow()
+        assertEquals(2, txs.size) // Welcome bonus + Reservation
+        assertEquals(-140L, txs[0].amount)
+    }
+
+    @Test
+    fun testCampaign_invalidDurationRejected() = runBlocking {
+        engine.initAccount("inst_camp_3", handle = "user_camp_3").getOrThrow()
+        val result = engine.createCampaign(
+            url = "https://example.com",
+            normalizedUrl = "https://example.com",
+            domain = "example.com",
+            durationSeconds = 999, // Unsupported duration
+            targetViews = 5
+        )
+
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun testCampaign_zeroOrNegativeViewsRejected() = runBlocking {
+        engine.initAccount("inst_camp_4", handle = "user_camp_4").getOrThrow()
+        val zeroRes = engine.createCampaign(
+            url = "https://example.com",
+            normalizedUrl = "https://example.com",
+            domain = "example.com",
+            durationSeconds = 15,
+            targetViews = 0
+        )
+        assertTrue(zeroRes.isFailure)
+
+        val negRes = engine.createCampaign(
+            url = "https://example.com",
+            normalizedUrl = "https://example.com",
+            domain = "example.com",
+            durationSeconds = 15,
+            targetViews = -10
+        )
+        assertTrue(negRes.isFailure)
+    }
+
+    // =========================================================================
+    // 3. View Session & Reward Validation Tests
+    // =========================================================================
+
+    @Test
+    fun testView_selfCampaignRejected() = runBlocking {
+        val owner = engine.initAccount("inst_owner", handle = "owner_user").getOrThrow()
+        engine.createCampaign(
+            url = "https://mysite.com",
+            normalizedUrl = "https://mysite.com",
+            domain = "mysite.com",
+            durationSeconds = 5,
+            targetViews = 10
+        ).getOrThrow()
+
+        // Same user attempts to request view session
+        val sessionResult = engine.requestViewSession(owner.userId).getOrThrow()
+        // Must reject self campaign (no session returned)
+        assertNull(sessionResult)
+    }
+
+    @Test
+    fun testView_validSessionRewardedOnceAndDuplicateCompletionPrevented() = runBlocking {
+        // 1. Create campaign from advertiser
+        engine.initAccount("inst_adv", handle = "advertiser").getOrThrow()
+        engine.createCampaign(
+            url = "https://target-site.com",
+            normalizedUrl = "https://target-site.com",
+            domain = "target-site.com",
+            durationSeconds = 5,
+            targetViews = 10
+        ).getOrThrow()
+
+        // 2. Viewer requests session
+        val viewer = engine.initAccount("inst_viewer", handle = "viewer_1").getOrThrow()
+        val initialBalance = viewer.availableCoins
+
+        val session = engine.requestViewSession(viewer.userId).getOrThrow()
+        assertNotNull(session)
+        assertEquals("target-site.com", session!!.domain)
+
+        // 3. Signal content ready
+        engine.signalContentReady(session.id)
+
+        // Simulate server clock duration passing
+        Thread.sleep(4100) // 5s required - 1s network tolerance = 4.0s
+
+        // 4. Complete view session
+        val idempotencyKey = "test_key_1"
+        val rewardRes = engine.completeViewSession(session.id, idempotencyKey)
+        assertTrue(rewardRes.isSuccess)
+        val reward = rewardRes.getOrThrow()
+        assertEquals(3L, reward) // 5s duration reward = 3 coins
+
+        val refetchedViewer = engine.fetchAccount(viewer.userId).getOrThrow()
+        assertEquals(initialBalance + reward, refetchedViewer.availableCoins)
+
+        // 5. Duplicate completion attempt with same idempotency key
+        val dupRewardRes = engine.completeViewSession(session.id, idempotencyKey)
+        assertTrue(dupRewardRes.isSuccess)
+        assertEquals(reward, dupRewardRes.getOrThrow())
+
+        // Balance MUST NOT increase twice!
+        val viewerAfterDup = engine.fetchAccount(viewer.userId).getOrThrow()
+        assertEquals(initialBalance + reward, viewerAfterDup.availableCoins)
+
+        // 6. Duplicate completion attempt with different idempotency key on completed session
+        val diffKeyRes = engine.completeViewSession(session.id, "different_key_2")
+        assertTrue(diffKeyRes.isSuccess)
+        val viewerAfterDiffKey = engine.fetchAccount(viewer.userId).getOrThrow()
+        assertEquals(initialBalance + reward, viewerAfterDiffKey.availableCoins)
+    }
+
+    @Test
+    fun testView_exhaustedOrInactiveCampaignRejected() = runBlocking {
+        engine.initAccount("inst_adv_2", handle = "advertiser_2").getOrThrow()
+        val campaign = engine.createCampaign(
+            url = "https://one-view-site.com",
+            normalizedUrl = "https://one-view-site.com",
+            domain = "one-view-site.com",
+            durationSeconds = 5,
+            targetViews = 1 // Only 1 view allowed
+        ).getOrThrow()
+
+        val viewer1 = engine.initAccount("inst_v1", handle = "viewer_alpha").getOrThrow()
+        val session1 = engine.requestViewSession(viewer1.userId).getOrThrow()
+        assertNotNull(session1)
+        engine.signalContentReady(session1!!.id)
+        Thread.sleep(4100)
+        engine.completeViewSession(session1.id, "key_v1")
+
+        // Campaign should now be COMPLETED / exhausted
+        val viewer2 = engine.initAccount("inst_v2", handle = "viewer_beta").getOrThrow()
+        val session2 = engine.requestViewSession(viewer2.userId).getOrThrow()
+        assertNull(session2) // Exhausted campaign rejected
+    }
+
+    // =========================================================================
+    // 4. Concurrency Race Condition Tests
+    // =========================================================================
+
+    @Test
+    fun testConcurrency_twoSimultaneousCompletionsProduceExactlyOneReward() = runBlocking {
+        engine.initAccount("inst_adv_c", handle = "advertiser_c").getOrThrow()
+        engine.createCampaign(
+            url = "https://concurrent-site.com",
+            normalizedUrl = "https://concurrent-site.com",
+            domain = "concurrent-site.com",
+            durationSeconds = 5,
+            targetViews = 5
+        ).getOrThrow()
+
+        val viewer = engine.initAccount("inst_viewer_c", handle = "viewer_concurrent").getOrThrow()
+        val initialCoins = viewer.availableCoins
+        val session = engine.requestViewSession(viewer.userId).getOrThrow()!!
+        engine.signalContentReady(session.id)
+        Thread.sleep(4100)
+
+        // Launch 2 parallel completion coroutines
+        val task1 = async { engine.completeViewSession(session.id, "race_key_1") }
+        val task2 = async { engine.completeViewSession(session.id, "race_key_1") }
+
+        val results = awaitAll(task1, task2)
+        assertTrue(results.all { it.isSuccess })
+
+        val finalViewer = engine.fetchAccount(viewer.userId).getOrThrow()
+        // Exactly one reward of 3 coins must be credited!
+        assertEquals(initialCoins + 3L, finalViewer.availableCoins)
+    }
+
+    @Test
+    fun testConcurrency_twoSimultaneousCampaignCreationsCannotOverspend() = runBlocking {
+        // User has 150 coins.
+        // We attempt 2 simultaneous campaign creations each demanding 140 coins (Total = 280 > 150)
+        val user = engine.initAccount("inst_overspend", handle = "user_overspend").getOrThrow()
+        assertEquals(150L, user.availableCoins)
+
+        val task1 = async {
+            engine.createCampaign(
+                url = "https://site1.com",
+                normalizedUrl = "https://site1.com",
+                domain = "site1.com",
+                durationSeconds = 15,
+                targetViews = 10 // 140 coins
+            )
+        }
+        val task2 = async {
+            engine.createCampaign(
+                url = "https://site2.com",
+                normalizedUrl = "https://site2.com",
+                domain = "site2.com",
+                durationSeconds = 15,
+                targetViews = 10 // 140 coins
+            )
+        }
+
+        val results = awaitAll(task1, task2)
+        val successes = results.count { it.isSuccess }
+        val failures = results.count { it.isFailure }
+
+        // Exactly one MUST succeed and the other MUST fail due to insufficient coins!
+        assertEquals(1, successes)
+        assertEquals(1, failures)
+
+        val refetched = engine.fetchAccount(user.userId).getOrThrow()
+        assertEquals(10L, refetched.availableCoins) // 150 - 140
+        assertEquals(140L, refetched.reservedCoins)
+        assertTrue(refetched.availableCoins >= 0) // No overspending
+    }
+}
