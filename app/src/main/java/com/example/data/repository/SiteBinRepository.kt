@@ -167,6 +167,11 @@ class SiteBinRepository(
         refreshServerState()
     }
 
+    suspend fun cancelViewSession(sessionId: String): Result<Boolean> {
+        val currentUserId = _account.value.userId
+        return engine.cancelViewSession(sessionId, callerUserId = currentUserId)
+    }
+
     suspend fun cancelCampaign(campaignId: String): Result<Long> {
         val currentUserId = _account.value.userId
         val res = engine.cancelCampaign(campaignId, callerUserId = currentUserId)
