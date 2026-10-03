@@ -235,8 +235,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                             SettingsScreen(
                                 account = account,
                                 isDarkTheme = isDarkTheme,
-                                onToggleDarkTheme = { viewModel.setDarkTheme(it) },
-                                onShowMessage = { viewModel.showMessage(it) }
+                                onToggleDarkTheme = { viewModel.setDarkTheme(it) }
                             )
                         }
                     }
