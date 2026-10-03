@@ -210,7 +210,7 @@ class SupabaseApiClient(
     override suspend fun fetchCampaigns(userId: String): Result<List<Campaign>> = withContext(Dispatchers.IO) {
         try {
             val token = getValidUserToken()
-            val url = "$supabaseUrl/rest/v1/campaigns?select=*&order=created_at.desc"
+            val url = "$supabaseUrl/rest/v1/campaigns?owner_id=eq.$userId&select=*&order=created_at.desc"
             val request = Request.Builder()
                 .url(url)
                 .addHeader("apikey", supabasePublishableKey)
