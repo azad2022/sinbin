@@ -11,8 +11,13 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
@@ -25,6 +30,8 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.MonetizationOn
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -41,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.data.model.TransactionType
+import com.example.data.repository.ServerInitializationState
 import com.example.ui.AppScreen
 import com.example.ui.SiteBinViewModel
 import com.example.ui.ViewerState
@@ -86,6 +96,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
         mutableStateOf(prefs.getBoolean("onboarding_done", false))
     }
 
+    val serverState by viewModel.serverState.collectAsState()
     val currentScreen by viewModel.currentScreen.collectAsState()
     val account by viewModel.account.collectAsState()
     val campaigns by viewModel.campaigns.collectAsState()
@@ -121,14 +132,27 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
         }
     }
 
-    if (!isOnboardingCompleted) {
-        OnboardingScreen(
-            onFinish = {
-                prefs.edit().putBoolean("onboarding_done", true).apply()
-                isOnboardingCompleted = true
-            }
-        )
-    } else {
+    when (val state = serverState) {
+        ServerInitializationState.Initializing -> {
+            StartupScreen(isRetry = false, onRetry = {})
+        }
+
+        is ServerInitializationState.Failed -> {
+            StartupScreen(
+                isRetry = true,
+                onRetry = viewModel::retryServerInitialization
+            )
+        }
+
+        ServerInitializationState.Ready -> {
+            if (!isOnboardingCompleted) {
+                OnboardingScreen(
+                    onFinish = {
+                        prefs.edit().putBoolean("onboarding_done", true).apply()
+                        isOnboardingCompleted = true
+                    }
+                )
+            } else {
         Scaffold(
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             bottomBar = {
@@ -158,6 +182,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                             HomeScreen(
                                 account = account,
                                 campaigns = campaigns,
+                                showWelcomeBonus = transactions.any { it.type == TransactionType.WELCOME_REWARD },
                                 onStartViewing = { viewModel.startViewing() },
                                 onNavigate = { viewModel.navigateTo(it) }
                             )
@@ -215,6 +240,63 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                             )
                         }
                     }
+                }
+            }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StartupScreen(
+    isRetry: Boolean,
+    onRetry: () -> Unit
+) {
+    androidx.compose.material3.Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = androidx.compose.material3.MaterialTheme.colorScheme.background
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            if (!isRetry) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(20.dp))
+                Text(
+                    text = "در حال آماده‌سازی حساب شما…",
+                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "ارتباط امن با سرور و دریافت موجودی حساب در حال بررسی است.",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            } else {
+                Text(
+                    text = "اتصال به حساب برقرار نشد",
+                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "برای حفظ صحت موجودی و پاداش‌ها، بدون تأیید سرور وارد برنامه نمی‌شویم.",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                Button(
+                    onClick = onRetry,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("تلاش دوباره")
                 }
             }
         }
