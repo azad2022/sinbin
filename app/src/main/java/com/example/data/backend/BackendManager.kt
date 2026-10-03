@@ -15,16 +15,16 @@ object BackendManager {
         if (buildUrl.isNotBlank() && !buildUrl.contains("your-project")) {
             buildUrl
         } else {
-            System.getenv("SUPABASE_URL") ?: ""
+            ""
         }
     }
 
     val apiKey: String by lazy {
-        val buildKey = runCatching { BuildConfig.SUPABASE_ANON_KEY }.getOrDefault("")
+        val buildKey = runCatching { BuildConfig.SUPABASE_PUBLISHABLE_KEY }.getOrDefault("")
         if (buildKey.isNotBlank() && !buildKey.contains("placeholder")) {
             buildKey
         } else {
-            System.getenv("SUPABASE_ANON_KEY") ?: ""
+            ""
         }
     }
 
@@ -46,12 +46,16 @@ object BackendManager {
         val existing = _cachedEngine
         if (existing != null) return existing
 
+        check(isSupabaseConfigured) {
+            "SiteBin backend is not configured for the selected build. Refusing to silently use ServerEmulatedEngine."
+        }
+
         synchronized(this) {
             if (_cachedEngine == null) {
                 _cachedEngine = if (isSupabaseConfigured) {
                     SupabaseApiClient(serverUrl, apiKey, context)
                 } else {
-                    ServerEmulatedEngine()
+                    throw IllegalStateException("Supabase backend configuration missing")
                 }
             }
             return _cachedEngine!!
