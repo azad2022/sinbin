@@ -291,43 +291,48 @@ class SupabaseApiClient(
         val email = "sitebin_${cleanInstall.take(20)}@sitebin.internal"
         val password = "SiteBinSecure_${cleanInstall.hashCode().toUInt()}_Pass!"
 
-        val signupBody = JSONObject().apply {
+        val authBody = JSONObject().apply {
             put("email", email)
             put("password", password)
         }.toString().toRequestBody(jsonMediaType)
 
-        val request = Request.Builder()
-            .url("$supabaseUrl/auth/v1/signup")
+        // 1. First attempt token login (avoids triggering email verification / rate limits)
+        val tokenUrl = "$supabaseUrl/auth/v1/token?grant_type=password"
+        val tokenReq = Request.Builder()
+            .url(tokenUrl)
             .addHeader("apikey", supabaseAnonKey)
-            .post(signupBody)
+            .post(authBody)
             .build()
 
-        val response = httpClient.newCall(request).execute()
-        val raw = response.body?.string() ?: ""
-        if (response.isSuccessful) {
-            val json = JSONObject(raw)
-            currentUserToken = json.optString("access_token")
+        val tokenRes = httpClient.newCall(tokenReq).execute()
+        val tokenRaw = tokenRes.body?.string() ?: ""
+        if (tokenRes.isSuccessful) {
+            val json = JSONObject(tokenRaw)
+            currentUserToken = json.optString("access_token").ifEmpty { null }
             val user = json.optJSONObject("user")
             currentUserId = user?.optString("id")
-        } else {
-            // Attempt token login if already signed up
-            val tokenUrl = "$supabaseUrl/auth/v1/token?grant_type=password"
-            val tokenReq = Request.Builder()
-                .url(tokenUrl)
-                .addHeader("apikey", supabaseAnonKey)
-                .post(signupBody)
-                .build()
-            val tokenRes = httpClient.newCall(tokenReq).execute()
-            val tokenRaw = tokenRes.body?.string() ?: ""
-            if (tokenRes.isSuccessful) {
-                val json = JSONObject(tokenRaw)
-                currentUserToken = json.optString("access_token")
-                val user = json.optJSONObject("user")
-                currentUserId = user?.optString("id")
-            } else {
-                // Fallback to anon key authorization for public RPC calls
-                currentUserToken = supabaseAnonKey
-            }
+            if (currentUserToken != null) return
+        }
+
+        // 2. If login fails, attempt signup
+        val signupReq = Request.Builder()
+            .url("$supabaseUrl/auth/v1/signup")
+            .addHeader("apikey", supabaseAnonKey)
+            .post(authBody)
+            .build()
+
+        val signupRes = httpClient.newCall(signupReq).execute()
+        val signupRaw = signupRes.body?.string() ?: ""
+        if (signupRes.isSuccessful) {
+            val json = JSONObject(signupRaw)
+            currentUserToken = json.optString("access_token").ifEmpty { null }
+            val user = json.optJSONObject("user")
+            currentUserId = user?.optString("id")
+        }
+
+        // 3. Fallback: if user session token is not yet confirmed, retain anon key for public endpoints
+        if (currentUserToken == null) {
+            currentUserToken = supabaseAnonKey
         }
     }
 

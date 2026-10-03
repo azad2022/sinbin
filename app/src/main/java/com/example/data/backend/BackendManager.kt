@@ -9,18 +9,29 @@ import com.example.BuildConfig
  */
 object BackendManager {
 
-    val isSupabaseConfigured: Boolean by lazy {
-        val url = runCatching { BuildConfig.SUPABASE_URL }.getOrDefault("")
-        val key = runCatching { BuildConfig.SUPABASE_ANON_KEY }.getOrDefault("")
-
-        url.isNotBlank() &&
-                !url.contains("your-project") &&
-                key.isNotBlank() &&
-                !key.contains("placeholder")
+    val serverUrl: String by lazy {
+        val buildUrl = runCatching { BuildConfig.SUPABASE_URL }.getOrDefault("")
+        if (buildUrl.isNotBlank() && !buildUrl.contains("your-project")) {
+            buildUrl
+        } else {
+            System.getenv("SUPABASE_URL") ?: ""
+        }
     }
 
-    val serverUrl: String by lazy {
-        runCatching { BuildConfig.SUPABASE_URL }.getOrDefault("")
+    val apiKey: String by lazy {
+        val buildKey = runCatching { BuildConfig.SUPABASE_ANON_KEY }.getOrDefault("")
+        if (buildKey.isNotBlank() && !buildKey.contains("placeholder")) {
+            buildKey
+        } else {
+            System.getenv("SUPABASE_ANON_KEY") ?: ""
+        }
+    }
+
+    val isSupabaseConfigured: Boolean by lazy {
+        serverUrl.isNotBlank() &&
+                !serverUrl.contains("your-project") &&
+                apiKey.isNotBlank() &&
+                !apiKey.contains("placeholder")
     }
 
     val backendName: String by lazy {
@@ -28,11 +39,8 @@ object BackendManager {
     }
 
     val engine: ServerAuthoritativeEngine by lazy {
-        val url = runCatching { BuildConfig.SUPABASE_URL }.getOrDefault("")
-        val key = runCatching { BuildConfig.SUPABASE_ANON_KEY }.getOrDefault("")
-
         if (isSupabaseConfigured) {
-            SupabaseApiClient(url, key)
+            SupabaseApiClient(serverUrl, apiKey)
         } else {
             ServerEmulatedEngine()
         }
