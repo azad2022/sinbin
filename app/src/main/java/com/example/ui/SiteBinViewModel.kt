@@ -98,6 +98,13 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     fun navigateTo(screen: AppScreen) {
         if (screen != AppScreen.VIEWER && _currentScreen.value == AppScreen.VIEWER) {
             cancelViewerTimer()
+            val activeSession = currentViewerSession()
+            contentReadySessionId = null
+            if (activeSession != null) {
+                viewModelScope.launch {
+                    repository.cancelViewSession(activeSession.id)
+                }
+            }
         }
         _currentScreen.value = screen
     }
@@ -188,6 +195,12 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     fun skipCurrentSite() {
         cancelViewerTimer()
         viewModelScope.launch {
+            val activeSession = currentViewerSession()
+            contentReadySessionId = null
+            if (activeSession != null) {
+                repository.cancelViewSession(activeSession.id)
+            }
+
             val nextResult = repository.getNextViewSession()
             val next = nextResult.getOrNull()
             if (next != null) {
@@ -222,6 +235,15 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             )
             showMessage("گزارش شما ثبت و بررسی خواهد شد.")
             skipCurrentSite()
+        }
+    }
+
+    private fun currentViewerSession(): ViewSession? {
+        return when (val state = _viewerState.value) {
+            is ViewerState.Loading -> state.session
+            is ViewerState.Viewing -> state.session
+            is ViewerState.Completed -> state.session
+            else -> null
         }
     }
 
