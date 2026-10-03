@@ -90,7 +90,7 @@ object UrlSecurityPolicy {
             return PolicyResult.Blocked(trimmed, "ساختار URL نامعتبر است.")
         }
 
-        val host = javaUri.host?.lowercase(Locale.ROOT)
+        // Bracketed authority syntax denotes an IPv6 literal; SiteBin does not allow literal-IP destinations.\n        val rawAuthority = javaUri.rawAuthority.orEmpty()\n        if (rawAuthority.contains("[") || rawAuthority.contains("]")) {\n            return PolicyResult.Blocked(trimmed, "دسترسی به آدرس‌های IP خصوصی و محلی مسدود است.")\n        }\n\n        val host = javaUri.host?.lowercase(Locale.ROOT)
         if (host.isNullOrBlank()) {
             return PolicyResult.Blocked(trimmed, "دامنه مشخص نیست.")
         }
