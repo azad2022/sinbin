@@ -19,24 +19,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Storage
-import com.example.data.backend.BackendManager
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -69,7 +63,6 @@ fun SettingsScreen(
     var showTermsDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
-    var showSupabaseDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -80,14 +73,9 @@ fun SettingsScreen(
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "پروفایل و تنظیمات",
+                text = "تنظیمات",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "مدیریت حساب ناشناس و پیکربندی اپلیکیشن",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
@@ -129,7 +117,7 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
-                                    text = "کاربر ناشناس امن",
+                                    text = "حساب فعال",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -147,7 +135,7 @@ fun SettingsScreen(
                                 }
                             }
                             Text(
-                                text = "شناسه نصب: ${account.userId}",
+                                text = "حساب شما فعال است و اطلاعات سکه‌ها و سفارش‌ها با وضعیت سرور همگام می‌شوند.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -185,17 +173,6 @@ fun SettingsScreen(
                         )
                     }
 
-                    OutlinedButton(
-                        onClick = {
-                            onShowMessage("قابلیت اتصال به حساب گوگل و شماره همراه در فاز بعدی فعال می‌شود.")
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("اتصال به حساب دائمی (گوگل / شماره همراه)")
-                    }
                 }
             }
         }
@@ -230,36 +207,6 @@ fun SettingsScreen(
                         subtitle = "اطلاع‌رسانی هنگام پایان بازدیدهای کمپین",
                         checked = notificationsEnabled,
                         onCheckedChange = { notificationsEnabled = it }
-                    )
-                }
-            }
-        }
-
-        // Section: Backend Architecture Status
-        item {
-            Text(
-                text = "معماری سرور و پایگاه داده",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column {
-                    SettingsClickableRow(
-                        icon = if (BackendManager.isSupabaseConfigured) Icons.Default.CloudDone else Icons.Default.Storage,
-                        title = BackendManager.backendName,
-                        subtitle = if (BackendManager.isSupabaseConfigured) {
-                            "متصل به سرور ابری PostgreSQL • تمام تراکنش‌ها زنده ثبت می‌شوند"
-                        } else {
-                            "موتور سرور محلی بدون باگ فعال است • کلیک برای راهنمای اتصال به Supabase ابری"
-                        },
-                        onClick = { showSupabaseDialog = true }
                     )
                 }
             }
@@ -359,32 +306,7 @@ fun SettingsScreen(
         )
     }
 
-    if (showSupabaseDialog) {
-        AlertDialog(
-            onDismissRequest = { showSupabaseDialog = false },
-            title = { Text("معماری سرور ابری Supabase", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        if (BackendManager.isSupabaseConfigured) {
-                            "✅ اپلیکیشن به پروژه سرور ابری Supabase متصل است:\n${BackendManager.serverUrl}\n\nتمامی عملیات‌های ثبت سفارش، اعتبارسنجی بازدید، پاداش خوش‌آمدگویی و لجر تراکنش‌ها به صورت اتمیک روی پایگاه داده ابری ذخیره می‌گردند."
-                        } else {
-                            "⚡ وضعیت اتصال:\n" +
-                            "هم‌اکنون موتور اعتبارسنجی سرور در وضعیت Server-Authoritative محلی فعال است و کلیه منطق‌های مالی و امنیتی را با موفقیت مدیریت می‌کند.\n\n" +
-                            "برای اتصال مستقیم به سرور ابری Supabase:\n" +
-                            "۱. در پنل Secrets محیط Google AI Studio مقادیر SUPABASE_URL و SUPABASE_ANON_KEY را وارد نمایید.\n" +
-                            "۲. اسکریپت SQL مایگریشن آماده پروژه در مسیر supabase/migrations/20261003_sitebin_core.sql را در SQL Editor داشبورد Supabase اجرا نمایید.\n\n" +
-                            "هیچ نیازی به کلید Service Role در اپ وجود ندارد و امنیت کاملاً با RLS تضمین شده است."
-                        },
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showSupabaseDialog = false }) { Text("متوجه شدم") }
-            }
-        )
-    }
+
 }
 
 @Composable
