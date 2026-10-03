@@ -65,6 +65,7 @@ import java.util.Locale
 fun HomeScreen(
     account: UserAccount,
     campaigns: List<Campaign>,
+    showWelcomeBonus: Boolean = false,
     onStartViewing: () -> Unit,
     onNavigate: (AppScreen) -> Unit,
     modifier: Modifier = Modifier
@@ -81,6 +82,12 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(8.dp))
             // Top App Bar / Balance Section
             HomeHeader(account = account, onNavigate = onNavigate)
+        }
+
+        if (showWelcomeBonus) {
+            item {
+                WelcomeBonusBanner(onNavigate = onNavigate)
+            }
         }
 
         item {
@@ -154,6 +161,53 @@ fun HomeScreen(
 
         item {
             Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun WelcomeBonusBanner(onNavigate: (AppScreen) -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = SiteBinGold.copy(alpha = 0.12f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onNavigate(AppScreen.WALLET) }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = SiteBinGold.copy(alpha = 0.18f),
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(text = "🎁", fontSize = 22.sp)
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "۱۵۰ سکه هدیه ورود فعال شد",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "هدیه خوش‌آمدگویی در کیف پول شما ثبت شده است.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ArrowForward,
+                contentDescription = "کیف پول",
+                tint = SiteBinGold
+            )
         }
     }
 }
