@@ -29,7 +29,7 @@ import java.util.UUID
  */
 class SiteBinRepository(
     private val context: Context,
-    val engine: ServerAuthoritativeEngine = BackendManager.engine
+    val engine: ServerAuthoritativeEngine = BackendManager.getEngine(context)
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val prefs = context.getSharedPreferences("sitebin_prefs", Context.MODE_PRIVATE)
@@ -82,6 +82,7 @@ class SiteBinRepository(
      */
     suspend fun refreshServerState() {
         val installId = getOrGenerateInstallId()
+        engine.fetchDurationPricing()
         val initRes = engine.initAccount(installId)
         initRes.onSuccess { acc ->
             _account.value = acc

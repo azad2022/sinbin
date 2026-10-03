@@ -16,6 +16,9 @@ interface ServerAuthoritativeEngine {
     /** Server-authoritative duration pricing matrix */
     val durationOptions: List<DurationOption>
 
+    /** Fetch server-authoritative duration pricing matrix dynamically from database */
+    suspend fun fetchDurationPricing(): Result<List<DurationOption>> = Result.success(durationOptions)
+
     /** Initialize account with server identity and grant exactly one welcome bonus */
     suspend fun initAccount(installId: String, handle: String? = null): Result<UserAccount>
 

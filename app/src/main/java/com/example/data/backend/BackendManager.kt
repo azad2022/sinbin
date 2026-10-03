@@ -1,5 +1,6 @@
 package com.example.data.backend
 
+import android.content.Context
 import com.example.BuildConfig
 
 /**
@@ -38,11 +39,25 @@ object BackendManager {
         if (isSupabaseConfigured) "سرور ابری Supabase (PostgreSQL)" else "موتور سرور اعتبارسنجی داخلی (Server-Authoritative)"
     }
 
-    val engine: ServerAuthoritativeEngine by lazy {
-        if (isSupabaseConfigured) {
-            SupabaseApiClient(serverUrl, apiKey)
-        } else {
-            ServerEmulatedEngine()
+    @Volatile
+    private var _cachedEngine: ServerAuthoritativeEngine? = null
+
+    fun getEngine(context: Context? = null): ServerAuthoritativeEngine {
+        val existing = _cachedEngine
+        if (existing != null) return existing
+
+        synchronized(this) {
+            if (_cachedEngine == null) {
+                _cachedEngine = if (isSupabaseConfigured) {
+                    SupabaseApiClient(serverUrl, apiKey, context)
+                } else {
+                    ServerEmulatedEngine()
+                }
+            }
+            return _cachedEngine!!
         }
     }
+
+    val engine: ServerAuthoritativeEngine
+        get() = getEngine(null)
 }

@@ -441,7 +441,7 @@ BEGIN
                 'domain', v_existing_active.domain,
                 'required_duration_seconds', v_existing_active.required_duration_seconds,
                 'reward_coins', v_existing_active.reward_coins,
-                'started_at', pg_catalog.extract(epoch from v_existing_active.started_at) * 1000
+                'started_at', (EXTRACT(EPOCH FROM v_existing_active.started_at) * 1000)::BIGINT
             );
         ELSE
             -- Mark stale session as EXPIRED so user can request a fresh one
@@ -499,7 +499,7 @@ BEGIN
         'domain', v_campaign.domain,
         'required_duration_seconds', v_new_session.required_duration_seconds,
         'reward_coins', v_new_session.reward_coins,
-        'started_at', pg_catalog.extract(epoch from v_new_session.started_at) * 1000
+        'started_at', (EXTRACT(EPOCH FROM v_new_session.started_at) * 1000)::BIGINT
     );
 END;
 $$;
@@ -635,7 +635,7 @@ BEGIN
     END IF;
 
     -- Verify server-authoritative elapsed duration (with 1.0s network roundtrip tolerance)
-    v_elapsed_seconds := pg_catalog.extract(epoch from (pg_catalog.clock_timestamp() - v_session.content_ready_at));
+    v_elapsed_seconds := EXTRACT(EPOCH FROM (pg_catalog.clock_timestamp() - v_session.content_ready_at));
     IF v_elapsed_seconds < (v_session.required_duration_seconds - 1.0) THEN
         RAISE EXCEPTION 'PREMATURE_COMPLETION: Elapsed time (%s) is less than required duration (%s)', v_elapsed_seconds, v_session.required_duration_seconds;
     END IF;

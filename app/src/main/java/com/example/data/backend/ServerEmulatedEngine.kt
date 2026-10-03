@@ -36,6 +36,10 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         DurationOption(seconds = 60, advertiserCost = 50, viewerReward = 38)
     )
 
+    override suspend fun fetchDurationPricing(): Result<List<DurationOption>> = lock.withLock {
+        Result.success(durationOptions)
+    }
+
     // Internal Database Tables
     private val profiles = mutableMapOf<String, UserAccount>()
     private val welcomeBonusGrants = mutableMapOf<String, String>() // userId -> installId
