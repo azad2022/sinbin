@@ -11,6 +11,7 @@ import com.example.data.model.CoinTransaction
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
+import com.example.data.repository.ServerInitializationState
 import com.example.data.repository.SiteBinRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -51,6 +52,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     val repository = SiteBinRepository(application.applicationContext)
 
+    val serverState: StateFlow<ServerInitializationState> = repository.serverState
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.serverState.value)
+
     val account: StateFlow<UserAccount> = repository.account
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.account.value)
 
@@ -72,6 +76,12 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     fun setDarkTheme(enabled: Boolean) {
         _isDarkTheme.value = enabled
         prefs.edit().putBoolean("is_dark_theme", enabled).apply()
+    }
+
+    fun retryServerInitialization() {
+        viewModelScope.launch {
+            repository.initializeServerState()
+        }
     }
 
     private val _currentScreen = MutableStateFlow(AppScreen.HOME)
