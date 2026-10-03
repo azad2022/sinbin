@@ -32,7 +32,7 @@ ON CONFLICT (duration_seconds) DO UPDATE SET
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     user_handle TEXT UNIQUE NOT NULL,
-    app_install_id TEXT,
+    app_install_id TEXT NOT NULL,
     available_coins BIGINT NOT NULL DEFAULT 0 CHECK (available_coins >= 0),
     reserved_coins BIGINT NOT NULL DEFAULT 0 CHECK (reserved_coins >= 0),
     lifetime_earned BIGINT NOT NULL DEFAULT 0 CHECK (lifetime_earned >= 0),
@@ -45,10 +45,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT pg_catalog.now()
 );
 
--- Structural constraint: a non-null installation ID can belong to at most one profile
+-- Structural constraint: every device installation can be registered to at most ONE profile
 CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_app_install_id 
-    ON public.profiles (app_install_id) 
-    WHERE app_install_id IS NOT NULL;
+    ON public.profiles (app_install_id);
 
 -- ------------------------------------------------------------------------------
 -- 3. Welcome Bonus Grants (Server-Side Anti-Farming & Replay Prevention)
@@ -56,15 +55,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_app_install_id
 CREATE TABLE IF NOT EXISTS public.welcome_bonus_grants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID UNIQUE NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    install_id TEXT,
+    install_id TEXT NOT NULL,
     amount BIGINT NOT NULL CHECK (amount > 0),
     granted_at TIMESTAMPTZ NOT NULL DEFAULT pg_catalog.now()
 );
 
--- Structural constraint: a non-null installation ID can receive at most one welcome bonus grant across all accounts
+-- Structural constraint: every installation identifier can receive at most ONE welcome grant across all accounts
 CREATE UNIQUE INDEX IF NOT EXISTS idx_welcome_bonus_grants_install_id 
-    ON public.welcome_bonus_grants (install_id) 
-    WHERE install_id IS NOT NULL;
+    ON public.welcome_bonus_grants (install_id);
 
 -- ------------------------------------------------------------------------------
 -- 4. Campaigns (Server-Authoritative Budget & Delivery)
@@ -216,29 +214,30 @@ BEGIN
         RAISE EXCEPTION 'UNAUTHORIZED: Authentication token required';
     END IF;
 
-    -- Clean install ID (null if empty or blank)
+    -- Strict Anti-Farming check: install_id is mandatory for account initialization & welcome bonus
     v_clean_install := pg_catalog.nullif(pg_catalog.trim(p_install_id), '');
+    IF v_clean_install IS NULL THEN
+        RAISE EXCEPTION 'INVALID_INSTALL_ID: Installation identifier is required for account initialization';
+    END IF;
 
-    -- Concurrency control: acquire advisory lock on installation identifier if provided
-    IF v_clean_install IS NOT NULL THEN
-        PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('install_' || v_clean_install));
+    -- Concurrency control: acquire advisory lock on installation identifier
+    PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('install_' || v_clean_install));
 
-        -- Anti-Farming check: verify install_id is not already linked to another user account
-        SELECT user_id INTO v_existing_grant_user 
-        FROM public.welcome_bonus_grants 
-        WHERE install_id = v_clean_install;
+    -- Anti-Farming check: verify install_id is not already linked to another user account
+    SELECT user_id INTO v_existing_grant_user 
+    FROM public.welcome_bonus_grants 
+    WHERE install_id = v_clean_install;
 
-        IF v_existing_grant_user IS NOT NULL AND v_existing_grant_user != v_uid THEN
-            RAISE EXCEPTION 'INSTALL_ALREADY_REGISTERED: Installation identifier is already associated with another account';
-        END IF;
+    IF v_existing_grant_user IS NOT NULL AND v_existing_grant_user != v_uid THEN
+        RAISE EXCEPTION 'INSTALL_ALREADY_REGISTERED: Installation identifier is already associated with another account';
+    END IF;
 
-        SELECT id INTO v_existing_profile_user 
-        FROM public.profiles 
-        WHERE app_install_id = v_clean_install;
+    SELECT id INTO v_existing_profile_user 
+    FROM public.profiles 
+    WHERE app_install_id = v_clean_install;
 
-        IF v_existing_profile_user IS NOT NULL AND v_existing_profile_user != v_uid THEN
-            RAISE EXCEPTION 'INSTALL_ALREADY_REGISTERED: Installation identifier is already associated with another account';
-        END IF;
+    IF v_existing_profile_user IS NOT NULL AND v_existing_profile_user != v_uid THEN
+        RAISE EXCEPTION 'INSTALL_ALREADY_REGISTERED: Installation identifier is already associated with another account';
     END IF;
 
     -- Concurrency control: acquire user-level advisory lock
@@ -538,6 +537,7 @@ $$;
 
 -- ------------------------------------------------------------------------------
 -- 5. Complete View Session (Deterministic Deadlock-Free Locking & Accounting)
+-- Allows completion for in-flight sessions of ACTIVE or PAUSED campaigns
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.complete_view_session(
     p_session_id UUID,
@@ -650,8 +650,9 @@ BEGIN
         RAISE EXCEPTION 'CAMPAIGN_NOT_FOUND: Associated campaign no longer exists';
     END IF;
 
-    IF v_campaign.status != 'ACTIVE' THEN
-        RAISE EXCEPTION 'CAMPAIGN_INACTIVE: Campaign is % but must be ACTIVE', v_campaign.status;
+    -- Allow in-flight view sessions issued prior to pause to complete; strictly reject CANCELLED / COMPLETED
+    IF v_campaign.status NOT IN ('ACTIVE', 'PAUSED') THEN
+        RAISE EXCEPTION 'CAMPAIGN_INACTIVE: Campaign is % but must be ACTIVE or PAUSED', v_campaign.status;
     END IF;
 
     IF v_campaign.completed_views >= v_campaign.target_views THEN

@@ -84,6 +84,13 @@ class ServerAuthoritativeSecurityTest {
         assertTrue(secondAccountResult.exceptionOrNull()?.message?.contains("INSTALL_ALREADY_REGISTERED") == true)
     }
 
+    @Test
+    fun testWelcomeBonus_blankInstallIdRejected() = runBlocking {
+        val resBlank = engine.initAccount("   ", handle = "user_blank")
+        assertTrue(resBlank.isFailure)
+        assertTrue(resBlank.exceptionOrNull()?.message?.contains("INVALID_INSTALL_ID") == true)
+    }
+
     // =========================================================================
     // 2. Campaign Validation & Budget Reservation Tests
     // =========================================================================
@@ -317,6 +324,38 @@ class ServerAuthoritativeSecurityTest {
         val viewer2 = engine.initAccount("inst_v2", handle = "viewer_beta").getOrThrow()
         val session2 = engine.requestViewSession(viewer2.userId).getOrThrow()
         assertNull(session2) // Exhausted campaign rejected
+    }
+
+    @Test
+    fun testView_pausedCampaignAllowsCompletionOfInFlightSession() = runBlocking {
+        engine.initAccount("inst_adv_p", handle = "advertiser_p").getOrThrow()
+        val campaign = engine.createCampaign(
+            url = "https://pause-test.com",
+            normalizedUrl = "https://pause-test.com",
+            domain = "pause-test.com",
+            durationSeconds = 5,
+            targetViews = 5,
+            callerUserId = "advertiser_p"
+        ).getOrThrow()
+
+        val viewer = engine.initAccount("inst_viewer_p", handle = "viewer_p").getOrThrow()
+        val session = engine.requestViewSession(viewer.userId).getOrThrow()!!
+        engine.signalContentReady(session.id, callerUserId = viewer.userId)
+
+        // Advertiser pauses campaign while viewer is genuinely watching
+        engine.pauseCampaign(campaign.id, callerUserId = "advertiser_p")
+
+        Thread.sleep(4100)
+
+        // In-flight session issued prior to pause must be allowed to complete and be rewarded
+        val completeRes = engine.completeViewSession(session.id, "key_pause_1", callerUserId = viewer.userId)
+        assertTrue(completeRes.isSuccess)
+        assertEquals(3L, completeRes.getOrThrow())
+
+        // However, NEW sessions must NOT be dispatched for paused campaign
+        val viewer2 = engine.initAccount("inst_v_p2", handle = "viewer_p2").getOrThrow()
+        val newSession = engine.requestViewSession(viewer2.userId).getOrThrow()
+        assertNull(newSession)
     }
 
     // =========================================================================

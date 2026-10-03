@@ -168,7 +168,8 @@ class SupabaseApiClient(
         normalizedUrl: String,
         domain: String,
         durationSeconds: Int,
-        targetViews: Int
+        targetViews: Int,
+        callerUserId: String?
     ): Result<Campaign> = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().apply {
@@ -222,7 +223,7 @@ class SupabaseApiClient(
         }
     }
 
-    override suspend fun signalContentReady(sessionId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+    override suspend fun signalContentReady(sessionId: String, callerUserId: String?): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().apply { put("p_session_id", sessionId) }
             val res = callRpcRaw("signal_content_ready", body)
@@ -234,7 +235,8 @@ class SupabaseApiClient(
 
     override suspend fun completeViewSession(
         sessionId: String,
-        idempotencyKey: String
+        idempotencyKey: String,
+        callerUserId: String?
     ): Result<Long> = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().apply {
@@ -252,7 +254,7 @@ class SupabaseApiClient(
         }
     }
 
-    override suspend fun cancelCampaign(campaignId: String): Result<Long> = withContext(Dispatchers.IO) {
+    override suspend fun cancelCampaign(campaignId: String, callerUserId: String?): Result<Long> = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().apply { put("p_campaign_id", campaignId) }
             val res = callRpc("cancel_campaign", body)
@@ -262,7 +264,7 @@ class SupabaseApiClient(
         }
     }
 
-    override suspend fun pauseCampaign(campaignId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+    override suspend fun pauseCampaign(campaignId: String, callerUserId: String?): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().apply { put("p_campaign_id", campaignId) }
             val res = callRpcRaw("pause_campaign", body)
@@ -272,7 +274,7 @@ class SupabaseApiClient(
         }
     }
 
-    override suspend fun resumeCampaign(campaignId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+    override suspend fun resumeCampaign(campaignId: String, callerUserId: String?): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().apply { put("p_campaign_id", campaignId) }
             val res = callRpcRaw("resume_campaign", body)

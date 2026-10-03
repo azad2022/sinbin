@@ -104,12 +104,14 @@ class SiteBinRepository(
         }
         val allowed = policy as PolicyResult.Allowed
 
+        val currentUserId = _account.value.userId
         val result = engine.createCampaign(
             url = allowed.normalizedUrl,
             normalizedUrl = allowed.normalizedUrl,
             domain = allowed.domain,
             durationSeconds = durationSeconds,
-            targetViews = targetViews
+            targetViews = targetViews,
+            callerUserId = currentUserId
         )
 
         result.onSuccess {
@@ -132,7 +134,8 @@ class SiteBinRepository(
      * Signals content ready in WebView to the authoritative server clock.
      */
     suspend fun signalContentReady(sessionId: String): Result<Boolean> {
-        return engine.signalContentReady(sessionId)
+        val currentUserId = _account.value.userId
+        return engine.signalContentReady(sessionId, callerUserId = currentUserId)
     }
 
     /**
@@ -143,7 +146,8 @@ class SiteBinRepository(
         session: ViewSession,
         idempotencyKey: String = "complete_" + session.id + "_" + session.startedAt
     ): Result<Long> {
-        val result = engine.completeViewSession(session.id, idempotencyKey)
+        val currentUserId = _account.value.userId
+        val result = engine.completeViewSession(session.id, idempotencyKey, callerUserId = currentUserId)
         result.onSuccess {
             refreshServerState()
         }
@@ -151,17 +155,20 @@ class SiteBinRepository(
     }
 
     suspend fun pauseCampaign(campaignId: String) {
-        engine.pauseCampaign(campaignId)
+        val currentUserId = _account.value.userId
+        engine.pauseCampaign(campaignId, callerUserId = currentUserId)
         refreshServerState()
     }
 
     suspend fun resumeCampaign(campaignId: String) {
-        engine.resumeCampaign(campaignId)
+        val currentUserId = _account.value.userId
+        engine.resumeCampaign(campaignId, callerUserId = currentUserId)
         refreshServerState()
     }
 
     suspend fun cancelCampaign(campaignId: String): Result<Long> {
-        val res = engine.cancelCampaign(campaignId)
+        val currentUserId = _account.value.userId
+        val res = engine.cancelCampaign(campaignId, callerUserId = currentUserId)
         res.onSuccess {
             refreshServerState()
         }

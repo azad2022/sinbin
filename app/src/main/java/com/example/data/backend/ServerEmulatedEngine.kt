@@ -17,9 +17,10 @@ import kotlin.concurrent.withLock
  *
  * Guarantees:
  * - Thread-safe atomic transactions (ReentrantLock)
- * - Anti-Farming / Single welcome bonus per user and installation identity
- * - Server-side budget reservation & validation (zero client overspending)
- * - Server-side view cooldowns and anti-self view
+ * - Strict Anti-Farming: non-blank installId mandatory; 1 installId = 1 account
+ * - Ownership enforcement: callerUserId strictly checked on cancel, pause, resume, signal, and complete
+ * - User-scoped ledger visibility (matches PostgreSQL RLS)
+ * - Allows completing in-flight sessions of PAUSED campaigns
  * - Strict Idempotency and exact CONTENT_READY state transition on view completion
  */
 class ServerEmulatedEngine : ServerAuthoritativeEngine {
@@ -37,10 +38,10 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
 
     // Internal Database Tables
     private val profiles = mutableMapOf<String, UserAccount>()
-    private val welcomeBonusGrants = mutableMapOf<String, String?>() // userId -> installId
+    private val welcomeBonusGrants = mutableMapOf<String, String>() // userId -> installId
     private val campaigns = mutableMapOf<String, Campaign>()
     private val viewSessions = mutableMapOf<String, ServerViewSessionRecord>()
-    private val coinLedger = mutableListOf<CoinTransaction>()
+    private val userLedger = mutableMapOf<String, MutableList<CoinTransaction>>() // userId -> ledger
     private val idempotencyRecords = mutableMapOf<String, IdempotencyRecord>() // idempotencyKey -> IdempotencyRecord
 
     data class IdempotencyRecord(
@@ -64,22 +65,22 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
 
     override suspend fun initAccount(installId: String, handle: String?): Result<UserAccount> = lock.withLock {
         val cleanInstall = installId.trim().ifEmpty { null }
-        val userId = handle ?: ("user_" + (cleanInstall?.hashCode() ?: UUID.randomUUID().hashCode()).toUInt().toString(16))
+            ?: return Result.failure(IllegalArgumentException("INVALID_INSTALL_ID: Installation identifier is required for account initialization"))
+
+        val userId = handle ?: ("user_" + cleanInstall.hashCode().toUInt().toString(16))
 
         // Check if this installation identifier is already registered to a DIFFERENT user
-        if (cleanInstall != null) {
-            val existingByInstall = profiles.values.find { it.appInstallId == cleanInstall }
-            if (existingByInstall != null && existingByInstall.userId != userId) {
-                return Result.failure(
-                    IllegalStateException("INSTALL_ALREADY_REGISTERED: Installation identifier is already associated with another account")
-                )
-            }
-            val grantExistingUser = welcomeBonusGrants.entries.find { it.value == cleanInstall }?.key
-            if (grantExistingUser != null && grantExistingUser != userId) {
-                return Result.failure(
-                    IllegalStateException("INSTALL_ALREADY_REGISTERED: Installation identifier is already associated with another account")
-                )
-            }
+        val existingByInstall = profiles.values.find { it.appInstallId == cleanInstall }
+        if (existingByInstall != null && existingByInstall.userId != userId) {
+            return Result.failure(
+                IllegalStateException("INSTALL_ALREADY_REGISTERED: Installation identifier is already associated with another account")
+            )
+        }
+        val grantExistingUser = welcomeBonusGrants.entries.find { it.value == cleanInstall }?.key
+        if (grantExistingUser != null && grantExistingUser != userId) {
+            return Result.failure(
+                IllegalStateException("INSTALL_ALREADY_REGISTERED: Installation identifier is already associated with another account")
+            )
         }
 
         val existingProfile = profiles[userId]
@@ -101,12 +102,12 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
                 description = "هدیه ورود به سایت بین (Welcome Bonus)",
                 referenceId = "init_bonus"
             )
-            coinLedger.add(0, welcomeTx)
+            userLedger.getOrPut(userId) { mutableListOf() }.add(0, welcomeTx)
         }
 
         val newAccount = UserAccount(
             userId = userId,
-            appInstallId = cleanInstall ?: "",
+            appInstallId = cleanInstall,
             availableCoins = grantedCoins,
             reservedCoins = 0L,
             lifetimeEarned = grantedCoins,
@@ -125,12 +126,12 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
     }
 
     override suspend fun fetchTransactions(userId: String): Result<List<CoinTransaction>> = lock.withLock {
-        // RLS: caller sees own ledger entries
-        Result.success(coinLedger.toList())
+        // Enforce user-scoped ledger visibility (matches PostgreSQL RLS)
+        Result.success(userLedger[userId]?.toList() ?: emptyList())
     }
 
     override suspend fun fetchCampaigns(userId: String): Result<List<Campaign>> = lock.withLock {
-        // RLS: caller sees own campaigns and active campaigns
+        // Matches RLS: caller sees own campaigns and active campaigns
         val list = campaigns.values.filter { it.ownerId == userId || it.status == CampaignStatus.ACTIVE }
             .sortedByDescending { it.createdAt }
         Result.success(list)
@@ -141,7 +142,8 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         normalizedUrl: String,
         domain: String,
         durationSeconds: Int,
-        targetViews: Int
+        targetViews: Int,
+        callerUserId: String?
     ): Result<Campaign> = lock.withLock {
         val cleanUrl = url.trim()
         val cleanNormalized = normalizedUrl.trim()
@@ -169,8 +171,11 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         // Server-calculated total cost
         val totalCost = pricing.advertiserCost * targetViews
 
-        // Identify calling user
-        val callerAccount = profiles.values.firstOrNull()
+        // Identify calling user explicitly
+        val effectiveCallerId = callerUserId ?: profiles.keys.firstOrNull()
+            ?: return Result.failure(IllegalStateException("PROFILE_NOT_FOUND: User profile does not exist"))
+
+        val callerAccount = profiles[effectiveCallerId]
             ?: return Result.failure(IllegalStateException("PROFILE_NOT_FOUND: User profile does not exist"))
 
         // Atomic balance verification
@@ -185,11 +190,11 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
             availableCoins = callerAccount.availableCoins - totalCost,
             reservedCoins = callerAccount.reservedCoins + totalCost
         )
-        profiles[callerAccount.userId] = updatedAccount
+        profiles[effectiveCallerId] = updatedAccount
 
         val newCampaign = Campaign(
             id = UUID.randomUUID().toString(),
-            ownerId = callerAccount.userId,
+            ownerId = effectiveCallerId,
             url = cleanNormalized,
             domain = cleanDomain,
             durationSeconds = durationSeconds,
@@ -210,7 +215,7 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
             description = "رزرو بودجه برای سفارش $targetViews بازدید از $cleanDomain",
             referenceId = newCampaign.id
         )
-        coinLedger.add(0, reservationTx)
+        userLedger.getOrPut(effectiveCallerId) { mutableListOf() }.add(0, reservationTx)
 
         Result.success(newCampaign)
     }
@@ -295,9 +300,14 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         Result.success(session)
     }
 
-    override suspend fun signalContentReady(sessionId: String): Result<Boolean> = lock.withLock {
+    override suspend fun signalContentReady(sessionId: String, callerUserId: String?): Result<Boolean> = lock.withLock {
         val record = viewSessions[sessionId]
             ?: return Result.failure(NoSuchElementException("جلسه مشاهده یافت نشد."))
+
+        if (callerUserId != null && record.viewerId != callerUserId) {
+            return Result.failure(IllegalStateException("FORBIDDEN: Session does not belong to caller"))
+        }
+
         if (record.status == "INITIALIZED") {
             record.status = "CONTENT_READY"
             record.contentReadyAt = System.currentTimeMillis()
@@ -307,7 +317,8 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
 
     override suspend fun completeViewSession(
         sessionId: String,
-        idempotencyKey: String
+        idempotencyKey: String,
+        callerUserId: String?
     ): Result<Long> = lock.withLock {
         val cleanKey = idempotencyKey.trim()
         if (cleanKey.isEmpty()) {
@@ -317,17 +328,24 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
             return Result.failure(IllegalArgumentException("INVALID_IDEMPOTENCY_KEY: Idempotency key exceeds maximum length of 128 characters"))
         }
 
+        val record = viewSessions[sessionId]
+            ?: return Result.failure(NoSuchElementException("SESSION_NOT_FOUND: View session does not exist"))
+
+        if (callerUserId != null && record.viewerId != callerUserId) {
+            return Result.failure(IllegalStateException("FORBIDDEN: Session does not belong to the caller"))
+        }
+
         // Idempotency check 1: Has this idempotency key already been processed?
         val existingRecord = idempotencyRecords[cleanKey]
         if (existingRecord != null) {
             if (existingRecord.sessionId != sessionId) {
                 return Result.failure(IllegalStateException("IDEMPOTENCY_KEY_CONFLICT: Key has already been associated with a different session"))
             }
+            if (callerUserId != null && existingRecord.viewerId != callerUserId) {
+                return Result.failure(IllegalStateException("IDEMPOTENCY_KEY_CONFLICT: Key has already been used by another user"))
+            }
             return Result.success(existingRecord.reward)
         }
-
-        val record = viewSessions[sessionId]
-            ?: return Result.failure(NoSuchElementException("SESSION_NOT_FOUND: View session does not exist"))
 
         // Idempotency check 2: Has this session already completed?
         if (record.status == "COMPLETED") {
@@ -358,8 +376,9 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         val camp = campaigns[record.campaignId]
             ?: return Result.failure(NoSuchElementException("CAMPAIGN_NOT_FOUND: Associated campaign no longer exists"))
 
-        if (camp.status != CampaignStatus.ACTIVE) {
-            return Result.failure(IllegalStateException("CAMPAIGN_INACTIVE: Campaign is ${camp.status} but must be ACTIVE"))
+        // Blocker 7: Allow in-flight session issued prior to pause to complete; reject CANCELLED / COMPLETED
+        if (camp.status != CampaignStatus.ACTIVE && camp.status != CampaignStatus.PAUSED) {
+            return Result.failure(IllegalStateException("CAMPAIGN_INACTIVE: Campaign is ${camp.status} but must be ACTIVE or PAUSED"))
         }
 
         if (camp.completedViews >= camp.targetViews) {
@@ -416,7 +435,7 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
             reward = reward
         )
 
-        // 5. Record Viewer Reward in Ledger
+        // 5. Record Viewer Reward in User-Scoped Ledger
         val rewardTx = CoinTransaction(
             id = UUID.randomUUID().toString(),
             amount = reward,
@@ -424,9 +443,9 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
             description = "مشاهده موفق ${record.requiredDurationSeconds} ثانیه‌ای از ${camp.domain}",
             referenceId = camp.id
         )
-        coinLedger.add(0, rewardTx)
+        userLedger.getOrPut(record.viewerId) { mutableListOf() }.add(0, rewardTx)
 
-        // 6. Record Advertiser Spend in Ledger
+        // 6. Record Advertiser Spend in User-Scoped Ledger
         val spendTx = CoinTransaction(
             id = UUID.randomUUID().toString(),
             amount = -camp.costPerView,
@@ -434,14 +453,18 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
             description = "مصرف بودجه بازدید از ${camp.domain}",
             referenceId = camp.id
         )
-        coinLedger.add(0, spendTx)
+        userLedger.getOrPut(camp.ownerId) { mutableListOf() }.add(0, spendTx)
 
         Result.success(reward)
     }
 
-    override suspend fun cancelCampaign(campaignId: String): Result<Long> = lock.withLock {
+    override suspend fun cancelCampaign(campaignId: String, callerUserId: String?): Result<Long> = lock.withLock {
         val camp = campaigns[campaignId]
             ?: return Result.failure(NoSuchElementException("CAMPAIGN_NOT_FOUND: Campaign does not exist or caller is not owner"))
+
+        if (callerUserId != null && camp.ownerId != callerUserId) {
+            return Result.failure(IllegalStateException("CAMPAIGN_NOT_FOUND: Campaign does not exist or caller is not owner"))
+        }
 
         if (camp.status == CampaignStatus.CANCELLED || camp.status == CampaignStatus.COMPLETED) {
             return Result.failure(IllegalStateException("INVALID_CAMPAIGN_STATE: Cannot cancel a ${camp.status} campaign"))
@@ -470,14 +493,17 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
                 description = "استرداد مانده بودجه سفارش لغو شده ${camp.domain}",
                 referenceId = camp.id
             )
-            coinLedger.add(0, refundTx)
+            userLedger.getOrPut(camp.ownerId) { mutableListOf() }.add(0, refundTx)
         }
 
         Result.success(unspent)
     }
 
-    override suspend fun pauseCampaign(campaignId: String): Result<Boolean> = lock.withLock {
+    override suspend fun pauseCampaign(campaignId: String, callerUserId: String?): Result<Boolean> = lock.withLock {
         val camp = campaigns[campaignId] ?: return Result.failure(NoSuchElementException("CAMPAIGN_NOT_FOUND"))
+        if (callerUserId != null && camp.ownerId != callerUserId) {
+            return Result.failure(IllegalStateException("CAMPAIGN_NOT_FOUND: Caller is not owner"))
+        }
         if (camp.status == CampaignStatus.ACTIVE) {
             campaigns[campaignId] = camp.copy(status = CampaignStatus.PAUSED)
             Result.success(true)
@@ -486,8 +512,11 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         }
     }
 
-    override suspend fun resumeCampaign(campaignId: String): Result<Boolean> = lock.withLock {
+    override suspend fun resumeCampaign(campaignId: String, callerUserId: String?): Result<Boolean> = lock.withLock {
         val camp = campaigns[campaignId] ?: return Result.failure(NoSuchElementException("CAMPAIGN_NOT_FOUND"))
+        if (callerUserId != null && camp.ownerId != callerUserId) {
+            return Result.failure(IllegalStateException("CAMPAIGN_NOT_FOUND: Caller is not owner"))
+        }
         if (camp.status == CampaignStatus.PAUSED) {
             campaigns[campaignId] = camp.copy(status = CampaignStatus.ACTIVE)
             Result.success(true)

@@ -37,7 +37,8 @@ interface ServerAuthoritativeEngine {
         normalizedUrl: String,
         domain: String,
         durationSeconds: Int,
-        targetViews: Int
+        targetViews: Int,
+        callerUserId: String? = null
     ): Result<Campaign>
 
     /**
@@ -50,7 +51,7 @@ interface ServerAuthoritativeEngine {
      * Signals the server that page content is genuinely rendered in WebView,
      * starting the authoritative server timer.
      */
-    suspend fun signalContentReady(sessionId: String): Result<Boolean>
+    suspend fun signalContentReady(sessionId: String, callerUserId: String? = null): Result<Boolean>
 
     /**
      * Idempotently completes a view session on the server.
@@ -59,15 +60,16 @@ interface ServerAuthoritativeEngine {
      */
     suspend fun completeViewSession(
         sessionId: String,
-        idempotencyKey: String
+        idempotencyKey: String,
+        callerUserId: String? = null
     ): Result<Long>
 
     /** Cancels an active or paused campaign and refunds remaining reserved budget */
-    suspend fun cancelCampaign(campaignId: String): Result<Long>
+    suspend fun cancelCampaign(campaignId: String, callerUserId: String? = null): Result<Long>
 
     /** Pauses a campaign on the server */
-    suspend fun pauseCampaign(campaignId: String): Result<Boolean>
+    suspend fun pauseCampaign(campaignId: String, callerUserId: String? = null): Result<Boolean>
 
     /** Resumes a paused campaign on the server */
-    suspend fun resumeCampaign(campaignId: String): Result<Boolean>
+    suspend fun resumeCampaign(campaignId: String, callerUserId: String? = null): Result<Boolean>
 }
