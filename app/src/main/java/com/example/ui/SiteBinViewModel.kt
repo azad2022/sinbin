@@ -93,6 +93,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     // Viewer Timer State
     private var timerJob: Job? = null
     private var isAppInForeground = true
+    private var contentReadySessionId: String? = null
 
     fun navigateTo(screen: AppScreen) {
         if (screen != AppScreen.VIEWER && _currentScreen.value == AppScreen.VIEWER) {
@@ -118,6 +119,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 return@launch
             }
 
+            contentReadySessionId = null
             _viewerState.value = ViewerState.Loading(nextSession)
             _currentScreen.value = AppScreen.VIEWER
         }
@@ -125,18 +127,32 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     fun onWebViewContentVisible() {
         val currentState = _viewerState.value
-        if (currentState is ViewerState.Loading) {
-            val session = currentState.session
-            viewModelScope.launch {
-                repository.signalContentReady(session.id)
+        if (currentState !is ViewerState.Loading) return
+
+        val session = currentState.session
+        if (contentReadySessionId == session.id) return
+
+        contentReadySessionId = session.id
+        viewModelScope.launch {
+            val result = repository.signalContentReady(session.id)
+            if (result.isSuccess && result.getOrNull() == true) {
+                startCountdown(session)
+            } else {
+                contentReadySessionId = null
+                _viewerState.value = ViewerState.Error(
+                    result.exceptionOrNull()?.message
+                        ?: "سرور هنوز شروع معتبر بازدید را تأیید نکرده است."
+                )
             }
-            startCountdown(session)
         }
     }
 
     private fun startCountdown(session: ViewSession) {
         timerJob?.cancel()
         timerJob = viewModelScope.launch {
+            if (_viewerState.value !is ViewerState.Completed) {
+                _viewerState.value = ViewerState.Viewing(session, 0, session.requiredDurationSeconds)
+            }
             var elapsed = 0
             val total = session.requiredDurationSeconds
 
@@ -175,6 +191,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             val nextResult = repository.getNextViewSession()
             val next = nextResult.getOrNull()
             if (next != null) {
+                contentReadySessionId = null
                 _viewerState.value = ViewerState.Loading(next)
             } else {
                 _viewerState.value = ViewerState.Idle
