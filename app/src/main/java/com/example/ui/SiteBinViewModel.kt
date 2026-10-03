@@ -303,14 +303,26 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     fun pauseCampaign(id: String) {
         viewModelScope.launch {
             repository.pauseCampaign(id)
-            showMessage("سفارش با موفقیت متوقف شد.")
+                .onSuccess { changed ->
+                    if (changed) showMessage("سفارش با موفقیت متوقف شد.")
+                    else showMessage("تغییری انجام نشد؛ وضعیت سفارش احتمالاً قبلاً تغییر کرده است.")
+                }
+                .onFailure { error ->
+                    showMessage(error.message ?: "توقف سفارش ناموفق بود.")
+                }
         }
     }
 
     fun resumeCampaign(id: String) {
         viewModelScope.launch {
             repository.resumeCampaign(id)
-            showMessage("سفارش مجدداً فعال شد.")
+                .onSuccess { changed ->
+                    if (changed) showMessage("سفارش مجدداً فعال شد.")
+                    else showMessage("تغییری انجام نشد؛ وضعیت سفارش احتمالاً قبلاً تغییر کرده است.")
+                }
+                .onFailure { error ->
+                    showMessage(error.message ?: "فعال‌سازی مجدد سفارش ناموفق بود.")
+                }
         }
     }
 
