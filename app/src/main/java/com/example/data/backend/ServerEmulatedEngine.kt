@@ -462,6 +462,22 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         Result.success(reward)
     }
 
+    override suspend fun cancelViewSession(sessionId: String, callerUserId: String?): Result<Boolean> = lock.withLock {
+        val record = viewSessions[sessionId]
+            ?: return Result.failure(NoSuchElementException("SESSION_NOT_FOUND: View session does not exist"))
+
+        if (callerUserId == null || record.viewerId != callerUserId) {
+            return Result.failure(IllegalStateException("FORBIDDEN: Session does not belong to caller"))
+        }
+
+        if (record.status == "INITIALIZED" || record.status == "CONTENT_READY") {
+            record.status = "CANCELLED"
+            return Result.success(true)
+        }
+
+        Result.success(false)
+    }
+
     override suspend fun cancelCampaign(campaignId: String, callerUserId: String?): Result<Long> = lock.withLock {
         val camp = campaigns[campaignId]
             ?: return Result.failure(NoSuchElementException("CAMPAIGN_NOT_FOUND: Campaign does not exist or caller is not owner"))
