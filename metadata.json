@@ -1,0 +1,6 @@
+{
+  "name": "SiteBin",
+  "description": "پلتفرم تبادل ترافیک و ارتقای وب‌سایت با اقتصاد سکه و وب‌ویوی امن",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

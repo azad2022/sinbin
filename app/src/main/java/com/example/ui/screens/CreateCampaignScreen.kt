@@ -1,0 +1,450 @@
+package com.example.ui.screens
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.data.model.DurationOption
+import com.example.data.model.UserAccount
+import com.example.ui.SiteBinViewModel
+import com.example.ui.theme.SiteBinBlue
+import com.example.ui.theme.SiteBinGold
+import com.example.ui.theme.SiteBinSuccess
+import java.text.NumberFormat
+import java.util.Locale
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CreateCampaignScreen(
+    viewModel: SiteBinViewModel,
+    account: UserAccount,
+    onBack: () -> Unit,
+    onSuccess: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    BackHandler { onBack() }
+
+    val formatter = NumberFormat.getNumberInstance(Locale.US)
+    val url by viewModel.urlInput.collectAsState()
+    val urlError by viewModel.urlError.collectAsState()
+    val selectedDuration by viewModel.selectedDuration.collectAsState()
+    val targetViews by viewModel.targetViewsInput.collectAsState()
+    val isSubmitting by viewModel.isSubmittingCampaign.collectAsState()
+
+    val currentOption = viewModel.durationOptions.find { it.seconds == selectedDuration }
+        ?: viewModel.durationOptions[2]
+
+    val totalCost = currentOption.advertiserCost * targetViews
+    val canAfford = account.availableCoins >= totalCost
+    val isFormValid = url.isNotBlank() && urlError == null && canAfford && !isSubmitting
+
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "بازگشت")
+                }
+                Text(
+                    text = "ثبت سفارش بازدید جدید",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // Section 1: URL Input
+        item {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "آدرس وب‌سایت شما (URL)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    OutlinedTextField(
+                        value = url,
+                        onValueChange = { viewModel.onUrlChanged(it) },
+                        placeholder = { Text("https://my-website.com") },
+                        isError = urlError != null,
+                        singleLine = true,
+                        leadingIcon = {
+                            Icon(Icons.Default.Language, contentDescription = null, tint = SiteBinBlue)
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = SiteBinBlue,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("campaign_url_input")
+                    )
+
+                    if (urlError != null) {
+                        Text(
+                            text = urlError ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        Text(
+                            text = "فقط لینک‌های معتبر با پروتکل HTTPS مجاز هستند. لینک‌های تلگرام و دانلود مسدود می‌شوند.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        // Section 2: Duration Choice
+        item {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(Icons.Default.Timer, contentDescription = null, tint = SiteBinBlue, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = "مدت زمان مشاهده هر بازدید",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        text = "هرچه مدت زمان بیشتر باشد، تاثیر سئو و تعامل کاربر با سایت شما بیشتر خواهد بود.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        viewModel.durationOptions.forEach { opt ->
+                            val isSelected = opt.seconds == selectedDuration
+                            DurationCard(
+                                option = opt,
+                                isSelected = isSelected,
+                                onClick = { viewModel.selectedDuration.value = opt.seconds },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 3: Target Views
+        item {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "تعداد بازدید مورد نظر",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    // Preset Chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(100, 250, 500, 1000).forEach { count ->
+                            FilterChip(
+                                selected = targetViews == count,
+                                onClick = { viewModel.targetViewsInput.value = count },
+                                label = { Text("${formatter.format(count)} بازدید") },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = SiteBinBlue.copy(alpha = 0.2f),
+                                    selectedLabelColor = SiteBinBlue
+                                )
+                            )
+                        }
+                    }
+
+                    // Stepper Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "تعداد سفارشی:",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    if (targetViews > 50) {
+                                        viewModel.targetViewsInput.value = targetViews - 50
+                                    }
+                                },
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surface)
+                            ) {
+                                Icon(Icons.Default.Remove, contentDescription = "کاهش")
+                            }
+
+                            Text(
+                                text = formatter.format(targetViews),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black
+                            )
+
+                            IconButton(
+                                onClick = {
+                                    viewModel.targetViewsInput.value = targetViews + 50
+                                },
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surface)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "افزایش")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 4: Dynamic Cost Summary Card
+        item {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, SiteBinGold.copy(alpha = 0.4f)),
+                colors = CardDefaults.cardColors(containerColor = SiteBinGold.copy(alpha = 0.08f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "پیش‌فاکتور و خلاصه هزینه سفارش",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = SiteBinGold
+                    )
+
+                    SummaryRow(label = "مدت زمان هر مشاهده:", value = "${currentOption.seconds} ثانیه")
+                    SummaryRow(label = "تعداد بازدید درخواستی:", value = "${formatter.format(targetViews)} بازدید")
+                    SummaryRow(label = "هزینه هر بازدید:", value = "${currentOption.advertiserCost} سکه")
+                    SummaryRow(label = "موجودی فعلی شما:", value = "🪙 ${formatter.format(account.availableCoins)} سکه")
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(SiteBinGold.copy(alpha = 0.2f))
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "هزینه کل قابل کسر:",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "🪙 ${formatter.format(totalCost)} سکه",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = if (canAfford) SiteBinGold else MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    if (!canAfford) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "موجودی شما کافی نیست. از بخش «بازدید کسب کن» سکه رایگان جمع‌آوری کنید.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 5: Submit CTA Button
+        item {
+            Button(
+                onClick = { viewModel.submitCampaign(onSuccess) },
+                enabled = isFormValid,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SiteBinBlue,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .testTag("submit_campaign_button")
+            ) {
+                if (isSubmitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text = "ثبت و فعال‌سازی سفارش بازدید",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun DurationCard(
+    option: DurationOption,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSelected) SiteBinBlue.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            1.5.dp,
+            if (isSelected) SiteBinBlue else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+        ),
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "${option.seconds}s",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Black,
+                color = if (isSelected) SiteBinBlue else MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "${option.advertiserCost} 🪙",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun SummaryRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}

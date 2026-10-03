@@ -1,0 +1,266 @@
+package com.example.ui
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.core.security.PolicyResult
+import com.example.core.security.UrlSecurityPolicy
+import com.example.data.model.Campaign
+import com.example.data.model.CampaignStatus
+import com.example.data.model.CoinTransaction
+import com.example.data.model.DurationOption
+import com.example.data.model.UserAccount
+import com.example.data.model.ViewSession
+import com.example.data.repository.SiteBinRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+enum class AppScreen {
+    HOME,
+    VIEWER,
+    CREATE_CAMPAIGN,
+    CAMPAIGNS,
+    WALLET,
+    SETTINGS
+}
+
+sealed class ViewerState {
+    object Idle : ViewerState()
+    data class Loading(val session: ViewSession) : ViewerState()
+    data class Viewing(
+        val session: ViewSession,
+        val elapsedSeconds: Int,
+        val totalSeconds: Int
+    ) : ViewerState()
+    data class Completed(val session: ViewSession, val rewardEarned: Long) : ViewerState()
+    data class Blocked(val rawUrl: String, val reason: String) : ViewerState()
+    data class Error(val message: String) : ViewerState()
+}
+
+class SiteBinViewModel(application: Application) : AndroidViewModel(application) {
+
+    val repository = SiteBinRepository(application.applicationContext)
+
+    val account: StateFlow<UserAccount> = repository.account
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.account.value)
+
+    val transactions: StateFlow<List<CoinTransaction>> = repository.transactions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val campaigns: StateFlow<List<Campaign>> = repository.campaigns
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val durationOptions: List<DurationOption> = repository.durationOptions
+
+    private val prefs = application.applicationContext.getSharedPreferences("sitebin_secure_prefs", android.content.Context.MODE_PRIVATE)
+
+    // Theme Mode: defaults to false (Day / Light Mode)
+    private val _isDarkTheme = MutableStateFlow(prefs.getBoolean("is_dark_theme", false))
+    val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
+
+    fun setDarkTheme(enabled: Boolean) {
+        _isDarkTheme.value = enabled
+        prefs.edit().putBoolean("is_dark_theme", enabled).apply()
+    }
+
+    private val _currentScreen = MutableStateFlow(AppScreen.HOME)
+    val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
+
+    private val _viewerState = MutableStateFlow<ViewerState>(ViewerState.Idle)
+    val viewerState: StateFlow<ViewerState> = _viewerState.asStateFlow()
+
+    private val _snackBarMessage = MutableSharedFlow<String>()
+    val snackBarMessage: SharedFlow<String> = _snackBarMessage.asSharedFlow()
+
+    // Create Campaign Form State
+    val urlInput = MutableStateFlow("")
+    val selectedDuration = MutableStateFlow(15)
+    val targetViewsInput = MutableStateFlow(100)
+    val urlError = MutableStateFlow<String?>(null)
+    val isSubmittingCampaign = MutableStateFlow(false)
+
+    // Viewer Timer State
+    private var timerJob: Job? = null
+    private var isAppInForeground = true
+
+    fun navigateTo(screen: AppScreen) {
+        if (screen != AppScreen.VIEWER && _currentScreen.value == AppScreen.VIEWER) {
+            cancelViewerTimer()
+        }
+        _currentScreen.value = screen
+    }
+
+    fun showMessage(msg: String) {
+        viewModelScope.launch {
+            _snackBarMessage.emit(msg)
+        }
+    }
+
+    // --- Viewer Engine ---
+
+    fun startViewing() {
+        val nextSession = repository.getNextViewSession()
+        if (nextSession == null) {
+            showMessage("در حال حاضر وب‌سایت جدیدی برای مشاهده موجود نیست. لطفاً دقایقی دیگر امتحان کنید.")
+            return
+        }
+
+        _viewerState.value = ViewerState.Loading(nextSession)
+        _currentScreen.value = AppScreen.VIEWER
+    }
+
+    fun onWebViewContentVisible() {
+        val currentState = _viewerState.value
+        if (currentState is ViewerState.Loading) {
+            val session = currentState.session
+            startCountdown(session)
+        }
+    }
+
+    private fun startCountdown(session: ViewSession) {
+        timerJob?.cancel()
+        timerJob = viewModelScope.launch {
+            var elapsed = 0
+            val total = session.requiredDurationSeconds
+
+            while (elapsed < total) {
+                if (isAppInForeground) {
+                    _viewerState.value = ViewerState.Viewing(session, elapsed, total)
+                    delay(1000)
+                    elapsed++
+                } else {
+                    // Paused when in background
+                    delay(500)
+                }
+            }
+
+            // Completed!
+            val reward = repository.completeViewSession(session)
+            _viewerState.value = ViewerState.Completed(session, reward)
+        }
+    }
+
+    fun onForegroundChanged(inForeground: Boolean) {
+        isAppInForeground = inForeground
+    }
+
+    fun onUrlBlockedInViewer(url: String, reason: String) {
+        showMessage("مسدود شد: $reason")
+    }
+
+    fun skipCurrentSite() {
+        cancelViewerTimer()
+        val next = repository.getNextViewSession()
+        if (next != null) {
+            _viewerState.value = ViewerState.Loading(next)
+        } else {
+            _viewerState.value = ViewerState.Idle
+            _currentScreen.value = AppScreen.HOME
+            showMessage("وب‌سایت دیگری یافت نشد.")
+        }
+    }
+
+    fun nextSiteAfterCompletion() {
+        startViewing()
+    }
+
+    fun submitReport(reason: String, details: String) {
+        val currentSession = when (val state = _viewerState.value) {
+            is ViewerState.Loading -> state.session
+            is ViewerState.Viewing -> state.session
+            is ViewerState.Completed -> state.session
+            else -> null
+        }
+
+        if (currentSession != null) {
+            repository.submitReport(
+                campaignId = currentSession.campaignId,
+                domain = currentSession.domain,
+                reason = reason,
+                details = details
+            )
+            showMessage("گزارش شما ثبت و بررسی خواهد شد.")
+            skipCurrentSite()
+        }
+    }
+
+    private fun cancelViewerTimer() {
+        timerJob?.cancel()
+        timerJob = null
+    }
+
+    // --- Campaign Creation Engine ---
+
+    fun onUrlChanged(newUrl: String) {
+        urlInput.value = newUrl
+        if (newUrl.isNotBlank()) {
+            val check = UrlSecurityPolicy.evaluateUrl(newUrl)
+            if (check is PolicyResult.Blocked) {
+                urlError.value = check.reason
+            } else {
+                urlError.value = null
+            }
+        } else {
+            urlError.value = null
+        }
+    }
+
+    fun submitCampaign(onSuccess: () -> Unit) {
+        val url = urlInput.value.trim()
+        if (url.isBlank()) {
+            urlError.value = "لطفاً آدرس وب‌سایت را وارد کنید."
+            return
+        }
+
+        val check = UrlSecurityPolicy.evaluateUrl(url)
+        if (check is PolicyResult.Blocked) {
+            urlError.value = check.reason
+            return
+        }
+
+        isSubmittingCampaign.value = true
+        val result = repository.createCampaign(
+            rawUrl = url,
+            durationSeconds = selectedDuration.value,
+            targetViews = targetViewsInput.value
+        )
+        isSubmittingCampaign.value = false
+
+        result.onSuccess { campaign ->
+            urlInput.value = ""
+            showMessage("سفارش شما با موفقیت ثبت و فعال شد!")
+            onSuccess()
+        }.onFailure { error ->
+            showMessage(error.message ?: "خطا در ثبت سفارش")
+        }
+    }
+
+    fun pauseCampaign(id: String) {
+        repository.pauseCampaign(id)
+        showMessage("سفارش با موفقیت متوقف شد.")
+    }
+
+    fun resumeCampaign(id: String) {
+        repository.resumeCampaign(id)
+        showMessage("سفارش مجدداً فعال شد.")
+    }
+
+    fun cancelCampaign(id: String) {
+        val result = repository.cancelCampaign(id)
+        result.onSuccess { refunded ->
+            showMessage("سفارش لغو و $refunded سکه به حسابتان بازگشت.")
+        }.onFailure {
+            showMessage(it.message ?: "خطا در لغو سفارش")
+        }
+    }
+}

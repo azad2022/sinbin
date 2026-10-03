@@ -1,0 +1,70 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Browser Window Card -->
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M26,30 h56 a6,6 0 0,1 6,6 v42 a6,6 0 0,1 -6,6 h-56 a6,6 0 0,1 -6,-6 v-42 a6,6 0 0,1 6,-6 z" />
+    
+    <!-- Browser Top Bar -->
+    <path
+        android:fillColor="#334155"
+        android:pathData="M26,30 h56 a6,6 0 0,1 6,6 v8 h-68 v-8 a6,6 0 0,1 6,-6 z" />
+        
+    <!-- Window Control Dots -->
+    <path android:fillColor="#EF4444" android:pathData="M31,37 a2,2 0 1,0 0.01,0 Z" />
+    <path android:fillColor="#F59E0B" android:pathData="M37,37 a2,2 0 1,0 0.01,0 Z" />
+    <path android:fillColor="#10B981" android:pathData="M43,37 a2,2 0 1,0 0.01,0 Z" />
+
+    <!-- Browser URL Bar Pill -->
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M50,35 h28 a2,2 0 0,1 2,2 v0 a2,2 0 0,1 -2,2 h-28 a2,2 0 0,1 -2,-2 v0 a2,2 0 0,1 2,-2 z" />
+
+    <!-- Eye / SiteBin Vision Lens Symbol in Center -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M54,50 C44,50 37,58 37,58 C37,58 44,66 54,66 C64,66 71,58 71,58 C71,58 64,50 54,50 Z" />
+    
+    <!-- Pupil Circle -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M54,58 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
+
+    <!-- Pupil Sparkle -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M55.5,56.5 m-1.5,0 a1.5,1.5 0 1,0 3,0 a1.5,1.5 0 1,0 -3,0" />
+
+    <!-- Golden Coin Badge on bottom-right -->
+    <path
+        android:pathData="M70,68 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="45"
+                android:endX="80"
+                android:endY="78"
+                android:startX="60"
+                android:startY="58"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FDE047" />
+                <item android:offset="1.0" android:color="#D97706" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Inner Coin Rim -->
+    <path
+        android:strokeColor="#FEF08A"
+        android:strokeWidth="1"
+        android:fillColor="#00000000"
+        android:pathData="M70,68 m-7.5,0 a7.5,7.5 0 1,0 15,0 a7.5,7.5 0 1,0 -15,0" />
+    <!-- Coin Star/S -->
+    <path
+        android:fillColor="#78350F"
+        android:pathData="M69,63 h2 v10 h-2 z M67,65 h6 v2 h-6 z M67,69 h6 v2 h-6 z" />
+
+</vector>
