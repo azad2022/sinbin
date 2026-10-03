@@ -155,16 +155,22 @@ class SiteBinRepository(
         return result
     }
 
-    suspend fun pauseCampaign(campaignId: String) {
+    suspend fun pauseCampaign(campaignId: String): Result<Boolean> {
         val currentUserId = _account.value.userId
-        engine.pauseCampaign(campaignId, callerUserId = currentUserId)
-        refreshServerState()
+        val result = engine.pauseCampaign(campaignId, callerUserId = currentUserId)
+        if (result.isSuccess && result.getOrNull() == true) {
+            refreshServerState()
+        }
+        return result
     }
 
-    suspend fun resumeCampaign(campaignId: String) {
+    suspend fun resumeCampaign(campaignId: String): Result<Boolean> {
         val currentUserId = _account.value.userId
-        engine.resumeCampaign(campaignId, callerUserId = currentUserId)
-        refreshServerState()
+        val result = engine.resumeCampaign(campaignId, callerUserId = currentUserId)
+        if (result.isSuccess && result.getOrNull() == true) {
+            refreshServerState()
+        }
+        return result
     }
 
     suspend fun cancelViewSession(sessionId: String): Result<Boolean> {
