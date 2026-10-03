@@ -70,6 +70,9 @@ interface ServerAuthoritativeEngine {
     /** Cancels an active or paused campaign and refunds remaining reserved budget */
     suspend fun cancelCampaign(campaignId: String, callerUserId: String? = null): Result<Long>
 
+    /** Cancels an unfinished viewing session without affecting coins */
+    suspend fun cancelViewSession(sessionId: String, callerUserId: String? = null): Result<Boolean>
+
     /** Pauses a campaign on the server */
     suspend fun pauseCampaign(campaignId: String, callerUserId: String? = null): Result<Boolean>
 
