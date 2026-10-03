@@ -72,6 +72,18 @@ class ServerAuthoritativeSecurityTest {
         assertEquals(1, txs.size)
     }
 
+    @Test
+    fun testWelcomeBonus_sameInstallIdCannotRegisterSecondAccount() = runBlocking {
+        val sharedInstallId = "device_hardware_uuid_999"
+        val firstAccount = engine.initAccount(sharedInstallId, handle = "user_first").getOrThrow()
+        assertEquals(150L, firstAccount.availableCoins)
+
+        // Attempting to farm welcome bonus by creating a second account with same device install ID must be rejected
+        val secondAccountResult = engine.initAccount(sharedInstallId, handle = "user_attacker")
+        assertTrue(secondAccountResult.isFailure)
+        assertTrue(secondAccountResult.exceptionOrNull()?.message?.contains("INSTALL_ALREADY_REGISTERED") == true)
+    }
+
     // =========================================================================
     // 2. Campaign Validation & Budget Reservation Tests
     // =========================================================================
@@ -89,7 +101,8 @@ class ServerAuthoritativeSecurityTest {
         )
 
         assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message?.contains("کافی نیست") == true)
+        val errorMsg = result.exceptionOrNull()?.message ?: ""
+        assertTrue(errorMsg.contains("INSUFFICIENT_BALANCE") || errorMsg.contains("کافی نیست"))
 
         // Balance must remain intact
         val refetched = engine.fetchAccount(account.userId).getOrThrow()
@@ -231,6 +244,55 @@ class ServerAuthoritativeSecurityTest {
         assertTrue(diffKeyRes.isSuccess)
         val viewerAfterDiffKey = engine.fetchAccount(viewer.userId).getOrThrow()
         assertEquals(initialBalance + reward, viewerAfterDiffKey.availableCoins)
+    }
+
+    @Test
+    fun testView_incompleteOrNonContentReadySessionCannotBeCompleted() = runBlocking {
+        engine.initAccount("inst_adv_ready", handle = "advertiser_ready").getOrThrow()
+        engine.createCampaign(
+            url = "https://ready-test.com",
+            normalizedUrl = "https://ready-test.com",
+            domain = "ready-test.com",
+            durationSeconds = 5,
+            targetViews = 5
+        ).getOrThrow()
+
+        val viewer = engine.initAccount("inst_viewer_not_ready", handle = "viewer_not_ready").getOrThrow()
+        val session = engine.requestViewSession(viewer.userId).getOrThrow()!!
+
+        // Notice: signalContentReady was NEVER called (session is INITIALIZED, not CONTENT_READY)
+        val completeRes = engine.completeViewSession(session.id, "key_unready_1")
+        assertTrue(completeRes.isFailure)
+        assertTrue(completeRes.exceptionOrNull()?.message?.contains("INVALID_SESSION_STATUS") == true)
+    }
+
+    @Test
+    fun testIdempotency_differentSessionReusingKeyRejected() = runBlocking {
+        engine.initAccount("inst_adv_idem", handle = "advertiser_idem").getOrThrow()
+        engine.createCampaign(
+            url = "https://idem-test.com",
+            normalizedUrl = "https://idem-test.com",
+            domain = "idem-test.com",
+            durationSeconds = 5,
+            targetViews = 10
+        ).getOrThrow()
+
+        val viewer1 = engine.initAccount("inst_v_idem1", handle = "viewer_idem1").getOrThrow()
+        val session1 = engine.requestViewSession(viewer1.userId).getOrThrow()!!
+        engine.signalContentReady(session1.id)
+        Thread.sleep(4100)
+        val reusedKey = "shared_key_unique_123"
+        val res1 = engine.completeViewSession(session1.id, reusedKey)
+        assertTrue(res1.isSuccess)
+
+        // Another session attempting to reuse the same key must be rejected
+        val viewer2 = engine.initAccount("inst_v_idem2", handle = "viewer_idem2").getOrThrow()
+        val session2 = engine.requestViewSession(viewer2.userId).getOrThrow()!!
+        engine.signalContentReady(session2.id)
+        Thread.sleep(4100)
+        val res2 = engine.completeViewSession(session2.id, reusedKey)
+        assertTrue(res2.isFailure)
+        assertTrue(res2.exceptionOrNull()?.message?.contains("IDEMPOTENCY_KEY_CONFLICT") == true)
     }
 
     @Test
