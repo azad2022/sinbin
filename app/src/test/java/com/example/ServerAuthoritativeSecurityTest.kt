@@ -358,6 +358,48 @@ class ServerAuthoritativeSecurityTest {
         assertNull(newSession)
     }
 
+    @Test
+    fun testView_signalContentReadyIsIdempotent() = runBlocking {
+        engine.initAccount("inst_adv_signal", handle = "advertiser_signal").getOrThrow()
+        engine.createCampaign(
+            url = "https://signal-test.com",
+            normalizedUrl = "https://signal-test.com",
+            domain = "signal-test.com",
+            durationSeconds = 5,
+            targetViews = 2
+        ).getOrThrow()
+
+        val viewer = engine.initAccount("inst_viewer_signal", handle = "viewer_signal").getOrThrow()
+        val session = engine.requestViewSession(viewer.userId).getOrThrow()!!
+
+        assertTrue(engine.signalContentReady(session.id, callerUserId = viewer.userId).getOrThrow())
+        assertTrue(!engine.signalContentReady(session.id, callerUserId = viewer.userId).getOrThrow())
+    }
+
+    @Test
+    fun testView_cancelSessionPreventsImmediateReuseAndIsOwnerBound() = runBlocking {
+        engine.initAccount("inst_adv_cancel", handle = "advertiser_cancel").getOrThrow()
+        engine.createCampaign(
+            url = "https://cancel-test.com",
+            normalizedUrl = "https://cancel-test.com",
+            domain = "cancel-test.com",
+            durationSeconds = 5,
+            targetViews = 2
+        ).getOrThrow()
+
+        val viewer = engine.initAccount("inst_viewer_cancel", handle = "viewer_cancel").getOrThrow()
+        val otherViewer = engine.initAccount("inst_other_cancel", handle = "viewer_other_cancel").getOrThrow()
+        val session = engine.requestViewSession(viewer.userId).getOrThrow()!!
+
+        assertTrue(engine.cancelViewSession(session.id, callerUserId = viewer.userId).getOrThrow())
+        assertTrue(engine.cancelViewSession(session.id, callerUserId = viewer.userId).getOrThrow() == false)
+        assertTrue(engine.cancelViewSession(session.id, callerUserId = otherViewer.userId).isFailure)
+
+        val newSession = engine.requestViewSession(viewer.userId).getOrThrow()
+        assertNotNull(newSession)
+        assertTrue(newSession!!.id != session.id)
+    }
+
     // =========================================================================
     // 4. Concurrency Race Condition Tests
     // =========================================================================
