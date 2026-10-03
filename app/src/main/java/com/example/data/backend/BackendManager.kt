@@ -5,8 +5,8 @@ import com.example.BuildConfig
 
 /**
  * Backend Manager providing the active ServerAuthoritativeEngine instance.
- * Automatically connects to live Supabase if valid URL & Anon Key are injected,
- * otherwise falls back to the exact ServerEmulatedEngine for offline / testing stability.
+ * Connects only to the configured live Supabase backend. A missing or invalid
+ * backend configuration is a hard failure; the client never falls back to a local engine.
  */
 object BackendManager {
 
