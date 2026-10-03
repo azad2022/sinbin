@@ -39,7 +39,8 @@ enum class TransactionType(val labelFarsi: String, val isPositive: Boolean) {
     CAMPAIGN_RESERVATION("رزرو سکه سفارش بازدید", false),
     CAMPAIGN_SPEND("مصرف بودجه بازدید", false),
     CAMPAIGN_REFUND("استرداد بودجه باقیمانده", true),
-    REFERRAL_REWARD("پاداش معرفی دوستان", true)
+    REFERRAL_REWARD("پاداش معرفی دوستان", true),
+    PLATFORM_GRANT("اعتبار پلتفرمی", true)
 }
 
 data class CoinTransaction(
