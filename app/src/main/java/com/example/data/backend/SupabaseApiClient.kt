@@ -1,6 +1,9 @@
 package com.example.data.backend
 
 import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
@@ -17,7 +20,12 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
-import java.util.UUID
+import java.security.KeyStore
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import java.util.concurrent.TimeUnit
 
 /**
@@ -32,7 +40,7 @@ import java.util.concurrent.TimeUnit
  */
 class SupabaseApiClient(
     private val supabaseUrl: String,
-    private val supabaseAnonKey: String,
+    private val supabasePublishableKey: String,
     private val context: Context? = null
 ) : ServerAuthoritativeEngine {
 
@@ -72,13 +80,11 @@ class SupabaseApiClient(
     private var tokenExpiresAt: Long = 0L
 
     init {
-        // Load persisted session on startup
-        prefs?.let { p ->
-            currentUserToken = p.getString("access_token", null)
-            currentRefreshToken = p.getString("refresh_token", null)
-            currentUserId = p.getString("user_id", null)
-            tokenExpiresAt = p.getLong("token_expires_at", 0L)
-        }
+        // Load persisted session on startup. Sensitive values are encrypted with Android Keystore.
+        currentUserToken = getSecureString("access_token")
+        currentRefreshToken = getSecureString("refresh_token")
+        currentUserId = getSecureString("user_id")
+        tokenExpiresAt = getSecureString("token_expires_at")?.toLongOrNull() ?: prefs?.getLong("token_expires_at", 0L) ?: 0L
     }
 
     /**
@@ -88,8 +94,8 @@ class SupabaseApiClient(
         try {
             val request = Request.Builder()
                 .url("$supabaseUrl/rest/v1/duration_pricing?select=*&order=duration_seconds.asc")
-                .addHeader("apikey", supabaseAnonKey)
-                .addHeader("Authorization", "Bearer $supabaseAnonKey")
+                .addHeader("apikey", supabasePublishableKey)
+                .addHeader("Authorization", "Bearer $supabasePublishableKey")
                 .get()
                 .build()
 
@@ -150,7 +156,7 @@ class SupabaseApiClient(
             val url = "$supabaseUrl/rest/v1/profiles?id=eq.$userId&select=*"
             val request = Request.Builder()
                 .url(url)
-                .addHeader("apikey", supabaseAnonKey)
+                .addHeader("apikey", supabasePublishableKey)
                 .addHeader("Authorization", "Bearer $token")
                 .get()
                 .build()
@@ -173,7 +179,7 @@ class SupabaseApiClient(
             val url = "$supabaseUrl/rest/v1/coin_ledger?user_id=eq.$userId&order=created_at.desc&limit=100"
             val request = Request.Builder()
                 .url(url)
-                .addHeader("apikey", supabaseAnonKey)
+                .addHeader("apikey", supabasePublishableKey)
                 .addHeader("Authorization", "Bearer $token")
                 .get()
                 .build()
@@ -208,7 +214,7 @@ class SupabaseApiClient(
             val url = "$supabaseUrl/rest/v1/campaigns?select=*&order=created_at.desc"
             val request = Request.Builder()
                 .url(url)
-                .addHeader("apikey", supabaseAnonKey)
+                .addHeader("apikey", supabasePublishableKey)
                 .addHeader("Authorization", "Bearer $token")
                 .get()
                 .build()
@@ -374,7 +380,7 @@ class SupabaseApiClient(
         val now = System.currentTimeMillis()
 
         // 1. If active token exists and is valid for at least 60 seconds, use it
-        if (!token.isNullOrBlank() && token != supabaseAnonKey && (tokenExpiresAt == 0L || now < (tokenExpiresAt - 60_000L))) {
+        if (!token.isNullOrBlank() && token != supabasePublishableKey && (tokenExpiresAt == 0L || now < (tokenExpiresAt - 60_000L))) {
             return token
         }
 
@@ -396,7 +402,7 @@ class SupabaseApiClient(
         val now = System.currentTimeMillis()
 
         // 1. Valid existing token
-        if (!currentUserToken.isNullOrBlank() && currentUserToken != supabaseAnonKey && (tokenExpiresAt == 0L || now < (tokenExpiresAt - 60_000L))) {
+        if (!currentUserToken.isNullOrBlank() && currentUserToken != supabasePublishableKey && (tokenExpiresAt == 0L || now < (tokenExpiresAt - 60_000L))) {
             return
         }
 
@@ -426,7 +432,7 @@ class SupabaseApiClient(
         val tokenUrl = "$supabaseUrl/auth/v1/token?grant_type=password"
         val tokenReq = Request.Builder()
             .url(tokenUrl)
-            .addHeader("apikey", supabaseAnonKey)
+            .addHeader("apikey", supabasePublishableKey)
             .post(authBody)
             .build()
 
@@ -440,7 +446,7 @@ class SupabaseApiClient(
         // 5. If login fails (user does not exist yet), try Signup
         val signupReq = Request.Builder()
             .url("$supabaseUrl/auth/v1/signup")
-            .addHeader("apikey", supabaseAnonKey)
+            .addHeader("apikey", supabasePublishableKey)
             .post(authBody)
             .build()
 
@@ -454,7 +460,7 @@ class SupabaseApiClient(
         // 6. If email signup failed, attempt Supabase Native Anonymous Sign-In
         val anonReq = Request.Builder()
             .url("$supabaseUrl/auth/v1/signup")
-            .addHeader("apikey", supabaseAnonKey)
+            .addHeader("apikey", supabasePublishableKey)
             .post(JSONObject().toString().toRequestBody(jsonMediaType))
             .build()
 
@@ -465,7 +471,7 @@ class SupabaseApiClient(
             if (!currentUserToken.isNullOrBlank()) return
         }
 
-        // 7. Strict Failure: DO NOT fall back to supabaseAnonKey!
+        // 7. Strict Failure: DO NOT fall back to supabasePublishableKey!
         throw IllegalStateException(
             "SUPABASE_AUTH_FAILED: Unable to create or authenticate Supabase user session. Please ensure 'Confirm email' is disabled or 'Anonymous Sign-Ins' is enabled in your Supabase dashboard."
         )
@@ -479,7 +485,7 @@ class SupabaseApiClient(
 
             val req = Request.Builder()
                 .url("$supabaseUrl/auth/v1/token?grant_type=refresh_token")
-                .addHeader("apikey", supabaseAnonKey)
+                .addHeader("apikey", supabasePublishableKey)
                 .post(body)
                 .build()
 
@@ -511,19 +517,80 @@ class SupabaseApiClient(
     }
 
     private fun getOrGenerateDeviceSecret(): String {
-        prefs?.getString("device_secret", null)?.let { return it }
-        val newSecret = (UUID.randomUUID().toString() + UUID.randomUUID().toString()).replace("-", "")
-        prefs?.edit()?.putString("device_secret", newSecret)?.apply()
+        getSecureString("device_secret")?.let { return it }
+        val bytes = ByteArray(32)
+        SecureRandom().nextBytes(bytes)
+        val newSecret = Base64.encodeToString(bytes, Base64.NO_WRAP or Base64.URL_SAFE)
+        putSecureString("device_secret", newSecret)
         return newSecret
     }
 
     private fun saveSession() {
-        prefs?.edit()?.apply {
-            putString("access_token", currentUserToken)
-            putString("refresh_token", currentRefreshToken)
-            putString("user_id", currentUserId)
-            putLong("token_expires_at", tokenExpiresAt)
-            apply()
+        putSecureString("access_token", currentUserToken)
+        putSecureString("refresh_token", currentRefreshToken)
+        putSecureString("user_id", currentUserId)
+        putSecureString("token_expires_at", tokenExpiresAt.toString())
+    }
+
+    private fun getKeystoreKey(): SecretKey {
+        val alias = "sitebin_session_aes256"
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (keyStore.getKey(alias, null) as? SecretKey)?.let { return it }
+
+        val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        keyGenerator.init(
+            KeyGenParameterSpec.Builder(
+                alias,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setKeySize(256)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .build()
+        )
+        return keyGenerator.generateKey()
+    }
+
+    private fun encryptSecret(value: String): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, getKeystoreKey())
+        val iv = cipher.iv
+        val ciphertext = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(iv + ciphertext, Base64.NO_WRAP or Base64.URL_SAFE)
+    }
+
+    private fun decryptSecret(encoded: String): String? {
+        return runCatching {
+            val payload = Base64.decode(encoded, Base64.NO_WRAP or Base64.URL_SAFE)
+            if (payload.size <= 12) return@runCatching null
+            val iv = payload.copyOfRange(0, 12)
+            val ciphertext = payload.copyOfRange(12, payload.size)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, getKeystoreKey(), GCMParameterSpec(128, iv))
+            String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+        }.getOrNull()
+    }
+
+    private fun getSecureString(key: String): String? {
+        val p = prefs ?: return null
+        p.getString("enc_$key", null)?.let { return decryptSecret(it) }
+
+        // One-time migration from the previous plaintext SharedPreferences implementation.
+        val legacy = p.getString(key, null)
+        if (legacy != null) {
+            putSecureString(key, legacy)
+            p.edit().remove(key).apply()
+            return legacy
+        }
+        return null
+    }
+
+    private fun putSecureString(key: String, value: String?) {
+        val p = prefs ?: return
+        if (value == null) {
+            p.edit().remove("enc_$key").remove(key).apply()
+        } else {
+            p.edit().putString("enc_$key", encryptSecret(value)).remove(key).apply()
         }
     }
 
@@ -537,7 +604,7 @@ class SupabaseApiClient(
         val requestBody = body.toString().toRequestBody(jsonMediaType)
         val request = Request.Builder()
             .url("$supabaseUrl/rest/v1/rpc/$functionName")
-            .addHeader("apikey", supabaseAnonKey)
+            .addHeader("apikey", supabasePublishableKey)
             .addHeader("Authorization", "Bearer $token")
             .post(requestBody)
             .build()
