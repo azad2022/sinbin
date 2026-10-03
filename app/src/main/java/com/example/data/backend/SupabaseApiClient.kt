@@ -466,23 +466,11 @@ class SupabaseApiClient(
             if (!currentUserToken.isNullOrBlank()) return
         }
 
-        // 6. If email signup failed, attempt Supabase Native Anonymous Sign-In
-        val anonReq = Request.Builder()
-            .url("$supabaseUrl/auth/v1/signup")
-            .addHeader("apikey", supabasePublishableKey)
-            .post(JSONObject().toString().toRequestBody(jsonMediaType))
-            .build()
-
-        val anonRes = httpClient.newCall(anonReq).execute()
-        val anonRaw = anonRes.body?.string() ?: ""
-        if (anonRes.isSuccessful) {
-            handleAuthSuccess(anonRaw)
-            if (!currentUserToken.isNullOrBlank()) return
-        }
-
-        // 7. Strict Failure: DO NOT fall back to supabasePublishableKey!
+        // 6. Strict Failure: do not create an anonymous Supabase user and do not
+        // fall back to the publishable key. SiteBin financial RPCs require a
+        // non-anonymous authenticated session.
         throw IllegalStateException(
-            "SUPABASE_AUTH_FAILED: Unable to create or authenticate Supabase user session. Please ensure 'Confirm email' is disabled or 'Anonymous Sign-Ins' is enabled in your Supabase dashboard."
+            "SUPABASE_AUTH_FAILED: Unable to create or authenticate a permanent Supabase user session. Ensure email/password sign-in is enabled and email confirmation is configured for this app."
         )
     }
 
