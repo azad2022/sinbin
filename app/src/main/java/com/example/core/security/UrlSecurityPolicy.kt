@@ -96,6 +96,11 @@ object UrlSecurityPolicy {
             return PolicyResult.Blocked(trimmed, "دسترسی به آدرس‌های IP خصوصی و محلی مسدود است.")
         }
 
+        // Userinfo can hide or misrepresent the effective destination and is never allowed.
+        if (javaUri.userInfo != null || rawAuthority.contains("@")) {
+            return PolicyResult.Blocked(trimmed, "استفاده از اطلاعات کاربری در URL مجاز نیست.")
+        }
+
         val host = javaUri.host?.lowercase(Locale.ROOT)
         if (host.isNullOrBlank()) {
             return PolicyResult.Blocked(trimmed, "دامنه مشخص نیست.")
