@@ -1,6 +1,12 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -41,6 +48,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import com.example.ui.theme.SiteBinBlue
 import com.example.ui.theme.SiteBinGold
 import com.example.ui.theme.SiteBinTeal
@@ -82,15 +95,33 @@ fun OnboardingScreen(
     val currentStep = steps[currentStepIndex]
     val isLast = currentStepIndex == steps.size - 1
 
+    val motion = rememberInfiniteTransition(label = "onboarding_motion")
+    val iconOffset by motion.animateFloat(
+        initialValue = -7f,
+        targetValue = 7f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "icon_offset"
+    )
+    val iconScale by motion.animateFloat(
+        initialValue = 0.98f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "icon_scale"
+    )
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Skip Button in Top Corner
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
@@ -108,56 +139,72 @@ fun OnboardingScreen(
             }
         }
 
-        // Center Content with Hero Illustration/Icon
         Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-            modifier = Modifier.weight(1f),
-            // centered vertically
+            verticalArrangement = Arrangement.Center
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            AnimatedContent(
+                targetState = currentStepIndex,
+                transitionSpec = {
+                    (fadeIn() + scaleIn(initialScale = 0.92f))
+                        .togetherWith(fadeOut() + scaleOut(targetScale = 0.96f))
+                },
+                label = "onboarding_step"
+            ) { index ->
+                val step = steps[index]
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = step.iconColor.copy(alpha = 0.12f),
+                        modifier = Modifier
+                            .size(156.dp)
+                            .graphicsLayer {
+                                translationY = iconOffset
+                                scaleX = iconScale
+                                scaleY = iconScale
+                            }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = step.icon,
+                                contentDescription = null,
+                                tint = step.iconColor,
+                                modifier = Modifier.size(78.dp)
+                            )
+                        }
+                    }
 
-            Surface(
-                shape = CircleShape,
-                color = currentStep.iconColor.copy(alpha = 0.12f),
-                modifier = Modifier.size(140.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = currentStep.icon,
-                        contentDescription = null,
-                        tint = currentStep.iconColor,
-                        modifier = Modifier.size(72.dp)
+                    Text(
+                        text = step.title,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+
+                    Text(
+                        text = step.subtitle,
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 28.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp)
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = currentStep.title,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-
-            Text(
-                text = currentStep.subtitle,
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = 28.sp,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
         }
 
-        // Bottom Navigation: Indicator Dots and CTA
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Indicator Dots
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 steps.indices.forEach { index ->
                     val isSelected = index == currentStepIndex
@@ -167,26 +214,24 @@ fun OnboardingScreen(
                             .width(if (isSelected) 24.dp else 8.dp)
                             .clip(CircleShape)
                             .background(
-                                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                if (isSelected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                             )
                     )
                 }
             }
 
-            // Action Button
+            Spacer(modifier = Modifier.height(14.dp))
+
             Button(
                 onClick = {
-                    if (isLast) {
-                        onFinish()
-                    } else {
-                        currentStepIndex++
-                    }
+                    if (isLast) onFinish() else currentStepIndex++
                 },
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = SiteBinBlue),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp)
+                    .height(58.dp)
             ) {
                 Text(
                     text = if (isLast) "شروع کنیم" else "مرحله بعد",
