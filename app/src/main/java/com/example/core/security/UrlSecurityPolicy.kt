@@ -74,13 +74,13 @@ object UrlSecurityPolicy {
             return PolicyResult.Blocked(trimmed, friendlyReason)
         }
 
-        if (scheme != "http" && scheme != "https") {
-            return PolicyResult.Blocked(trimmed, "تنها پروتکل‌های امن HTTP و HTTPS مجاز هستند.")
+        if (scheme != "https") {
+            return PolicyResult.Blocked(trimmed, "تنها آدرس‌های HTTPS در سایت بین مجاز هستند.")
         }
 
         // 2. Host and SSRF / IP Range Check
         val javaUri = try {
-            val urlToParse = if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
+            val urlToParse = if (trimmed.startsWith("https://", ignoreCase = true)) {
                 trimmed
             } else {
                 "https://$trimmed"
@@ -173,7 +173,7 @@ object UrlSecurityPolicy {
 
     fun normalizeUrl(rawUrl: String): String {
         var result = rawUrl.trim()
-        if (!result.startsWith("http://", ignoreCase = true) && !result.startsWith("https://", ignoreCase = true)) {
+        if (!result.startsWith("https://", ignoreCase = true)) {
             result = "https://$result"
         }
         return try {
