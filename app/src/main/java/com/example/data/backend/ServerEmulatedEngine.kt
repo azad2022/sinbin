@@ -315,8 +315,11 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         if (record.status == "INITIALIZED") {
             record.status = "CONTENT_READY"
             record.contentReadyAt = System.currentTimeMillis()
+            return Result.success(true)
         }
-        Result.success(true)
+
+        // Match the real PostgreSQL RPC: repeated/invalid state transitions are not successful.
+        Result.success(false)
     }
 
     override suspend fun completeViewSession(
