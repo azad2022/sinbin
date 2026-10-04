@@ -148,8 +148,7 @@ class SiteBinRepository(
 
     suspend fun transferCoins(
         recipientHandle: String,
-        amount: Long,
-        note: String? = null
+        amount: Long
     ): Result<CoinTransferResult> {
         val currentUserId = _account.value.userId
         val idempotencyKey = "transfer_" + UUID.randomUUID().toString()
@@ -157,7 +156,7 @@ class SiteBinRepository(
             recipientHandle = recipientHandle.trim(),
             amount = amount,
             idempotencyKey = idempotencyKey,
-            note = note?.trim()?.ifBlank { null },
+            note = null,
             callerUserId = currentUserId
         )
         if (result.isSuccess) {
