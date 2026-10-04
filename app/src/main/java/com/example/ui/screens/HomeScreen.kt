@@ -321,8 +321,7 @@ private fun WelcomeBonusCelebration(
                 Card(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .fillMaxWidth(0.86f)
-                        .clickable(onClick = {}),
+                        .fillMaxWidth(0.86f),
                     shape = RoundedCornerShape(28.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surface
@@ -382,20 +381,26 @@ private fun HomeHeader(account: UserAccount, onNavigate: (AppScreen) -> Unit) {
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "SiteBin — سایت بین",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.onBackground
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
             Text(
                 text = "پلتفرم تبادل ترافیک و سئو سایت",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
 
@@ -461,6 +466,7 @@ private fun ActionHeroCard(
                 ) {
                     // Badge
                     Surface(
+                        modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
                         color = Color.White.copy(alpha = 0.2f)
                     ) {
@@ -469,7 +475,10 @@ private fun ActionHeroCard(
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
 
