@@ -90,102 +90,105 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
+    var celebrationVisible by remember { mutableStateOf(showWelcomeCelebration) }
 
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-            // Top App Bar / Balance Section
-            HomeHeader(account = account, onNavigate = onNavigate)
-        }
-
-        if (showWelcomeBonus && welcomeBonusAmount != null) {
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             item {
-                WelcomeBonusBanner(
-                    amount = welcomeBonusAmount,
-                    onNavigate = onNavigate
-                )
+                Spacer(modifier = Modifier.height(8.dp))
+                HomeHeader(account = account, onNavigate = onNavigate)
             }
-        }
 
-        item {
-            // Main Hero Card 1: Earn Coins by Viewing Sites
-            ActionHeroCard(
-                title = "بازدید کسب کن",
-                subtitle = "با مشاهده وب‌سایت‌های دیگران سکه رایگان دریافت کن و به موجودی خودت اضافه کن.",
-                buttonText = "شروع مشاهده",
-                icon = Icons.Default.Visibility,
-                badgeText = "دریافت تا ۳۸+ سکه",
-                gradientColors = listOf(SiteBinBlue, Color(0xFF1D4ED8)),
-                testTag = "start_viewing_button",
-                onClick = onStartViewing
-            )
-        }
-
-        item {
-            // Main Hero Card 2: Promote Your Own Website
-            ActionHeroCard(
-                title = "سایتت را تبلیغ کن",
-                subtitle = "با سکه‌های خود برای وب‌سایتت بازدید واقعی، هدفمند و بر اساس ثانیه دلخواه دریافت کن.",
-                buttonText = "ثبت سفارش بازدید",
-                icon = Icons.Default.RocketLaunch,
-                badgeText = "افزایش رتبه الکسا و سئو",
-                gradientColors = listOf(Color(0xFF0F766E), SiteBinTeal),
-                testTag = "create_campaign_button",
-                onClick = { onNavigate(AppScreen.CREATE_CAMPAIGN) }
-            )
-        }
-
-        item {
-            // Account Performance Summary Grid
-            AccountMetricsGrid(account = account, activeCampaignsCount = campaigns.count { it.status.name == "ACTIVE" })
-        }
-
-        item {
-            // Recent Campaigns Section Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "سفارش‌های اخیر شما",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                if (campaigns.isNotEmpty()) {
-                    Text(
-                        text = "مشاهده همه",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onNavigate(AppScreen.CAMPAIGNS) }
-                            .padding(4.dp)
+            if (showWelcomeBonus && welcomeBonusAmount != null) {
+                item {
+                    WelcomeBonusBanner(
+                        amount = welcomeBonusAmount,
+                        onNavigate = onNavigate
                     )
                 }
             }
-        }
 
-        if (campaigns.isEmpty()) {
             item {
-                EmptyCampaignsBanner(onAddCampaign = { onNavigate(AppScreen.CREATE_CAMPAIGN) })
+                ActionHeroCard(
+                    title = "بازدید کسب کن",
+                    subtitle = "با مشاهده وب‌سایت‌های دیگران سکه رایگان دریافت کن و به موجودی خودت اضافه کن.",
+                    buttonText = "شروع مشاهده",
+                    icon = Icons.Default.Visibility,
+                    badgeText = "دریافت تا ۳۸+ سکه",
+                    gradientColors = listOf(SiteBinBlue, Color(0xFF1D4ED8)),
+                    testTag = "start_viewing_button",
+                    onClick = onStartViewing
+                )
             }
-        } else {
-            items(campaigns.take(3)) { campaign ->
-                CampaignMiniCard(campaign = campaign, onClick = { onNavigate(AppScreen.CAMPAIGNS) })
+
+            item {
+                ActionHeroCard(
+                    title = "سایتت را تبلیغ کن",
+                    subtitle = "با سکه‌های خود برای وب‌سایتت بازدید واقعی، هدفمند و بر اساس ثانیه دلخواه دریافت کن.",
+                    buttonText = "ثبت سفارش بازدید",
+                    icon = Icons.Default.RocketLaunch,
+                    badgeText = "افزایش رتبه الکسا و سئو",
+                    gradientColors = listOf(Color(0xFF0F766E), SiteBinTeal),
+                    testTag = "create_campaign_button",
+                    onClick = { onNavigate(AppScreen.CREATE_CAMPAIGN) }
+                )
+            }
+
+            item {
+                AccountMetricsGrid(
+                    account = account,
+                    activeCampaignsCount = campaigns.count { it.status.name == "ACTIVE" }
+                )
+            }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "سفارش‌های اخیر شما",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (campaigns.isNotEmpty()) {
+                        Text(
+                            text = "مشاهده همه",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onNavigate(AppScreen.CAMPAIGNS) }
+                                .padding(4.dp)
+                        )
+                    }
+                }
+            }
+
+            if (campaigns.isEmpty()) {
+                item {
+                    EmptyCampaignsBanner(onAddCampaign = { onNavigate(AppScreen.CREATE_CAMPAIGN) })
+                }
+            } else {
+                items(campaigns.take(3)) { campaign ->
+                    CampaignMiniCard(
+                        campaign = campaign,
+                        onClick = { onNavigate(AppScreen.CAMPAIGNS) }
+                    )
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
 
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-    }
         if (celebrationVisible && welcomeBonusAmount != null) {
             WelcomeBonusCelebration(
                 amount = welcomeBonusAmount,
@@ -193,6 +196,7 @@ fun HomeScreen(
                     celebrationVisible = false
                     onWelcomeCelebrationConsumed()
                 }
+            )
         }
     }
 }
