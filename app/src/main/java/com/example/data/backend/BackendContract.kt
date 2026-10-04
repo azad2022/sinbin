@@ -4,6 +4,7 @@ import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
 import com.example.data.model.DurationOption
+import com.example.data.model.DailyBonusResult
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
 
@@ -28,6 +29,9 @@ interface ServerAuthoritativeEngine {
 
     /** Fetch server coin transactions ledger */
     suspend fun fetchTransactions(userId: String): Result<List<CoinTransaction>>
+
+    /** Claims the server-authoritative daily login bonus for the current authenticated user. */
+    suspend fun claimDailyBonus(): Result<DailyBonusResult>
 
     /** Atomically transfers available coins between two authenticated accounts. */
     suspend fun transferCoins(
