@@ -180,7 +180,7 @@ class SupabaseApiClient(
         }
     }
 
-    override suspend fun claimDailyBonus(): Result<DailyBonusResult> = withContext(Dispatchers.IO) {
+    override suspend fun claimDailyBonus(callerUserId: String?): Result<DailyBonusResult> = withContext(Dispatchers.IO) {
         try {
             val res = callRpc("claim_daily_bonus", JSONObject())
             val amount = res.optLong("amount", 0L)
