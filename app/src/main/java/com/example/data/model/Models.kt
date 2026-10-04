@@ -42,6 +42,7 @@ enum class TransactionType(val labelFarsi: String, val isPositive: Boolean) {
     CAMPAIGN_REFUND("استرداد بودجه باقیمانده", true),
     REFERRAL_REWARD("پاداش معرفی دوستان", true),
     PLATFORM_GRANT("اعتبار پلتفرمی", true),
+    DAILY_BONUS("هدیه ورود روزانه", true),
     COIN_TRANSFER_SENT("انتقال سکه به کاربر دیگر", false),
     COIN_TRANSFER_RECEIVED("دریافت سکه", true)
 }
@@ -61,6 +62,15 @@ data class CoinTransferResult(
     val amount: Long,
     val note: String? = null,
     val createdAt: Long = System.currentTimeMillis()
+)
+
+data class DailyBonusResult(
+    val granted: Boolean,
+    val amount: Long,
+    val grantDate: String,
+    val reason: String? = null,
+    val grantId: String? = null,
+    val grantedAt: Long? = null
 )
 
 data class UserAccount(
