@@ -1,6 +1,8 @@
 package com.example.data.backend
 
 import android.content.Context
+import android.os.SystemClock
+import com.example.BuildConfig
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -70,6 +72,9 @@ class SupabaseApiClient(
         DurationOption(seconds = 60, advertiserCost = 50, viewerReward = 38)
     )
 
+    @Volatile
+    private var pricingFetchedAtMs: Long = 0L
+
     override val durationOptions: List<DurationOption>
         get() = _dynamicPricing
 
@@ -97,7 +102,13 @@ class SupabaseApiClient(
      * Dynamically fetches duration pricing from Supabase database (Single Source of Truth).
      */
     override suspend fun fetchDurationPricing(): Result<List<DurationOption>> = withContext(Dispatchers.IO) {
+        val now = SystemClock.elapsedRealtime()
+        if (_dynamicPricing.isNotEmpty() && now - pricingFetchedAtMs < 60_000L) {
+            return@withContext Result.success(_dynamicPricing)
+        }
+
         try {
+            val startedAt = SystemClock.elapsedRealtime()
             val request = Request.Builder()
                 .url("$supabaseUrl/rest/v1/duration_pricing?select=*&order=duration_seconds.asc")
                 .addHeader("apikey", supabasePublishableKey)
@@ -105,6 +116,7 @@ class SupabaseApiClient(
                 .build()
 
             val response = httpClient.newCall(request).execute()
+            val elapsedMs = SystemClock.elapsedRealtime() - startedAt
             val raw = response.body?.string() ?: ""
             if (!response.isSuccessful) {
                 return@withContext Result.failure(IOException("Failed to fetch duration pricing: HTTP ${response.code}"))
@@ -129,7 +141,9 @@ class SupabaseApiClient(
             }
             if (list.isNotEmpty()) {
                 _dynamicPricing = list
+                pricingFetchedAtMs = SystemClock.elapsedRealtime()
             }
+            debugPerformance("pricing", elapsedMs)
             Result.success(_dynamicPricing)
         } catch (e: Exception) {
             Result.failure(e)
@@ -138,10 +152,10 @@ class SupabaseApiClient(
 
     override suspend fun initAccount(installId: String, handle: String?): Result<UserAccount> = withContext(Dispatchers.IO) {
         try {
-            // 1. Fetch live pricing from Supabase
-            fetchDurationPricing()
+            // Pricing is cached briefly and loaded by repository startup.
+            // Avoid an unnecessary duplicate round-trip during account initialization.
 
-            // 2. Ensure real authenticated Supabase session
+            // 1. Ensure real authenticated Supabase session
             ensureAuthenticated(installId)
 
             val body = JSONObject().apply {
@@ -461,15 +475,27 @@ class SupabaseApiClient(
         sessionId: String,
         idempotencyKey: String,
         callerUserId: String?
-    ): Result<Long> = withContext(Dispatchers.IO) {
+    ): Result<ViewCompletionResult> = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().apply {
                 put("p_session_id", sessionId)
                 put("p_idempotency_key", idempotencyKey)
             }
+            val startedAt = SystemClock.elapsedRealtime()
             val res = callRpc("complete_view_session", body)
+            val elapsedMs = SystemClock.elapsedRealtime() - startedAt
             if (res.optBoolean("success", false)) {
-                Result.success(res.optLong("reward", 0L))
+                debugPerformance("complete_view_session", elapsedMs)
+                Result.success(
+                    ViewCompletionResult(
+                        reward = res.optLong("reward", 0L),
+                        availableCoins = res.optLong("available_coins", 0L),
+                        lifetimeEarned = res.optLong("lifetime_earned", 0L),
+                        completedViewsCount = res.optInt("completed_views_count", 0),
+                        campaignCompleted = res.optBoolean("campaign_completed", false),
+                        alreadyCompleted = res.optBoolean("already_completed", false)
+                    )
+                )
             } else {
                 Result.failure(IllegalStateException("خطا در تایید سرور برای بازدید."))
             }
@@ -793,6 +819,12 @@ class SupabaseApiClient(
             throw IOException(errMsg)
         }
         return raw
+    }
+
+    private fun debugPerformance(operation: String, elapsedMs: Long) {
+        if (BuildConfig.DEBUG) {
+            android.util.Log.d("SiteBinPerf", "operation=$operation elapsedMs=$elapsedMs")
+        }
     }
 
     private fun parseTimestamp(raw: String): Long {
