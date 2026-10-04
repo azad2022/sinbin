@@ -140,8 +140,9 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         Result.success(newAccount)
     }
 
-    override suspend fun claimDailyBonus(): Result<DailyBonusResult> = lock.withLock {
-        val userId = currentAuthenticatedUserId()
+    override suspend fun claimDailyBonus(callerUserId: String?): Result<DailyBonusResult> = lock.withLock {
+        val userId = callerUserId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return Result.failure(IllegalStateException("UNAUTHORIZED: Authentication token required"))
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
         if (welcomeGrantDates[userId] == today) {
@@ -195,10 +196,6 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
             )
         )
     }
-
-    private fun currentAuthenticatedUserId(): String =
-        profiles.keys.firstOrNull()
-            ?: throw IllegalStateException("UNAUTHORIZED: Authentication token required")
 
     override suspend fun fetchAccount(userId: String): Result<UserAccount> = lock.withLock {
         val account = profiles[userId] ?: return Result.failure(NoSuchElementException("User not found"))
