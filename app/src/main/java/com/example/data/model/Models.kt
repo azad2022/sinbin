@@ -112,6 +112,15 @@ data class ViewSession(
     val startedAt: Long = System.currentTimeMillis()
 )
 
+data class ViewCompletionResult(
+    val reward: Long,
+    val availableCoins: Long,
+    val lifetimeEarned: Long,
+    val completedViewsCount: Int,
+    val campaignCompleted: Boolean,
+    val alreadyCompleted: Boolean
+)
+
 data class AbuseReport(
     val id: String = UUID.randomUUID().toString(),
     val campaignId: String,
