@@ -1,5 +1,7 @@
 package com.example.data.backend
 
+import com.example.data.model.AutoViewActivationResult
+import com.example.data.model.AutoViewStatus
 import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
@@ -32,6 +34,15 @@ interface ServerAuthoritativeEngine {
 
     /** Claims the server-authoritative daily login bonus for the current authenticated user. */
     suspend fun claimDailyBonus(callerUserId: String? = null): Result<DailyBonusResult>
+
+    /** Returns the server-authoritative seven-day auto-view entitlement state. */
+    suspend fun getAutoViewStatus(callerUserId: String? = null): Result<AutoViewStatus>
+
+    /** Atomically charges 100 coins for a seven-day auto-view entitlement. */
+    suspend fun activateAutoView(
+        idempotencyKey: String,
+        callerUserId: String? = null
+    ): Result<AutoViewActivationResult>
 
     /** Atomically transfers available coins between two authenticated accounts. */
     suspend fun transferCoins(
