@@ -211,11 +211,20 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                 ) { screen ->
                     when (screen) {
                         AppScreen.HOME -> {
-                            val welcomeBonusAmount = transactions
+                            val latestWelcomeBonus = transactions
                                 .filter { it.type == TransactionType.WELCOME_REWARD }
                                 .maxByOrNull { it.timestamp }
+                            val welcomeBonusAmount = latestWelcomeBonus
                                 ?.amount
                                 ?.takeIf { it > 0L }
+                            val welcomeBonusGrantedAt = latestWelcomeBonus?.timestamp
+                            val showWelcomeBonus =
+                                welcomeBonusGrantedAt?.let {
+                                    com.example.ui.screens.isWelcomeBonusBannerVisible(
+                                        grantedAtMillis = it,
+                                        nowMillis = System.currentTimeMillis()
+                                    )
+                                } == true
                             val showWelcomeCelebration =
                                 welcomeBonusAmount != null &&
                                     !prefs.getBoolean("welcome_bonus_celebration_seen", false)
@@ -230,7 +239,8 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                 account = account,
                                 campaigns = campaigns,
                                 welcomeBonusAmount = welcomeBonusAmount,
-                                showWelcomeBonus = welcomeBonusAmount != null,
+                                welcomeBonusGrantedAt = welcomeBonusGrantedAt,
+                                showWelcomeBonus = showWelcomeBonus,
                                 showWelcomeCelebration = showWelcomeCelebration,
                                 onWelcomeCelebrationConsumed = {
                                     prefs.edit()
