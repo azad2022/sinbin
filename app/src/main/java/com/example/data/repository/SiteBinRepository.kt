@@ -125,7 +125,18 @@ class SiteBinRepository(
                 ?: IllegalStateException("راه‌اندازی حساب در سرور ناموفق بود.")
         }
 
-        val acc = initRes.getOrThrow()
+        var acc = initRes.getOrThrow()
+
+        val dailyBonusResult = engine.claimDailyBonus()
+        if (dailyBonusResult.isFailure) {
+            throw dailyBonusResult.exceptionOrNull()
+                ?: IllegalStateException("هدیه روزانه در سرور قابل دریافت نیست.")
+        }
+
+        if (dailyBonusResult.getOrThrow() > 0L) {
+            acc = engine.fetchAccount(acc.userId).getOrThrow()
+        }
+
         _account.value = acc
 
         engine.fetchTransactions(acc.userId)
@@ -155,6 +166,17 @@ class SiteBinRepository(
             runCatching { refreshServerState() }
         }
         return result
+    }
+
+    /** Checks and claims the current server-day bonus. No local state is authoritative. */
+    suspend fun claimDailyBonus(): Result<Long> {
+        val currentUserId = _account.value.userId
+        return engine.claimDailyBonus().onSuccess { amount ->
+            if (amount > 0L) {
+                _account.value = engine.fetchAccount(currentUserId).getOrThrow()
+                _transactions.value = engine.fetchTransactions(currentUserId).getOrThrow()
+            }
+        }
     }
 
     suspend fun refreshFinancialState(): Result<Unit> {
