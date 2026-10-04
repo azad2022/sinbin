@@ -35,6 +35,25 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
+      - name: Supabase public API smoke test
+        run: |
+          set -euo pipefail
+          SUPABASE_URL="$(sed -n 's/^SUPABASE_URL=//p' .env.example)"
+          SUPABASE_PUBLISHABLE_KEY="$(sed -n 's/^SUPABASE_PUBLISHABLE_KEY=//p' .env.example)"
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_PUBLISHABLE_KEY"
+          curl --fail --silent --show-error \
+            "$SUPABASE_URL/rest/v1/duration_pricing?select=duration_seconds&order=duration_seconds.asc" \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            -o /tmp/sitebin-duration-pricing.json
+          python3 - <<'PY'
+          import json
+          with open('/tmp/sitebin-duration-pricing.json', encoding='utf-8') as f:
+              rows = json.load(f)
+          assert len(rows) == 5, f"expected 5 pricing rows, got {len(rows)}"
+          print("Supabase duration_pricing smoke test passed")
+          PY
+
       - name: Unit tests
         run: gradle --no-daemon testDebugUnitTest
 
