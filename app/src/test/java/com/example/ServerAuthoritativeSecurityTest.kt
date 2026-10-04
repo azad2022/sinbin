@@ -252,26 +252,31 @@ class ServerAuthoritativeSecurityTest {
         val idempotencyKey = "test_key_1"
         val rewardRes = engine.completeViewSession(session.id, idempotencyKey)
         assertTrue(rewardRes.isSuccess)
-        val reward = rewardRes.getOrThrow()
-        assertEquals(3L, reward) // 5s duration reward = 3 coins
+        val completion = rewardRes.getOrThrow()
+        assertEquals(3L, completion.reward) // 5s duration reward = 3 coins
+        assertEquals(initialBalance + completion.reward, completion.availableCoins)
+        assertEquals(1, completion.completedViewsCount)
+        assertEquals(150L, completion.lifetimeEarned)
+        assertTrue(!completion.alreadyCompleted)
 
         val refetchedViewer = engine.fetchAccount(viewer.userId).getOrThrow()
-        assertEquals(initialBalance + reward, refetchedViewer.availableCoins)
+        assertEquals(completion.availableCoins, refetchedViewer.availableCoins)
 
         // 5. Duplicate completion attempt with same idempotency key
         val dupRewardRes = engine.completeViewSession(session.id, idempotencyKey)
         assertTrue(dupRewardRes.isSuccess)
-        assertEquals(reward, dupRewardRes.getOrThrow())
+        assertEquals(completion.reward, dupRewardRes.getOrThrow().reward)
+        assertTrue(dupRewardRes.getOrThrow().alreadyCompleted)
 
         // Balance MUST NOT increase twice!
         val viewerAfterDup = engine.fetchAccount(viewer.userId).getOrThrow()
-        assertEquals(initialBalance + reward, viewerAfterDup.availableCoins)
+        assertEquals(initialBalance + completion.reward, viewerAfterDup.availableCoins)
 
         // 6. Duplicate completion attempt with different idempotency key on completed session
         val diffKeyRes = engine.completeViewSession(session.id, "different_key_2")
         assertTrue(diffKeyRes.isSuccess)
         val viewerAfterDiffKey = engine.fetchAccount(viewer.userId).getOrThrow()
-        assertEquals(initialBalance + reward, viewerAfterDiffKey.availableCoins)
+        assertEquals(initialBalance + completion.reward, viewerAfterDiffKey.availableCoins)
     }
 
     @Test
@@ -371,7 +376,7 @@ class ServerAuthoritativeSecurityTest {
         // In-flight session issued prior to pause must be allowed to complete and be rewarded
         val completeRes = engine.completeViewSession(session.id, "key_pause_1", callerUserId = viewer.userId)
         assertTrue(completeRes.isSuccess)
-        assertEquals(3L, completeRes.getOrThrow())
+        assertEquals(3L, completeRes.getOrThrow().reward)
 
         // However, NEW sessions must NOT be dispatched for paused campaign
         val viewer2 = engine.initAccount("inst_v_p2", handle = "viewer_p2").getOrThrow()
