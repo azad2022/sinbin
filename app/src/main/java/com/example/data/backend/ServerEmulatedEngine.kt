@@ -8,6 +8,8 @@ import com.example.data.model.DurationOption
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
+import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -44,6 +46,8 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
     // Internal Database Tables
     private val profiles = mutableMapOf<String, UserAccount>()
     private val welcomeBonusGrants = mutableMapOf<String, String>() // userId -> installId
+    private val welcomeGrantDates = mutableMapOf<String, LocalDate>() // userId -> UTC welcome day
+    private val dailyBonusGrants = mutableSetOf<String>() // userId|UTC date
     private val campaigns = mutableMapOf<String, Campaign>()
     private val viewSessions = mutableMapOf<String, ServerViewSessionRecord>()
     private val userLedger = mutableMapOf<String, MutableList<CoinTransaction>>() // userId -> ledger
@@ -101,12 +105,13 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         }
 
         // Create new account and grant welcome bonus atomically ONCE
-        val welcomeAmount = 150L
+        val welcomeAmount = 300L
         val isFirstTime = !welcomeBonusGrants.containsKey(userId)
 
         val grantedCoins = if (isFirstTime) welcomeAmount else 0L
         if (isFirstTime) {
             welcomeBonusGrants[userId] = cleanInstall
+            welcomeGrantDates[userId] = LocalDate.now(ZoneOffset.UTC)
             val welcomeTx = CoinTransaction(
                 id = UUID.randomUUID().toString(),
                 amount = welcomeAmount,
@@ -131,6 +136,38 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         )
         profiles[userId] = newAccount
         Result.success(newAccount)
+    }
+
+    override suspend fun claimDailyBonus(): Result<Long> = lock.withLock {
+        val userId = currentAuthenticatedUserId()
+            ?: return Result.failure(IllegalStateException("UNAUTHORIZED: Authentication token required"))
+        val profile = profiles[userId]
+            ?: return Result.failure(NoSuchElementException("PROFILE_NOT_FOUND: Account must be initialized before receiving daily bonus"))
+
+        val today = LocalDate.now(ZoneOffset.UTC)
+        if (welcomeGrantDates[userId] == today) {
+            return Result.success(0L)
+        }
+
+        val grantKey = userId + "|" + today.toString()
+        if (!dailyBonusGrants.add(grantKey)) {
+            return Result.success(0L)
+        }
+
+        profiles[userId] = profile.copy(
+            availableCoins = profile.availableCoins + 50L,
+            lifetimeEarned = profile.lifetimeEarned + 50L
+        )
+        userLedger.getOrPut(userId) { mutableListOf() }.add(
+            0,
+            CoinTransaction(
+                amount = 50L,
+                type = TransactionType.DAILY_BONUS,
+                description = "هدیه روزانه سایت بین",
+                referenceId = grantKey
+            )
+        )
+        Result.success(50L)
     }
 
     override suspend fun fetchAccount(userId: String): Result<UserAccount> = lock.withLock {
