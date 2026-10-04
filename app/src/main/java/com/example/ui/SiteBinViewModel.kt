@@ -73,6 +73,16 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     private val _isDarkTheme = MutableStateFlow(prefs.getBoolean("is_dark_theme", false))
     val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
 
+    private val _notificationsEnabled = MutableStateFlow(
+        prefs.getBoolean("coin_transfer_notifications_enabled", true)
+    )
+    val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled.asStateFlow()
+
+    fun setNotificationsEnabled(enabled: Boolean) {
+        _notificationsEnabled.value = enabled
+        prefs.edit().putBoolean("coin_transfer_notifications_enabled", enabled).apply()
+    }
+
     fun setDarkTheme(enabled: Boolean) {
         _isDarkTheme.value = enabled
         prefs.edit().putBoolean("is_dark_theme", enabled).apply()
@@ -370,11 +380,13 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             .sortedBy { it.timestamp }
             .forEach { tx ->
                 seenIncomingTransferIds.add(tx.id)
-                com.example.notifications.SiteBinNotificationManager.showCoinReceived(
-                    getApplication(),
-                    tx.amount,
-                    tx.description
-                )
+                if (_notificationsEnabled.value) {
+                    com.example.notifications.SiteBinNotificationManager.showCoinReceived(
+                        getApplication(),
+                        tx.amount,
+                        tx.description
+                    )
+                }
                 showMessage(tx.amount.toString() + " سکه به حساب شما واریز شد.")
             }
 
