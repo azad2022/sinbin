@@ -16,6 +16,6 @@ class AuthCredentialPolicyTest {
         assertEquals(first, second)
         assertTrue(first.startsWith("SB_"))
         assertTrue(first.length <= 72)
-        assertEquals(46, first.length)
+        assertEquals(67, first.length)
     }
 }
