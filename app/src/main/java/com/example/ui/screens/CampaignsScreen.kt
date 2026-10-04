@@ -164,21 +164,16 @@ fun CampaignsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(
+                        Rotating3DIcon(
                             imageVector = Icons.Default.Language,
-                            contentDescription = null,
+                            contentDescription = "سفارش‌ها",
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(56.dp)
+                            size = 60.dp
                         )
                         Text(
                             text = "هیچ سفارشی در این وضعیت وجود ندارد",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "برای دریافت بازدید هدفمند برای سایت خود، سفارش جدید ثبت کنید.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
