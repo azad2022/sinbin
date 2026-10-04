@@ -15,7 +15,6 @@ import com.example.data.model.ViewSession
 import com.example.data.repository.ServerInitializationState
 import com.example.data.repository.SiteBinRepository
 import kotlinx.coroutines.Job
-import isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
