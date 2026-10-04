@@ -248,11 +248,6 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                     }
                                 },
                                 onStartViewing = { viewModel.startViewing() },
-                                    prefs.edit()
-                                        .putBoolean("welcome_bonus_celebration_seen", true)
-                                        .apply()
-                                },
-                                onStartViewing = { viewModel.startViewing() },
                                 onNavigate = { viewModel.navigateTo(it) }
                             )
                         }
