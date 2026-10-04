@@ -79,11 +79,22 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 
+internal const val WELCOME_BONUS_BANNER_DURATION_MS = 2L * 60L * 60L * 1000L
+
+internal fun isWelcomeBonusBannerVisible(
+    grantedAtMillis: Long,
+    nowMillis: Long
+): Boolean =
+    grantedAtMillis > 0L &&
+        nowMillis >= grantedAtMillis &&
+        nowMillis - grantedAtMillis < WELCOME_BONUS_BANNER_DURATION_MS
+
 @Composable
 fun HomeScreen(
     account: UserAccount,
     campaigns: List<Campaign>,
     welcomeBonusAmount: Long? = null,
+    welcomeBonusGrantedAt: Long? = null,
     showWelcomeBonus: Boolean = false,
     showWelcomeCelebration: Boolean = false,
     onWelcomeCelebrationConsumed: () -> Unit = {},
@@ -96,6 +107,32 @@ fun HomeScreen(
 ) {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
     var celebrationVisible by remember { mutableStateOf(showWelcomeCelebration) }
+    var welcomeBonusBannerVisible by remember(welcomeBonusGrantedAt) {
+        mutableStateOf(showWelcomeBonus)
+    }
+
+    LaunchedEffect(welcomeBonusGrantedAt, showWelcomeBonus) {
+        val grantedAt = welcomeBonusGrantedAt
+        val now = System.currentTimeMillis()
+        if (
+            !showWelcomeBonus ||
+            grantedAt == null ||
+            !isWelcomeBonusBannerVisible(grantedAt, now)
+        ) {
+            welcomeBonusBannerVisible = false
+            return@LaunchedEffect
+        }
+
+        welcomeBonusBannerVisible = true
+        val remainingMillis = (
+            grantedAt + WELCOME_BONUS_BANNER_DURATION_MS - System.currentTimeMillis()
+        ).coerceAtLeast(0L)
+
+        if (remainingMillis > 0L) {
+            delay(remainingMillis)
+        }
+        welcomeBonusBannerVisible = false
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
@@ -109,7 +146,7 @@ fun HomeScreen(
                 HomeHeader(account = account, onNavigate = onNavigate)
             }
 
-            if (showWelcomeBonus && welcomeBonusAmount != null) {
+            if (welcomeBonusBannerVisible && welcomeBonusAmount != null) {
                 item {
                     WelcomeBonusBanner(
                         amount = welcomeBonusAmount,
@@ -540,9 +577,11 @@ private fun HomeHeader(account: UserAccount, onNavigate: (AppScreen) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    text = "🪙",
-                    fontSize = 18.sp
+                Rotating3DIcon(
+                    imageVector = Icons.Default.MonetizationOn,
+                    contentDescription = "موجودی سکه",
+                    tint = SiteBinGold,
+                    size = 24.dp
                 )
                 Text(
                     text = formatter.format(account.availableCoins),
