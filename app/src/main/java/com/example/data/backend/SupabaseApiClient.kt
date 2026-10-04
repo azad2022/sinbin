@@ -16,6 +16,7 @@ import com.example.data.model.DailyBonusResult
 import com.example.data.model.DurationOption
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
+import com.example.data.model.ViewCompletionResult
 import com.example.data.model.ViewSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
