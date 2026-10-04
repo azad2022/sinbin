@@ -354,8 +354,8 @@ begin
 end;
 $function$;
 
-revoke all on function public.check_request() from public, anon, authenticated;
-grant execute on function public.check_request() to authenticator;
+revoke execute on function public.check_request() from public;
+grant execute on function public.check_request() to anon, authenticated, authenticator;
 
 drop function if exists private.check_request();
 alter role authenticator set pgrst.db_pre_request = 'public.check_request';
