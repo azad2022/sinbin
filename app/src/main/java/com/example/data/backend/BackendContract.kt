@@ -41,6 +41,7 @@ interface ServerAuthoritativeEngine {
         domain: String,
         durationSeconds: Int,
         targetViews: Int,
+        keyword: String? = null,
         callerUserId: String? = null
     ): Result<Campaign>
 
