@@ -9,6 +9,7 @@ import com.example.data.model.AbuseReport
 import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
+import com.example.data.model.DailyBonusResult
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
@@ -62,6 +63,9 @@ class SiteBinRepository(
 
     private val _transactions = MutableStateFlow<List<CoinTransaction>>(emptyList())
     val transactions: StateFlow<List<CoinTransaction>> = _transactions.asStateFlow()
+
+    private val _dailyBonus = MutableStateFlow<DailyBonusResult?>(null)
+    val dailyBonus: StateFlow<DailyBonusResult?> = _dailyBonus.asStateFlow()
 
     private val _campaigns = MutableStateFlow<List<Campaign>>(emptyList())
     val campaigns: StateFlow<List<Campaign>> = _campaigns.asStateFlow()
@@ -128,6 +132,11 @@ class SiteBinRepository(
         val acc = initRes.getOrThrow()
         _account.value = acc
 
+        // Daily bonus is optional to startup readiness: authentication/account state remains
+        // available during a transient bonus RPC failure, but the entitlement itself is decided
+        // exclusively by PostgreSQL.
+        claimDailyBonus()
+
         engine.fetchTransactions(acc.userId)
             .onSuccess { _transactions.value = it }
             .onFailure { throw it }
@@ -153,6 +162,23 @@ class SiteBinRepository(
         )
         if (result.isSuccess) {
             runCatching { refreshServerState() }
+        }
+        return result
+    }
+
+    suspend fun claimDailyBonus(): Result<DailyBonusResult> {
+        val currentUserId = _account.value.userId
+        val result = engine.claimDailyBonus(callerUserId = currentUserId)
+        result.onSuccess { bonus ->
+            _dailyBonus.value = bonus
+
+            // The claim RPC mutates authoritative financial state. Re-read both balance
+            // and ledger so Android never derives the new balance locally.
+            if (bonus.granted) {
+                val currentUserId = _account.value.userId
+                engine.fetchAccount(currentUserId).onSuccess { _account.value = it }
+                engine.fetchTransactions(currentUserId).onSuccess { _transactions.value = it }
+            }
         }
         return result
     }

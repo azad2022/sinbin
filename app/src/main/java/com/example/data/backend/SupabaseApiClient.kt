@@ -8,6 +8,7 @@ import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
+import com.example.data.model.DailyBonusResult
 import com.example.data.model.DurationOption
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
@@ -174,6 +175,34 @@ class SupabaseApiClient(
 
             val obj = jsonArray.getJSONObject(0)
             Result.success(parseUserAccount(obj, obj.optString("app_install_id", "")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun claimDailyBonus(callerUserId: String?): Result<DailyBonusResult> = withContext(Dispatchers.IO) {
+        try {
+            val res = callRpc("claim_daily_bonus", JSONObject())
+            val amount = res.optLong("amount", 0L)
+            if (res.optBoolean("granted", false) && amount <= 0L) {
+                return@withContext Result.failure(
+                    IllegalStateException("INVALID_DAILY_BONUS_RESPONSE: Granted bonus must contain a positive amount")
+                )
+            }
+            Result.success(
+                DailyBonusResult(
+                    granted = res.optBoolean("granted", false),
+                    amount = amount,
+                    grantDate = res.optString("grant_date", ""),
+                    reason = res.optString("reason", "").ifBlank { null },
+                    grantId = res.optString("grant_id", "").ifBlank { null },
+                    grantedAt = if (res.has("granted_at")) {
+                        res.optLong("granted_at", 0L).takeIf { it > 0L }
+                    } else {
+                        null
+                    }
+                )
+            )
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -63,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Campaign
+import com.example.data.model.DailyBonusResult
 import com.example.data.model.UserAccount
 import com.example.ui.AppScreen
 import com.example.ui.theme.SiteBinBlue
@@ -86,6 +87,9 @@ fun HomeScreen(
     showWelcomeBonus: Boolean = false,
     showWelcomeCelebration: Boolean = false,
     onWelcomeCelebrationConsumed: () -> Unit = {},
+    dailyBonus: DailyBonusResult? = null,
+    showDailyBonusCelebration: Boolean = false,
+    onDailyBonusCelebrationConsumed: () -> Unit = {},
     onStartViewing: () -> Unit,
     onNavigate: (AppScreen) -> Unit,
     modifier: Modifier = Modifier
@@ -109,6 +113,15 @@ fun HomeScreen(
                 item {
                     WelcomeBonusBanner(
                         amount = welcomeBonusAmount,
+                        onNavigate = onNavigate
+                    )
+                }
+            }
+
+            if (dailyBonus != null && dailyBonus.grantDate.isNotBlank()) {
+                item {
+                    DailyBonusBanner(
+                        bonus = dailyBonus,
                         onNavigate = onNavigate
                     )
                 }
@@ -193,10 +206,88 @@ fun HomeScreen(
         if (celebrationVisible && welcomeBonusAmount != null) {
             WelcomeBonusCelebration(
                 amount = welcomeBonusAmount,
+                title = "هدیه خوش‌آمدگویی",
+                emoji = "🎁",
                 onDismiss = {
                     celebrationVisible = false
                     onWelcomeCelebrationConsumed()
                 }
+            )
+        }
+
+        if (showDailyBonusCelebration && dailyBonus?.granted == true) {
+            WelcomeBonusCelebration(
+                amount = dailyBonus.amount,
+                title = "هدیه روزانه",
+                emoji = "☀️",
+                onDismiss = onDailyBonusCelebrationConsumed
+            )
+        }
+    }
+}
+
+@Composable
+private fun DailyBonusBanner(
+    bonus: DailyBonusResult,
+    onNavigate: (AppScreen) -> Unit
+) {
+    val grantedToday = bonus.granted
+    val title = when {
+        grantedToday -> "${NumberFormat.getNumberInstance(Locale.US).format(bonus.amount)} سکه هدیه روزانه دریافت شد"
+        bonus.reason == "WELCOME_DAY" -> "هدیه روزانه از فردا فعال می‌شود"
+        else -> "هدیه روزانه امروز قبلاً دریافت شده است"
+    }
+    val subtitle = when {
+        grantedToday -> "این پاداش به‌صورت server-side ثبت شده و در کیف پول شما قرار گرفت."
+        bonus.reason == "WELCOME_DAY" -> "در روز ثبت‌نام، فقط هدیه خوش‌آمدگویی تعلق می‌گیرد."
+        else -> "برای دریافت مجدد، روز سرور باید تغییر کرده باشد."
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("daily_bonus_banner"),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onNavigate(AppScreen.WALLET) }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(text = if (grantedToday) "🪙" else "☀️", fontSize = 21.sp)
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ArrowForward,
+                contentDescription = "کیف پول",
+                tint = MaterialTheme.colorScheme.primary
             )
         }
     }
@@ -254,6 +345,8 @@ private fun WelcomeBonusBanner(amount: Long, onNavigate: (AppScreen) -> Unit) {
 @Composable
 private fun WelcomeBonusCelebration(
     amount: Long,
+    title: String,
+    emoji: String,
     onDismiss: () -> Unit
 ) {
     var overlayVisible by remember { mutableStateOf(true) }
@@ -362,7 +455,7 @@ private fun WelcomeBonusCelebration(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = "🎁",
+                            text = emoji,
                             fontSize = 64.sp,
                             modifier = Modifier.graphicsLayer {
                                 scaleX = giftScale
@@ -371,7 +464,7 @@ private fun WelcomeBonusCelebration(
                             }
                         )
                         Text(
-                            text = "هدیه خوش‌آمدگویی",
+                            text = title,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Black,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center

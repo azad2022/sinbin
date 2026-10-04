@@ -4,10 +4,14 @@ import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
+import com.example.data.model.DailyBonusResult
 import com.example.data.model.DurationOption
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -24,7 +28,9 @@ import kotlin.concurrent.withLock
  * - Allows completing in-flight sessions of PAUSED campaigns
  * - Strict Idempotency and exact CONTENT_READY state transition on view completion
  */
-class ServerEmulatedEngine : ServerAuthoritativeEngine {
+class ServerEmulatedEngine(
+    private val nowProvider: () -> Long = { System.currentTimeMillis() }
+) : ServerAuthoritativeEngine {
 
     private val lock = ReentrantLock()
 
@@ -44,6 +50,8 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
     // Internal Database Tables
     private val profiles = mutableMapOf<String, UserAccount>()
     private val welcomeBonusGrants = mutableMapOf<String, String>() // userId -> installId
+    private val welcomeGrantDates = mutableMapOf<String, String>() // userId -> UTC yyyy-MM-dd
+    private val dailyBonusGrants = mutableSetOf<String>() // userId + UTC yyyy-MM-dd
     private val campaigns = mutableMapOf<String, Campaign>()
     private val viewSessions = mutableMapOf<String, ServerViewSessionRecord>()
     private val userLedger = mutableMapOf<String, MutableList<CoinTransaction>>() // userId -> ledger
@@ -107,6 +115,7 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         val grantedCoins = if (isFirstTime) welcomeAmount else 0L
         if (isFirstTime) {
             welcomeBonusGrants[userId] = cleanInstall
+            welcomeGrantDates[userId] = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowProvider()))
             val welcomeTx = CoinTransaction(
                 id = UUID.randomUUID().toString(),
                 amount = welcomeAmount,
@@ -131,6 +140,63 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         )
         profiles[userId] = newAccount
         Result.success(newAccount)
+    }
+
+    override suspend fun claimDailyBonus(callerUserId: String?): Result<DailyBonusResult> = lock.withLock {
+        val userId = callerUserId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return Result.failure(IllegalStateException("UNAUTHORIZED: Authentication token required"))
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+        if (welcomeGrantDates[userId] == today) {
+            return Result.success(
+                DailyBonusResult(
+                    granted = false,
+                    amount = 0L,
+                    grantDate = today,
+                    reason = "WELCOME_DAY"
+                )
+            )
+        }
+
+        val grantKey = "${userId}_${today}"
+        if (!dailyBonusGrants.add(grantKey)) {
+            return Result.success(
+                DailyBonusResult(
+                    granted = false,
+                    amount = 0L,
+                    grantDate = today,
+                    reason = "ALREADY_CLAIMED"
+                )
+            )
+        }
+
+        val amount = 50L
+        val account = profiles[userId]
+            ?: return Result.failure(NoSuchElementException("PROFILE_NOT_FOUND: Account must be initialized before receiving daily bonus"))
+        profiles[userId] = account.copy(
+            availableCoins = account.availableCoins + amount,
+            lifetimeEarned = account.lifetimeEarned + amount
+        )
+        val grantId = UUID.randomUUID().toString()
+        userLedger.getOrPut(userId) { mutableListOf() }.add(
+            0,
+            CoinTransaction(
+                amount = amount,
+                type = TransactionType.DAILY_BONUS,
+                description = "هدیه روزانه سایت بین",
+                referenceId = grantId
+            )
+        )
+
+        Result.success(
+            DailyBonusResult(
+                granted = true,
+                amount = amount,
+                grantDate = today,
+                grantId = grantId,
+                grantedAt = nowProvider()
+            )
+        )
     }
 
     override suspend fun fetchAccount(userId: String): Result<UserAccount> = lock.withLock {
