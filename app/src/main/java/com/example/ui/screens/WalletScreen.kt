@@ -253,58 +253,6 @@ fun WalletScreen(
             }
         }
 
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp)),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showTransferDialog = true }
-                        .padding(horizontal = 16.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = SiteBinGold.copy(alpha = 0.13f),
-                        modifier = Modifier.size(46.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Savings,
-                                contentDescription = null,
-                                tint = SiteBinGold,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "ارسال سکه",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Black
-                        )
-                        Text(
-                            "انتقال سکه به یک کاربر دیگر",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Default.Send,
-                        contentDescription = "انتقال سکه",
-                        tint = SiteBinGold
-                    )
-                }
-            }
-        }
-
         // Ledger History Header
         item {
             Spacer(modifier = Modifier.height(8.dp))
@@ -334,7 +282,7 @@ fun WalletScreen(
         }
     }
 
-if (showTransferDialog) {
+    if (showTransferDialog) {
         Dialog(
             onDismissRequest = { if (!isTransferringCoins) showTransferDialog = false }
         ) {
