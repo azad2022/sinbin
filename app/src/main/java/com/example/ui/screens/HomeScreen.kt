@@ -387,7 +387,7 @@ private fun WelcomeBonusCelebration(
                             color = SiteBinGold.copy(alpha = 0.13f)
                         ) {
                             Text(
-                                text = ""🪙 +" + NumberFormat.getNumberInstance(Locale.US).format(amount) + " سکه"",
+                                text = "🪙 +${NumberFormat.getNumberInstance(Locale.US).format(amount)} سکه",
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Black,
                                 color = SiteBinGold,
