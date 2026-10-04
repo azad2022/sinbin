@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Info
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -40,6 +43,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,12 +63,20 @@ fun SettingsScreen(
     account: UserAccount,
     isDarkTheme: Boolean,
     onToggleDarkTheme: (Boolean) -> Unit,
+    notificationsEnabled: Boolean,
+    onToggleNotifications: (Boolean) -> Unit,
+    isTransferringCoins: Boolean,
+    onTransferCoins: (String, Long, String?, () -> Unit) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var notificationsEnabled by remember { mutableStateOf(true) }
     var showTermsDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var showTransferDialog by remember { mutableStateOf(false) }
+    var recipientHandle by remember { mutableStateOf("") }
+    var transferAmount by remember { mutableStateOf("") }
+    var transferNote by remember { mutableStateOf("") }
+    val clipboardManager = LocalClipboardManager.current
 
     LazyColumn(
         modifier = modifier
@@ -172,6 +187,63 @@ fun SettingsScreen(
                         )
                     }
 
+                    if (account.userHandle.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                        )
+                        Text(
+                            text = "شناسه کاربری شما",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.background,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = account.userHandle,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(account.userHandle))
+                                },
+                                modifier = Modifier.height(44.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "کپی شناسه", modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("کپی")
+                            }
+                        }
+                        Text(
+                            text = "این شناسه را برای دریافت سکه با دیگران به اشتراک بگذارید.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = { showTransferDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Send, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("انتقال سکه به کاربر دیگر")
+                        }
+                    }
+
                 }
             }
         }
@@ -202,10 +274,10 @@ fun SettingsScreen(
 
                     SettingsToggleRow(
                         icon = Icons.Default.Notifications,
-                        title = "اعلان‌های تکمیل سفارش",
-                        subtitle = "اطلاع‌رسانی هنگام پایان بازدیدهای کمپین",
+                        title = "اعلان‌های واریز سکه",
+                        subtitle = "اطلاع‌رسانی هنگام دریافت سکه از کاربران دیگر",
                         checked = notificationsEnabled,
-                        onCheckedChange = { notificationsEnabled = it }
+                        onCheckedChange = onToggleNotifications
                     )
                 }
             }
@@ -251,6 +323,88 @@ fun SettingsScreen(
         item {
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    if (showTransferDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isTransferringCoins) showTransferDialog = false },
+            title = { Text("انتقال سکه", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "موجودی قابل انتقال: " + account.availableCoins + " سکه",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    androidx.compose.material3.OutlinedTextField(
+                        value = recipientHandle,
+                        onValueChange = { recipientHandle = it.take(64) },
+                        label = { Text("شناسه کاربری مقصد") },
+                        placeholder = { Text("مثلاً user_1234abcd") },
+                        singleLine = true,
+                        enabled = !isTransferringCoins,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    androidx.compose.material3.OutlinedTextField(
+                        value = transferAmount,
+                        onValueChange = { transferAmount = it.filter(Char::isDigit).take(10) },
+                        label = { Text("مقدار سکه") },
+                        placeholder = { Text("مثلاً 100") },
+                        singleLine = true,
+                        enabled = !isTransferringCoins,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    androidx.compose.material3.OutlinedTextField(
+                        value = transferNote,
+                        onValueChange = { transferNote = it.take(160) },
+                        label = { Text("یادداشت (اختیاری)") },
+                        singleLine = true,
+                        enabled = !isTransferringCoins,
+                        supportingText = { Text(transferNote.length.toString() + "/160") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = "فقط سکه‌های قابل استفاده منتقل می‌شوند؛ سکه‌های رزروشده برای سفارش‌ها قابل انتقال نیستند.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !isTransferringCoins,
+                    onClick = { showTransferDialog = false }
+                ) { Text("انصراف") }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !isTransferringCoins &&
+                        recipientHandle.isNotBlank() &&
+                        (transferAmount.toLongOrNull() ?: 0L) > 0L,
+                    onClick = {
+                        val amount = transferAmount.toLongOrNull() ?: return@Button
+                        onTransferCoins(
+                            recipientHandle,
+                            amount,
+                            transferNote,
+                            {
+                                recipientHandle = ""
+                                transferAmount = ""
+                                transferNote = ""
+                                showTransferDialog = false
+                            }
+                        )
+                    }
+                ) {
+                    if (isTransferringCoins) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("انتقال")
+                    }
+                }
+            }
+        )
     }
 
     if (showTermsDialog) {
