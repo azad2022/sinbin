@@ -145,6 +145,44 @@ class ServerAuthoritativeSecurityTest {
     }
 
     @Test
+    fun testCampaign_keywordLongerThan25Rejected() = runBlocking {
+        engine.initAccount("inst_keyword_limit", handle = "keyword_user").getOrThrow()
+
+        val result = engine.createCampaign(
+            url = "https://example.com",
+            normalizedUrl = "https://example.com",
+            domain = "example.com",
+            durationSeconds = 5,
+            targetViews = 1,
+            keyword = "12345678901234567890123456"
+        )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("INVALID_KEYWORD") == true)
+
+        val account = engine.fetchAccount("keyword_user").getOrThrow()
+        assertEquals(150L, account.availableCoins)
+        assertEquals(0L, account.reservedCoins)
+    }
+
+    @Test
+    fun testCampaign_withoutExplicitCallerIsRejected() = runBlocking {
+        engine.initAccount("inst_caller_required", handle = "caller_user").getOrThrow()
+
+        val result = engine.createCampaign(
+            url = "https://example.com",
+            normalizedUrl = "https://example.com",
+            domain = "example.com",
+            durationSeconds = 5,
+            targetViews = 1,
+            callerUserId = null
+        )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("UNAUTHORIZED") == true)
+    }
+
+    @Test
     fun testCampaign_invalidDurationRejected() = runBlocking {
         engine.initAccount("inst_camp_3", handle = "user_camp_3").getOrThrow()
         val result = engine.createCampaign(
