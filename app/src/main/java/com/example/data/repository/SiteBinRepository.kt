@@ -8,6 +8,7 @@ import com.example.data.backend.ServerAuthoritativeEngine
 import com.example.data.model.AbuseReport
 import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
+import com.example.data.model.CoinTransferResult
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
@@ -136,6 +137,35 @@ class SiteBinRepository(
             .onFailure { throw it }
     }
 
+    suspend fun transferCoins(
+        recipientHandle: String,
+        amount: Long,
+        note: String? = null
+    ): Result<CoinTransferResult> {
+        val currentUserId = _account.value.userId
+        val idempotencyKey = "transfer_" + UUID.randomUUID().toString()
+        val result = engine.transferCoins(
+            recipientHandle = recipientHandle.trim(),
+            amount = amount,
+            idempotencyKey = idempotencyKey,
+            note = note?.trim()?.ifBlank { null },
+            callerUserId = currentUserId
+        )
+        if (result.isSuccess) {
+            runCatching { refreshServerState() }
+        }
+        return result
+    }
+
+    suspend fun refreshFinancialState(): Result<Unit> {
+        val currentUserId = _account.value.userId
+        return runCatching {
+            val acc = engine.fetchAccount(currentUserId).getOrThrow()
+            val tx = engine.fetchTransactions(currentUserId).getOrThrow()
+            _account.value = acc
+            _transactions.value = tx
+        }
+    }
     /**
      * Creates a new campaign on the server with strict server-side budget reservation.
      */
