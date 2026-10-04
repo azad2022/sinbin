@@ -372,11 +372,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     fun transferCoins(
         recipientHandle: String,
         amount: Long,
-        note: String?,
         onSuccess: () -> Unit
     ) {
         val cleanHandle = recipientHandle.trim()
-        val cleanNote = note?.trim()?.ifBlank { null }
         if (cleanHandle.isBlank()) {
             showMessage("شناسه کاربری مقصد را وارد کنید.")
             return
@@ -387,7 +385,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         }
         _isTransferringCoins.value = true
         viewModelScope.launch {
-            val result = repository.transferCoins(cleanHandle, amount, cleanNote)
+            val result = repository.transferCoins(cleanHandle, amount)
             _isTransferringCoins.value = false
             result.onSuccess { transfer ->
                 showMessage(transfer.amount.toString() + " سکه با موفقیت به " + transfer.recipientHandle + " منتقل شد.")
