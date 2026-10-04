@@ -106,6 +106,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     val account by viewModel.account.collectAsState()
     val campaigns by viewModel.campaigns.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
+    val dailyBonus by viewModel.dailyBonus.collectAsState()
     val viewerState by viewModel.viewerState.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -219,6 +220,12 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                 welcomeBonusAmount != null &&
                                     !prefs.getBoolean("welcome_bonus_celebration_seen", false)
 
+                            val dailyBonusDate = dailyBonus?.grantDate
+                            val showDailyBonusCelebration =
+                                dailyBonus?.granted == true &&
+                                    !dailyBonusDate.isNullOrBlank() &&
+                                    prefs.getString("daily_bonus_celebration_seen_date", null) != dailyBonusDate
+
                             HomeScreen(
                                 account = account,
                                 campaigns = campaigns,
@@ -226,6 +233,21 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                 showWelcomeBonus = welcomeBonusAmount != null,
                                 showWelcomeCelebration = showWelcomeCelebration,
                                 onWelcomeCelebrationConsumed = {
+                                    prefs.edit()
+                                        .putBoolean("welcome_bonus_celebration_seen", true)
+                                        .apply()
+                                },
+                                dailyBonus = dailyBonus,
+                                showDailyBonusCelebration = showDailyBonusCelebration,
+                                onDailyBonusCelebrationConsumed = {
+                                    val date = dailyBonus?.grantDate
+                                    if (!date.isNullOrBlank()) {
+                                        prefs.edit()
+                                            .putString("daily_bonus_celebration_seen_date", date)
+                                            .apply()
+                                    }
+                                },
+                                onStartViewing = { viewModel.startViewing() },
                                     prefs.edit()
                                         .putBoolean("welcome_bonus_celebration_seen", true)
                                         .apply()
