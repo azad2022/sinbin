@@ -60,8 +60,15 @@ create table if not exists private.rate_limit_buckets (
 alter table private.rate_limit_buckets enable row level security;
 revoke all on table private.rate_limit_buckets from public, anon, authenticated;
 
-create index if not exists rate_limit_buckets_updated_at_idx
-    on private.rate_limit_buckets (updated_at);
+drop policy if exists "Deny direct access to rate limit buckets" on private.rate_limit_buckets;
+
+create policy "Deny direct access to rate limit buckets"
+on private.rate_limit_buckets
+as restrictive
+for all
+to public
+using (false)
+with check (false);
 
 create or replace function private.enforce_user_rate_limit(
     p_user_id uuid,
