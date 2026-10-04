@@ -251,6 +251,41 @@ begin
             updated_at = v_now
         where user_id = p_user_id
           and action = pg_catalog.btrim(p_action);
+
+        /*
+         * Hourly exhaustion on high-impact operations is strong evidence of
+         * abusive automation. Escalate to a one-hour account-wide write block.
+         * Viewer timing/telemetry operations deliberately do not trigger this.
+         */
+        if v_count_1h >= v_limit_1h
+           and pg_catalog.btrim(p_action) in (
+               'create_campaign',
+               'transfer_coins',
+               'activate_auto_view',
+               'init_user_account'
+           ) then
+            insert into private.rate_limit_buckets (
+                user_id, action,
+                ten_second_started_at,
+                minute_started_at,
+                five_minute_started_at,
+                hour_started_at,
+                blocked_until,
+                updated_at
+            )
+            values (
+                p_user_id, '__GLOBAL__',
+                v_now, v_now, v_now, v_now,
+                v_now + interval '1 hour',
+                v_now
+            )
+            on conflict (user_id, action) do update
+            set blocked_until = greatest(
+                    coalesce(private.rate_limit_buckets.blocked_until, v_now),
+                    v_now + interval '1 hour'
+                ),
+                updated_at = v_now;
+        end if;
     end if;
 
     -- Limit the table footprint lazily per user. A user can only accumulate
