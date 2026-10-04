@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +26,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
@@ -33,7 +38,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +53,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.data.model.CoinTransaction
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
@@ -55,15 +66,27 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 
 @Composable
 fun WalletScreen(
     account: UserAccount,
     transactions: List<CoinTransaction>,
+    isTransferringCoins: Boolean = false,
+    onTransferCoins: (String, Long, () -> Unit) -> Unit = { _, _, _ -> },
     onNavigate: (AppScreen) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
+    var showTransferDialog by remember { mutableStateOf(false) }
+    var recipientHandle by remember { mutableStateOf("") }
+    var transferAmount by remember { mutableStateOf("") }
+
+    val parsedAmount = transferAmount.toLongOrNull() ?: 0L
+    val canTransfer = !isTransferringCoins &&
+        recipientHandle.trim().isNotBlank() &&
+        parsedAmount in 1..account.availableCoins
 
     LazyColumn(
         modifier = modifier
@@ -194,6 +217,13 @@ fun WalletScreen(
             }
         }
 
+        item {
+            TransferCoinsCard(
+                availableCoins = account.availableCoins,
+                onClick = { showTransferDialog = true }
+            )
+        }
+
         // Quick Actions
         item {
             Row(
@@ -249,6 +279,214 @@ fun WalletScreen(
 
         item {
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+
+    if (showTransferDialog) {
+        Dialog(
+            onDismissRequest = { if (!isTransferringCoins) showTransferDialog = false }
+        ) {
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn() + scaleIn(initialScale = 0.90f)
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(22.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = SiteBinGold.copy(alpha = 0.14f),
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text("🪙", fontSize = 24.sp)
+                                }
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "انتقال سکه",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Black
+                                )
+                                Text(
+                                    "انتقال سریع و امن به شناسه کاربری مقصد",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.07f)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "موجودی قابل انتقال",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    "${formatter.format(account.availableCoins)} سکه",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = recipientHandle,
+                            onValueChange = { recipientHandle = it.take(64) },
+                            label = { Text("شناسه کاربری مقصد") },
+                            placeholder = { Text("مثلاً user_1234abcd") },
+                            singleLine = true,
+                            enabled = !isTransferringCoins,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = transferAmount,
+                            onValueChange = {
+                                transferAmount = it.filter(Char::isDigit).take(10)
+                            },
+                            label = { Text("مقدار سکه") },
+                            placeholder = { Text("مثلاً 100") },
+                            singleLine = true,
+                            enabled = !isTransferringCoins,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Text(
+                            text = "سکه‌های رزروشده برای سفارش‌ها قابل انتقال نیستند.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                enabled = !isTransferringCoins,
+                                onClick = { showTransferDialog = false },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("انصراف")
+                            }
+                            Button(
+                                enabled = canTransfer,
+                                onClick = {
+                                    val amount = transferAmount.toLongOrNull() ?: return@Button
+                                    onTransferCoins(
+                                        recipientHandle.trim(),
+                                        amount
+                                    ) {
+                                        recipientHandle = ""
+                                        transferAmount = ""
+                                        showTransferDialog = false
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                if (isTransferringCoins) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(Icons.Default.Savings, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("انتقال")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+}
+
+@Composable
+private fun TransferCoinsCard(
+    availableCoins: Long,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = SiteBinGold.copy(alpha = 0.08f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = SiteBinGold.copy(alpha = 0.14f),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Send,
+                        contentDescription = null,
+                        tint = SiteBinGold,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "ارسال سکه",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    "انتقال سریع به یک کاربر دیگر",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "موجودی قابل انتقال: ${NumberFormat.getNumberInstance(Locale.US).format(availableCoins)} سکه",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SiteBinGold
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.Send,
+                contentDescription = "انتقال سکه",
+                tint = SiteBinGold
+            )
         }
     }
 }

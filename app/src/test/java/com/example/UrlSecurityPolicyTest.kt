@@ -72,6 +72,9 @@ class UrlSecurityPolicyTest {
         val decimalIp = UrlSecurityPolicy.evaluateUrl("http://2130706433")
         assertTrue(decimalIp is PolicyResult.Blocked)
 
+        val dottedObfuscatedIp = UrlSecurityPolicy.evaluateUrl("http://0177.0.0.1")
+        assertTrue(dottedObfuscatedIp is PolicyResult.Blocked)
+
         val ipv6Loopback = UrlSecurityPolicy.evaluateUrl("http://[::1]:8080")
         assertTrue(ipv6Loopback is PolicyResult.Blocked)
     }

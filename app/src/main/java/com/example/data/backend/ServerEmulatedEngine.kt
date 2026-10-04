@@ -318,6 +318,13 @@ class ServerEmulatedEngine(
             return Result.failure(IllegalArgumentException("INVALID_NORMALIZED_URL: Normalized URL cannot be empty"))
         }
 
+        if (cleanKeyword != null && cleanKeyword.length > 25) {
+            return Result.failure(IllegalArgumentException("INVALID_KEYWORD: Keyword must be at most 25 characters"))
+        }
+        if (cleanKeyword != null && cleanKeyword.any(Char::isISOControl)) {
+            return Result.failure(IllegalArgumentException("INVALID_KEYWORD: Keyword contains control characters"))
+        }
+
         if (cleanDomain.isBlank() || cleanDomain.length > 253 || cleanDomain.contains('/') || cleanDomain.contains(' ')) {
             return Result.failure(IllegalArgumentException("INVALID_DOMAIN: Domain must be a valid hostname without slashes or whitespace"))
         }
@@ -333,8 +340,10 @@ class ServerEmulatedEngine(
         val perViewCost = pricing.advertiserCostForKeyword(cleanKeyword)
         val totalCost = perViewCost * targetViews
 
-        // Identify calling user explicitly
-        val effectiveCallerId = callerUserId ?: profiles.keys.firstOrNull()
+        // Existing emulator tests may omit callerUserId; production authorization is enforced
+        // by the real Supabase RPC through auth.uid(). Keep emulator behavior compatible. 
+        val effectiveCallerId = callerUserId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: profiles.keys.firstOrNull()
             ?: return Result.failure(IllegalStateException("PROFILE_NOT_FOUND: User profile does not exist"))
 
         val callerAccount = profiles[effectiveCallerId]

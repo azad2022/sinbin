@@ -198,12 +198,13 @@ fun CreateCampaignScreen(
                         value = keyword,
                         onValueChange = viewModel::onKeywordChanged,
                         placeholder = { Text("مثلاً سولانا") },
+                        isError = keyword.length > 25 || keyword.any(Char::isISOControl),
                         singleLine = true,
                         leadingIcon = {
                             Icon(Icons.Default.Search, contentDescription = null, tint = SiteBinBlue)
                         },
                         supportingText = {
-                            Text("${keyword.length}/128")
+                            Text("${keyword.length}/25")
                         },
                         modifier = Modifier
                             .fillMaxWidth()
