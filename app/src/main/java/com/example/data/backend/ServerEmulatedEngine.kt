@@ -1,5 +1,7 @@
 package com.example.data.backend
 
+import com.example.data.model.AutoViewActivationResult
+import com.example.data.model.AutoViewStatus
 import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
@@ -57,6 +59,13 @@ class ServerEmulatedEngine(
     private val userLedger = mutableMapOf<String, MutableList<CoinTransaction>>() // userId -> ledger
     private val idempotencyRecords = mutableMapOf<String, IdempotencyRecord>() // idempotencyKey -> view IdempotencyRecord
     private val transferIdempotency = mutableMapOf<String, TransferIdempotencyRecord>() // idempotencyKey -> transfer result
+    private val autoViewEntitlements = mutableMapOf<String, Long>() // userId -> expiresAtMillis
+    private val autoViewActivationIdempotency = mutableMapOf<String, AutoViewActivationRecord>()
+
+    data class AutoViewActivationRecord(
+        val userId: String,
+        val result: AutoViewActivationResult
+    )
 
     data class IdempotencyRecord(
         val sessionId: String,
@@ -197,6 +206,97 @@ class ServerEmulatedEngine(
                 grantedAt = nowProvider()
             )
         )
+    }
+
+    override suspend fun getAutoViewStatus(callerUserId: String?): Result<AutoViewStatus> = lock.withLock {
+        val userId = callerUserId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return Result.failure(IllegalStateException("UNAUTHORIZED: Authentication token required"))
+        if (!profiles.containsKey(userId)) {
+            return Result.failure(NoSuchElementException("PROFILE_NOT_FOUND: Account must be initialized before checking auto-view"))
+        }
+
+        val expiresAt = autoViewEntitlements[userId]
+        Result.success(
+            AutoViewStatus(
+                active = expiresAt?.let { it > nowProvider() } == true,
+                expiresAt = expiresAt
+            )
+        )
+    }
+
+    override suspend fun activateAutoView(
+        idempotencyKey: String,
+        callerUserId: String?
+    ): Result<AutoViewActivationResult> = lock.withLock {
+        val userId = callerUserId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return Result.failure(IllegalStateException("UNAUTHORIZED: Authentication token required"))
+        val cleanKey = idempotencyKey.trim()
+        if (cleanKey.length !in 16..128 || cleanKey.any(Char::isWhitespace)) {
+            return Result.failure(IllegalArgumentException("INVALID_IDEMPOTENCY_KEY: Invalid auto-view activation request key"))
+        }
+
+        autoViewActivationIdempotency[cleanKey]?.let { existing ->
+            if (existing.userId != userId) {
+                return Result.failure(IllegalStateException("IDEMPOTENCY_CONFLICT: Activation request key belongs to another account"))
+            }
+            return Result.success(existing.result)
+        }
+
+        val account = profiles[userId]
+            ?: return Result.failure(NoSuchElementException("PROFILE_NOT_FOUND: Account must be initialized before enabling auto-view"))
+
+        val now = nowProvider()
+        val currentExpiry = autoViewEntitlements[userId]
+        if (currentExpiry != null && currentExpiry > now) {
+            return Result.success(
+                AutoViewActivationResult(
+                    activated = true,
+                    charged = false,
+                    amount = 0L,
+                    expiresAt = currentExpiry,
+                    availableCoins = account.availableCoins
+                )
+            )
+        }
+
+        if (account.availableCoins < 100L) {
+            return Result.failure(
+                IllegalStateException(
+                    "INSUFFICIENT_BALANCE: Available balance (" + account.availableCoins + ") coins is less than 100 coins"
+                )
+            )
+        }
+
+        val expiresAt = now + 7L * 24L * 60L * 60L * 1000L
+        val updatedAccount = account.copy(
+            availableCoins = account.availableCoins - 100L,
+            lifetimeSpent = account.lifetimeSpent + 100L
+        )
+        profiles[userId] = updatedAccount
+        autoViewEntitlements[userId] = expiresAt
+
+        val result = AutoViewActivationResult(
+            activated = true,
+            charged = true,
+            amount = 100L,
+            expiresAt = expiresAt,
+            availableCoins = updatedAccount.availableCoins,
+            purchaseId = UUID.randomUUID().toString()
+        )
+        autoViewActivationIdempotency[cleanKey] = AutoViewActivationRecord(userId, result)
+
+        userLedger.getOrPut(userId) { mutableListOf() }.add(
+            0,
+            CoinTransaction(
+                amount = -100L,
+                type = TransactionType.AUTO_VIEW_SUBSCRIPTION,
+                description = "فعال‌سازی بازدید خودکار برای ۷ روز",
+                referenceId = result.purchaseId,
+                timestamp = now
+            )
+        )
+
+        Result.success(result)
     }
 
     override suspend fun fetchAccount(userId: String): Result<UserAccount> = lock.withLock {
