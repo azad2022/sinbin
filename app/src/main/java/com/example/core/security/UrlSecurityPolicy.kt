@@ -162,7 +162,12 @@ object UrlSecurityPolicy {
 
         // Standard Dotted Decimal IPv4
         if (host.matches(Regex("""^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"""))) {
-            val parts = host.split(".").mapNotNull { it.toIntOrNull() }
+            val octets = host.split(".")
+            // Reject leading-zero dotted octets because alternate parsers may interpret
+            // them as octal and resolve to a different destination than the UI expects.
+            if (octets.any { it.length > 1 && it.startsWith("0") }) return true
+
+            val parts = octets.mapNotNull { it.toIntOrNull() }
             if (parts.size != 4) return true
 
             // 10.0.0.0/8
