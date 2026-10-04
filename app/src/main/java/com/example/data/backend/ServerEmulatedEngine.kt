@@ -60,6 +60,7 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         val viewerId: String,
         val requiredDurationSeconds: Int,
         val rewardCoins: Long,
+        val keyword: String?,
         var status: String, // INITIALIZED, CONTENT_READY, COMPLETED, EXPIRED, CANCELLED
         val startedAt: Long,
         var contentReadyAt: Long? = null,
@@ -147,11 +148,13 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         domain: String,
         durationSeconds: Int,
         targetViews: Int,
+        keyword: String?,
         callerUserId: String?
     ): Result<Campaign> = lock.withLock {
         val cleanUrl = url.trim()
         val cleanNormalized = normalizedUrl.trim()
         val cleanDomain = domain.trim()
+        val cleanKeyword = keyword?.trim()?.ifBlank { null }
 
         if (cleanUrl.isBlank() || cleanUrl.length > 2048 || (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://"))) {
             return Result.failure(IllegalArgumentException("INVALID_URL: Target URL must be a valid HTTP/HTTPS address up to 2048 characters"))
@@ -172,8 +175,9 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         val pricing = durationOptions.find { it.seconds == durationSeconds }
             ?: return Result.failure(IllegalArgumentException("INVALID_DURATION: Unsupported duration option"))
 
-        // Server-calculated total cost
-        val totalCost = pricing.advertiserCost * targetViews
+        // Server-calculated total cost (keyword campaigns use premium pricing).
+        val perViewCost = pricing.advertiserCostForKeyword(cleanKeyword)
+        val totalCost = perViewCost * targetViews
 
         // Identify calling user explicitly
         val effectiveCallerId = callerUserId ?: profiles.keys.firstOrNull()
@@ -201,10 +205,11 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
             ownerId = effectiveCallerId,
             url = cleanNormalized,
             domain = cleanDomain,
+            keyword = cleanKeyword,
             durationSeconds = durationSeconds,
             targetViews = targetViews,
             completedViews = 0,
-            costPerView = pricing.advertiserCost,
+            costPerView = perViewCost,
             totalBudget = totalCost,
             spentBudget = 0,
             status = CampaignStatus.ACTIVE,
@@ -216,7 +221,11 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
             id = UUID.randomUUID().toString(),
             amount = -totalCost,
             type = TransactionType.CAMPAIGN_RESERVATION,
-            description = "رزرو بودجه برای سفارش $targetViews بازدید از $cleanDomain",
+            description = if (cleanKeyword == null) {
+                "رزرو بودجه برای سفارش $targetViews بازدید از $cleanDomain"
+            } else {
+                "رزرو بودجه برای سفارش $targetViews بازدید از $cleanDomain با کلمه کلیدی «$cleanKeyword»"
+            },
             referenceId = newCampaign.id
         )
         userLedger.getOrPut(effectiveCallerId) { mutableListOf() }.add(0, reservationTx)
@@ -242,6 +251,7 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
                         campaignId = camp.id,
                         targetUrl = camp.url,
                         domain = camp.domain,
+                        keyword = camp.keyword,
                         requiredDurationSeconds = activeSession.requiredDurationSeconds,
                         rewardCoins = activeSession.rewardCoins,
                         startedAt = activeSession.startedAt
@@ -287,6 +297,7 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
             viewerId = userId,
             requiredDurationSeconds = selected.durationSeconds,
             rewardCoins = pricing.viewerReward,
+            keyword = selected.keyword,
             status = "INITIALIZED",
             startedAt = now
         )
@@ -297,6 +308,7 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
             campaignId = selected.id,
             targetUrl = selected.url,
             domain = selected.domain,
+            keyword = selected.keyword,
             requiredDurationSeconds = selected.durationSeconds,
             rewardCoins = pricing.viewerReward,
             startedAt = now
