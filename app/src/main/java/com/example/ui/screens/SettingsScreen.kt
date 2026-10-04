@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
@@ -61,6 +62,9 @@ fun SettingsScreen(
     onToggleDarkTheme: (Boolean) -> Unit,
     notificationsEnabled: Boolean,
     onToggleNotifications: (Boolean) -> Unit,
+    autoViewEnabled: Boolean,
+    isUpdatingAutoView: Boolean,
+    onToggleAutoView: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showTermsDialog by remember { mutableStateOf(false) }
@@ -261,6 +265,15 @@ fun SettingsScreen(
                         checked = notificationsEnabled,
                         onCheckedChange = onToggleNotifications
                     )
+
+                    SettingsToggleRow(
+                        icon = Icons.Default.Autorenew,
+                        title = "بازدید خودکار",
+                        subtitle = "با کسر صد سکه برای یک هفته",
+                        checked = autoViewEnabled,
+                        enabled = !isUpdatingAutoView,
+                        onCheckedChange = onToggleAutoView
+                    )
                 }
             }
         }
@@ -371,6 +384,7 @@ private fun SettingsToggleRow(
     title: String,
     subtitle: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -390,7 +404,7 @@ private fun SettingsToggleRow(
                 Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }
 
