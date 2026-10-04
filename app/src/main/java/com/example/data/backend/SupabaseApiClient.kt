@@ -7,6 +7,7 @@ import android.util.Base64
 import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
+import com.example.data.model.CoinTransferResult
 import com.example.data.model.DurationOption
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
@@ -20,6 +21,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.security.KeyStore
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -206,6 +209,44 @@ class SupabaseApiClient(
                 )
             }
             Result.success(list)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun transferCoins(
+        recipientHandle: String,
+        amount: Long,
+        idempotencyKey: String,
+        note: String?,
+        callerUserId: String?
+    ): Result<CoinTransferResult> = withContext(Dispatchers.IO) {
+        try {
+            val cleanHandle = recipientHandle.trim()
+            if (cleanHandle.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("شناسه کاربری مقصد را وارد کنید."))
+            }
+            if (amount <= 0L) {
+                return@withContext Result.failure(IllegalArgumentException("مقدار انتقال باید بیشتر از صفر باشد."))
+            }
+
+            val body = JSONObject().apply {
+                put("p_recipient_handle", cleanHandle)
+                put("p_amount", amount)
+                put("p_idempotency_key", idempotencyKey)
+                note?.trim()?.takeIf { it.isNotBlank() }?.let { put("p_note", it) }
+            }
+
+            val res = callRpc("transfer_coins", body)
+            Result.success(
+                CoinTransferResult(
+                    transferId = res.getString("transfer_id"),
+                    recipientHandle = res.getString("recipient_handle"),
+                    amount = res.getLong("amount"),
+                    note = res.optString("note", "").ifBlank { null },
+                    createdAt = parseTimestamp(res.optString("created_at"))
+                )
+            )
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -665,9 +706,26 @@ class SupabaseApiClient(
         return raw
     }
 
+    private fun parseTimestamp(raw: String): Long {
+        val value = raw.trim()
+        if (value.isBlank()) return System.currentTimeMillis()
+        val formats = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+            "yyyy-MM-dd'T'HH:mm:ssXXX"
+        )
+        for (pattern in formats) {
+            runCatching {
+                return SimpleDateFormat(pattern, Locale.US).parse(value)?.time
+                    ?: System.currentTimeMillis()
+            }
+        }
+        return System.currentTimeMillis()
+    }
+
     private fun parseUserAccount(json: JSONObject, installId: String): UserAccount {
         return UserAccount(
             userId = json.optString("id", json.optString("user_handle", "user")),
+            userHandle = json.optString("user_handle", ""),
             appInstallId = installId,
             availableCoins = json.optLong("available_coins", 0L),
             reservedCoins = json.optLong("reserved_coins", 0L),

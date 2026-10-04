@@ -1,12 +1,15 @@
 package com.example
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -46,11 +49,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -104,6 +109,31 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     val viewerState by viewModel.viewerState.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        viewModel.setNotificationsEnabled(granted)
+        prefs.edit().putBoolean("coin_transfer_notification_permission_asked", true).apply()
+    }
+
+    val notificationsEnabled by viewModel.notificationsEnabled.collectAsState()
+
+    LaunchedEffect(currentScreen, notificationsEnabled) {
+        if (
+            currentScreen == AppScreen.SETTINGS &&
+            notificationsEnabled &&
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED &&
+            !prefs.getBoolean("coin_transfer_notification_permission_asked", false)
+        ) {
+            prefs.edit().putBoolean("coin_transfer_notification_permission_asked", true).apply()
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     // Listen to ViewModel snackbar events
     LaunchedEffect(Unit) {
@@ -252,7 +282,27 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                             SettingsScreen(
                                 account = account,
                                 isDarkTheme = isDarkTheme,
-                                onToggleDarkTheme = { viewModel.setDarkTheme(it) }
+                                onToggleDarkTheme = { viewModel.setDarkTheme(it) },
+                                notificationsEnabled = notificationsEnabled,
+                                onToggleNotifications = { enabled ->
+                                    if (
+                                        enabled &&
+                                        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                                        ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.POST_NOTIFICATIONS
+                                        ) != PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        viewModel.setNotificationsEnabled(true)
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        viewModel.setNotificationsEnabled(enabled)
+                                    }
+                                },
+                                isTransferringCoins = viewModel.isTransferringCoins.collectAsState().value,
+                                onTransferCoins = { recipient, amount, note, onSuccess ->
+                                    viewModel.transferCoins(recipient, amount, note, onSuccess)
+                                }
                             )
                         }
                     }

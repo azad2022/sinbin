@@ -8,6 +8,7 @@ import com.example.core.security.UrlSecurityPolicy
 import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
+import com.example.data.model.TransactionType
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
@@ -73,9 +74,39 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     private val _isDarkTheme = MutableStateFlow(prefs.getBoolean("is_dark_theme", false))
     val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
 
+    private val _notificationsEnabled = MutableStateFlow(
+        prefs.getBoolean("coin_transfer_notifications_enabled", true)
+    )
+    val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled.asStateFlow()
+
+    fun setNotificationsEnabled(enabled: Boolean) {
+        _notificationsEnabled.value = enabled
+        prefs.edit().putBoolean("coin_transfer_notifications_enabled", enabled).apply()
+    }
+
     fun setDarkTheme(enabled: Boolean) {
         _isDarkTheme.value = enabled
         prefs.edit().putBoolean("is_dark_theme", enabled).apply()
+    }
+
+    init {
+        viewModelScope.launch {
+            while (repository.serverState.value !is ServerInitializationState.Ready) {
+                delay(250)
+            }
+
+            repository.transactions.value
+                    .filter { it.type == TransactionType.COIN_TRANSFER_RECEIVED }
+                    .forEach { seenIncomingTransferIds.add(it.id) }
+            notificationBaselineReady = true
+
+            while (true) {
+                delay(20_000)
+                if (repository.serverState.value is ServerInitializationState.Ready) {
+                    refreshFinancialStateForIncomingTransfers()
+                }
+            }
+        }
     }
 
     fun retryServerInitialization() {
@@ -92,6 +123,12 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     private val _snackBarMessage = MutableSharedFlow<String>()
     val snackBarMessage: SharedFlow<String> = _snackBarMessage.asSharedFlow()
+
+    private val _isTransferringCoins = MutableStateFlow(false)
+    val isTransferringCoins: StateFlow<Boolean> = _isTransferringCoins.asStateFlow()
+
+    private val seenIncomingTransferIds = linkedSetOf<String>()
+    private var notificationBaselineReady = false
 
     // Create Campaign Form State
     val urlInput = MutableStateFlow("")
@@ -318,6 +355,67 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun transferCoins(
+        recipientHandle: String,
+        amount: Long,
+        note: String?,
+        onSuccess: () -> Unit
+    ) {
+        val cleanHandle = recipientHandle.trim()
+        val cleanNote = note?.trim()?.ifBlank { null }
+        if (cleanHandle.isBlank()) {
+            showMessage("شناسه کاربری مقصد را وارد کنید.")
+            return
+        }
+        if (amount <= 0L) {
+            showMessage("مقدار سکه باید بیشتر از صفر باشد.")
+            return
+        }
+        _isTransferringCoins.value = true
+        viewModelScope.launch {
+            val result = repository.transferCoins(cleanHandle, amount, cleanNote)
+            _isTransferringCoins.value = false
+            result.onSuccess { transfer ->
+                showMessage(transfer.amount.toString() + " سکه با موفقیت به " + transfer.recipientHandle + " منتقل شد.")
+                onSuccess()
+            }.onFailure { error ->
+                showMessage(error.message ?: "انتقال سکه ناموفق بود.")
+            }
+        }
+    }
+
+    private suspend fun refreshFinancialStateForIncomingTransfers() {
+        val result = repository.refreshFinancialState()
+        if (result.isFailure) return
+
+        val current = transactions.value.filter {
+            it.type == TransactionType.COIN_TRANSFER_RECEIVED
+        }
+        if (!notificationBaselineReady) {
+            current.forEach { seenIncomingTransferIds.add(it.id) }
+            notificationBaselineReady = true
+            return
+        }
+
+        current.filterNot { it.id in seenIncomingTransferIds }
+            .sortedBy { it.timestamp }
+            .forEach { tx ->
+                seenIncomingTransferIds.add(tx.id)
+                if (_notificationsEnabled.value) {
+                    com.example.notifications.SiteBinNotificationManager.showCoinReceived(
+                        getApplication(),
+                        tx.amount,
+                        tx.description
+                    )
+                }
+                showMessage(tx.amount.toString() + " سکه به حساب شما واریز شد.")
+            }
+
+        while (seenIncomingTransferIds.size > 100) {
+            val first = seenIncomingTransferIds.firstOrNull() ?: break
+            seenIncomingTransferIds.remove(first)
+        }
+    }
     fun pauseCampaign(id: String) {
         viewModelScope.launch {
             repository.pauseCampaign(id)
