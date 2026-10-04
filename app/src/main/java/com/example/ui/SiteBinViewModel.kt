@@ -83,9 +83,51 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     )
     val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled.asStateFlow()
 
+    private val _autoViewEnabled = MutableStateFlow(
+        prefs.getBoolean("auto_view_enabled", false)
+    )
+    val autoViewEnabled: StateFlow<Boolean> = _autoViewEnabled.asStateFlow()
+
+    private val _isUpdatingAutoView = MutableStateFlow(false)
+    val isUpdatingAutoView: StateFlow<Boolean> = _isUpdatingAutoView.asStateFlow()
+
     fun setNotificationsEnabled(enabled: Boolean) {
         _notificationsEnabled.value = enabled
         prefs.edit().putBoolean("coin_transfer_notifications_enabled", enabled).apply()
+    }
+
+    fun setAutoViewEnabled(enabled: Boolean) {
+        if (!enabled) {
+            _autoViewEnabled.value = false
+            prefs.edit().putBoolean("auto_view_enabled", false).apply()
+            return
+        }
+
+        if (_isUpdatingAutoView.value) return
+
+        viewModelScope.launch {
+            _isUpdatingAutoView.value = true
+
+            val status = repository.getAutoViewStatus().getOrNull()
+            if (status?.active == true) {
+                _autoViewEnabled.value = true
+                prefs.edit().putBoolean("auto_view_enabled", true).apply()
+                _isUpdatingAutoView.value = false
+                return@launch
+            }
+
+            val result = repository.activateAutoView()
+            _isUpdatingAutoView.value = false
+
+            result.onSuccess {
+                _autoViewEnabled.value = true
+                prefs.edit().putBoolean("auto_view_enabled", true).apply()
+                showMessage("بازدید خودکار برای ۷ روز فعال شد و ۱۰۰ سکه کسر شد.")
+            }.onFailure { error ->
+                _autoViewEnabled.value = false
+                showMessage(error.message ?: "فعال‌سازی بازدید خودکار ناموفق بود.")
+            }
+        }
     }
 
     fun setDarkTheme(enabled: Boolean) {
@@ -97,6 +139,13 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             while (repository.serverState.value !is ServerInitializationState.Ready) {
                 delay(250)
+            }
+
+            repository.autoViewStatus.value.let { status ->
+                if (!status.active && _autoViewEnabled.value) {
+                    _autoViewEnabled.value = false
+                    prefs.edit().putBoolean("auto_view_enabled", false).apply()
+                }
             }
 
             repository.transactions.value
@@ -277,7 +326,28 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun nextSiteAfterCompletion() {
-        startViewing()
+        if (!_autoViewEnabled.value) {
+            startViewing()
+            return
+        }
+
+        viewModelScope.launch {
+            val status = repository.autoViewStatus.value
+            val serverStatus = if (status.active) {
+                status
+            } else {
+                repository.getAutoViewStatus().getOrNull()
+            }
+
+            if (serverStatus?.active == true) {
+                startViewing()
+            } else {
+                _autoViewEnabled.value = false
+                prefs.edit().putBoolean("auto_view_enabled", false).apply()
+                showMessage("دوره بازدید خودکار شما به پایان رسیده است.")
+                _currentScreen.value = AppScreen.HOME
+            }
+        }
     }
 
     fun submitReport(reason: String, details: String) {
