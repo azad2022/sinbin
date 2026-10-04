@@ -21,7 +21,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.security.KeyStore
-import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -432,7 +431,7 @@ class SupabaseApiClient(
         val cleanInstall = installId.filter { it.isLetterOrDigit() }.ifEmpty { "dev" }
         val email = "sitebin_${cleanInstall.take(12)}_${deviceSecret.take(12)}@sitebin.internal"
         val legacyPassword = "SB_${deviceSecret}_Auth9!"
-        val derivedPassword = buildDerivedDevicePassword(deviceSecret)
+        val derivedPassword = AuthCredentialPolicy.buildDerivedDevicePassword(deviceSecret)
 
         // 4. Preserve compatibility with credentials created by the previous client.
         var loginStatus = 0
@@ -447,7 +446,7 @@ class SupabaseApiClient(
                     .addHeader("apikey", supabasePublishableKey)
                     .post(authBody)
                     .build()
-            ).also { loginStatus = it.code }
+            ).execute().also { loginStatus = it.code }
             val tokenRaw = tokenRes.body?.string() ?: ""
             if (tokenRes.isSuccessful) {
                 handleAuthSuccess(tokenRaw)
@@ -467,7 +466,7 @@ class SupabaseApiClient(
                     .addHeader("apikey", supabasePublishableKey)
                     .post(authBody)
                     .build()
-            ).also { loginStatus = it.code }
+            ).execute().also { loginStatus = it.code }
             val raw = tokenRes.body?.string() ?: ""
             if (tokenRes.isSuccessful) {
                 handleAuthSuccess(raw)
@@ -487,7 +486,7 @@ class SupabaseApiClient(
                 .addHeader("apikey", supabasePublishableKey)
                 .post(signupBody)
                 .build()
-        )
+        ).execute()
         val signupStatus = signupRes.code
         val signupRaw = signupRes.body?.string() ?: ""
         if (signupRes.isSuccessful) {
@@ -541,15 +540,6 @@ class SupabaseApiClient(
         }
     }
 
-    private fun buildDerivedDevicePassword(deviceSecret: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(deviceSecret.toByteArray(Charsets.UTF_8))
-        val encoded = Base64.encodeToString(
-            digest,
-            Base64.NO_WRAP or Base64.URL_SAFE
-        )
-        return "SB_$encoded"
-    }
 
     private fun getOrGenerateDeviceSecret(): String {
         getSecureString("device_secret")?.let { return it }
