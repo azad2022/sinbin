@@ -21,6 +21,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.security.KeyStore
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -705,11 +707,19 @@ class SupabaseApiClient(
     }
 
     private fun parseTimestamp(raw: String): Long {
-        return raw.trim().let { value ->
+        val value = raw.trim()
+        if (value.isBlank()) return System.currentTimeMillis()
+        val formats = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+            "yyyy-MM-dd'T'HH:mm:ssXXX"
+        )
+        for (pattern in formats) {
             runCatching {
-                java.time.Instant.parse(value).toEpochMilli()
-            }.getOrElse { System.currentTimeMillis() }
+                return SimpleDateFormat(pattern, Locale.US).parse(value)?.time
+                    ?: System.currentTimeMillis()
+            }
         }
+        return System.currentTimeMillis()
     }
 
     private fun parseUserAccount(json: JSONObject, installId: String): UserAccount {
