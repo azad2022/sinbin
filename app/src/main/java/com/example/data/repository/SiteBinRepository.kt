@@ -14,6 +14,7 @@ import com.example.data.model.CoinTransferResult
 import com.example.data.model.DailyBonusResult
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
+import com.example.data.model.ViewCompletionResult
 import com.example.data.model.ViewSession
 
 import kotlinx.coroutines.CoroutineScope
@@ -288,11 +289,32 @@ class SiteBinRepository(
     suspend fun completeViewSession(
         session: ViewSession,
         idempotencyKey: String = "complete_" + session.id + "_" + session.startedAt
-    ): Result<Long> {
+    ): Result<ViewCompletionResult> {
         val currentUserId = _account.value.userId
-        val result = engine.completeViewSession(session.id, idempotencyKey, callerUserId = currentUserId)
-        result.onSuccess {
-            refreshServerState()
+        val result = engine.completeViewSession(
+            session.id,
+            idempotencyKey,
+            callerUserId = currentUserId
+        )
+
+        result.onSuccess { completion ->
+            // The completion RPC returns the authoritative financial snapshot,
+            // so the Viewer path does not block on a broad refresh waterfall.
+            _account.update { current ->
+                current.copy(
+                    availableCoins = completion.availableCoins,
+                    lifetimeEarned = completion.lifetimeEarned,
+                    completedViewsCount = completion.completedViewsCount
+                )
+            }
+
+            // Non-critical UI state is synchronized in the background.
+            scope.launch {
+                engine.fetchTransactions(currentUserId)
+                    .onSuccess { _transactions.value = it }
+                engine.fetchCampaigns(currentUserId)
+                    .onSuccess { _campaigns.value = it }
+            }
         }
         return result
     }
