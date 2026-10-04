@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.http.SslError
 import android.os.Build
+import android.os.SystemClock
+import com.example.BuildConfig
 import android.view.ViewGroup
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
@@ -33,6 +35,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 @Composable
 fun SafeWebView(
     url: String,
+    contentKey: String = url,
     modifier: Modifier = Modifier,
     onPageStarted: () -> Unit = {},
     onPageContentReady: () -> Unit = {},
@@ -44,11 +47,35 @@ fun SafeWebView(
 
     // Keep track of the currently loaded URL requested by Compose
     // to prevent unwanted re-loads on timer ticks / recompositions
-    var targetUrlLoaded by remember { mutableStateOf<String?>(null) }
+    var targetLoadKey by remember { mutableStateOf<String?>(null) }
     var webViewRef: WebView? = remember { null }
+    var currentPageStartedAt by remember { mutableStateOf(0L) }
+    var contentReadyReported by remember { mutableStateOf(false) }
 
     val safeClient = remember {
         object : WebViewClient() {
+            private fun reportContentVisible(pageUrl: String?) {
+                if (contentReadyReported) return
+                if (pageUrl?.startsWith("https://", ignoreCase = true) != true) return
+
+                contentReadyReported = true
+                val elapsedMs = if (currentPageStartedAt > 0L) {
+                    SystemClock.elapsedRealtime() - currentPageStartedAt
+                } else {
+                    -1L
+                }
+                if (BuildConfig.DEBUG) {
+                    val host = runCatching {
+                        pageUrl.substringAfter("://").substringBefore("/")
+                    }.getOrDefault("unknown")
+                    android.util.Log.d(
+                        "SiteBinPerf",
+                        "operation=webview_content_visible host=$host elapsedMs=$elapsedMs"
+                    )
+                }
+                onPageContentReady()
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?
@@ -75,13 +102,22 @@ fun SafeWebView(
 
             override fun onPageStarted(view: WebView?, pageUrl: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, pageUrl, favicon)
+                currentPageStartedAt = SystemClock.elapsedRealtime()
+                contentReadyReported = false
                 onPageStarted()
+            }
+
+            override fun onPageCommitVisible(view: WebView?, pageUrl: String?) {
+                super.onPageCommitVisible(view, pageUrl)
+                // The main frame is visibly committed; do not wait for every subresource.
+                reportContentVisible(pageUrl)
             }
 
             override fun onPageFinished(view: WebView?, pageUrl: String?) {
                 super.onPageFinished(view, pageUrl)
-                // Content is rendered and visible
-                onPageContentReady()
+                // Compatibility fallback for WebView implementations that do not dispatch
+                // onPageCommitVisible reliably.
+                reportContentVisible(pageUrl)
             }
 
             override fun onReceivedSslError(
@@ -173,9 +209,10 @@ fun SafeWebView(
     }
 
     // Load new URL only when url prop actually changes
-    LaunchedEffect(url) {
-        if (targetUrlLoaded != url) {
-            targetUrlLoaded = url
+    LaunchedEffect(contentKey, url) {
+        if (targetLoadKey != contentKey) {
+            targetLoadKey = contentKey
+            contentReadyReported = false
             webViewRef?.loadUrl(url)
         }
     }
@@ -217,20 +254,22 @@ fun SafeWebView(
                 webViewClient = safeClient
                 webChromeClient = safeChromeClient
 
-                targetUrlLoaded = url
+                targetLoadKey = contentKey
                 loadUrl(url)
             }
         },
         update = { webView ->
             webViewRef = webView
             // Only load if the requested destination has genuinely changed
-            if (targetUrlLoaded != url) {
-                targetUrlLoaded = url
+            if (targetLoadKey != contentKey) {
+                targetLoadKey = contentKey
+                contentReadyReported = false
                 webView.loadUrl(url)
             }
         },
         onReset = { webView ->
             webView.stopLoading()
+            targetLoadKey = null
             webView.loadUrl("about:blank")
         }
     )
