@@ -8,6 +8,7 @@ import com.example.core.security.UrlSecurityPolicy
 import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
+import com.example.data.model.DailyBonusResult
 import com.example.data.model.TransactionType
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
@@ -61,6 +62,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     val transactions: StateFlow<List<CoinTransaction>> = repository.transactions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val dailyBonus: StateFlow<DailyBonusResult?> = repository.dailyBonus
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.dailyBonus.value)
 
     val campaigns: StateFlow<List<Campaign>> = repository.campaigns
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -142,6 +146,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     private var timerJob: Job? = null
     private var isAppInForeground = true
     private var contentReadySessionId: String? = null
+    private var lastDailyBonusAttemptAt = 0L
 
     fun navigateTo(screen: AppScreen) {
         if (screen != AppScreen.VIEWER && _currentScreen.value == AppScreen.VIEWER) {
@@ -234,6 +239,15 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     fun onForegroundChanged(inForeground: Boolean) {
         isAppInForeground = inForeground
+        if (!inForeground || repository.serverState.value !is ServerInitializationState.Ready) return
+
+        val now = System.currentTimeMillis()
+        if (now - lastDailyBonusAttemptAt < 60_000L) return
+        lastDailyBonusAttemptAt = now
+
+        viewModelScope.launch {
+            repository.claimDailyBonus()
+        }
     }
 
     fun onUrlBlockedInViewer(url: String, reason: String) {
