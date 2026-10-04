@@ -180,10 +180,26 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                 ) { screen ->
                     when (screen) {
                         AppScreen.HOME -> {
+                            val welcomeBonusAmount = transactions
+                                .filter { it.type == TransactionType.WELCOME_REWARD }
+                                .maxByOrNull { it.timestamp }
+                                ?.amount
+                                ?.takeIf { it > 0L }
+                            val showWelcomeCelebration =
+                                welcomeBonusAmount != null &&
+                                    !prefs.getBoolean("welcome_bonus_celebration_seen", false)
+
                             HomeScreen(
                                 account = account,
                                 campaigns = campaigns,
-                                showWelcomeBonus = transactions.any { it.type == TransactionType.WELCOME_REWARD },
+                                welcomeBonusAmount = welcomeBonusAmount,
+                                showWelcomeBonus = welcomeBonusAmount != null,
+                                showWelcomeCelebration = showWelcomeCelebration,
+                                onWelcomeCelebrationConsumed = {
+                                    prefs.edit()
+                                        .putBoolean("welcome_bonus_celebration_seen", true)
+                                        .apply()
+                                },
                                 onStartViewing = { viewModel.startViewing() },
                                 onNavigate = { viewModel.navigateTo(it) }
                             )
