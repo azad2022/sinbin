@@ -256,7 +256,7 @@ class ServerAuthoritativeSecurityTest {
         assertEquals(3L, completion.reward) // 5s duration reward = 3 coins
         assertEquals(initialBalance + completion.reward, completion.availableCoins)
         assertEquals(1, completion.completedViewsCount)
-        assertEquals(150L, completion.lifetimeEarned)
+        assertEquals(150L + completion.reward, completion.lifetimeEarned)
         assertTrue(!completion.alreadyCompleted)
 
         val refetchedViewer = engine.fetchAccount(viewer.userId).getOrThrow()
