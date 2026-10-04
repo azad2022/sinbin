@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 enum class AppScreen {
     HOME,
@@ -203,6 +204,16 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     private var contentReadySessionId: String? = null
     private var lastDailyBonusAttemptAt = 0L
 
+    // Local single-flight guard reduces duplicate taps/coroutines. This is only
+    // a UX/reliability layer; the authoritative protection is server-side.
+    private val inFlightActions = ConcurrentHashMap.newKeySet<String>()
+
+    private fun beginAction(key: String): Boolean = inFlightActions.add(key)
+
+    private fun endAction(key: String) {
+        inFlightActions.remove(key)
+    }
+
     fun navigateTo(screen: AppScreen) {
         if (screen != AppScreen.VIEWER && _currentScreen.value == AppScreen.VIEWER) {
             cancelViewerTimer()
@@ -323,23 +334,29 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun skipCurrentSite() {
+        if (!beginAction("skip_current_site")) return
+
         cancelViewerTimer()
         viewModelScope.launch {
-            val activeSession = currentViewerSession()
-            contentReadySessionId = null
-            if (activeSession != null) {
-                repository.cancelViewSession(activeSession.id)
-            }
-
-            val nextResult = repository.getNextViewSession()
-            val next = nextResult.getOrNull()
-            if (next != null) {
+            try {
+                val activeSession = currentViewerSession()
                 contentReadySessionId = null
-                _viewerState.value = ViewerState.Loading(next)
-            } else {
-                _viewerState.value = ViewerState.Idle
-                _currentScreen.value = AppScreen.HOME
-                showMessage("وب‌سایت دیگری یافت نشد.")
+                if (activeSession != null) {
+                    repository.cancelViewSession(activeSession.id)
+                }
+
+                val nextResult = repository.getNextViewSession()
+                val next = nextResult.getOrNull()
+                if (next != null) {
+                    contentReadySessionId = null
+                    _viewerState.value = ViewerState.Loading(next)
+                } else {
+                    _viewerState.value = ViewerState.Idle
+                    _currentScreen.value = AppScreen.HOME
+                    showMessage("وب‌سایت دیگری یافت نشد.")
+                }
+            } finally {
+                endAction("skip_current_site")
             }
         }
     }
@@ -447,23 +464,29 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
+        if (!beginAction("create_campaign")) return
+
         isSubmittingCampaign.value = true
         viewModelScope.launch {
-            val result = repository.createCampaign(
-                rawUrl = url,
-                durationSeconds = selectedDuration.value,
-                targetViews = targetViewsInput.value,
-                keyword = keyword
-            )
-            isSubmittingCampaign.value = false
+            try {
+                val result = repository.createCampaign(
+                    rawUrl = url,
+                    durationSeconds = selectedDuration.value,
+                    targetViews = targetViewsInput.value,
+                    keyword = keyword
+                )
 
-            result.onSuccess { campaign ->
-                urlInput.value = ""
-                keywordInput.value = ""
-                showMessage("سفارش شما با موفقیت ثبت و فعال شد!")
-                onSuccess()
-            }.onFailure { error ->
-                showMessage(error.message ?: "خطا در ثبت سفارش")
+                result.onSuccess {
+                    urlInput.value = ""
+                    keywordInput.value = ""
+                    showMessage("سفارش شما با موفقیت ثبت و فعال شد!")
+                    onSuccess()
+                }.onFailure { error ->
+                    showMessage(error.message ?: "خطا در ثبت سفارش")
+                }
+            } finally {
+                isSubmittingCampaign.value = false
+                endAction("create_campaign")
             }
         }
     }
@@ -482,15 +505,21 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             showMessage("مقدار سکه باید بیشتر از صفر باشد.")
             return
         }
+        if (!beginAction("transfer_coins")) return
+
         _isTransferringCoins.value = true
         viewModelScope.launch {
-            val result = repository.transferCoins(cleanHandle, amount)
-            _isTransferringCoins.value = false
-            result.onSuccess { transfer ->
-                showMessage(transfer.amount.toString() + " سکه با موفقیت به " + transfer.recipientHandle + " منتقل شد.")
-                onSuccess()
-            }.onFailure { error ->
-                showMessage(error.message ?: "انتقال سکه ناموفق بود.")
+            try {
+                val result = repository.transferCoins(cleanHandle, amount)
+                result.onSuccess { transfer ->
+                    showMessage(transfer.amount.toString() + " سکه با موفقیت به " + transfer.recipientHandle + " منتقل شد.")
+                    onSuccess()
+                }.onFailure { error ->
+                    showMessage(error.message ?: "انتقال سکه ناموفق بود.")
+                }
+            } finally {
+                _isTransferringCoins.value = false
+                endAction("transfer_coins")
             }
         }
     }
@@ -528,38 +557,59 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         }
     }
     fun pauseCampaign(id: String) {
+        val actionKey = "pause_campaign:$id"
+        if (!beginAction(actionKey)) return
+
         viewModelScope.launch {
-            repository.pauseCampaign(id)
-                .onSuccess { changed ->
-                    if (changed) showMessage("سفارش با موفقیت متوقف شد.")
-                    else showMessage("تغییری انجام نشد؛ وضعیت سفارش احتمالاً قبلاً تغییر کرده است.")
-                }
-                .onFailure { error ->
-                    showMessage(error.message ?: "توقف سفارش ناموفق بود.")
-                }
+            try {
+                repository.pauseCampaign(id)
+                    .onSuccess { changed ->
+                        if (changed) showMessage("سفارش با موفقیت متوقف شد.")
+                        else showMessage("تغییری انجام نشد؛ وضعیت سفارش احتمالاً قبلاً تغییر کرده است.")
+                    }
+                    .onFailure { error ->
+                        showMessage(error.message ?: "توقف سفارش ناموفق بود.")
+                    }
+            } finally {
+                endAction(actionKey)
+            }
         }
     }
 
     fun resumeCampaign(id: String) {
+        val actionKey = "resume_campaign:$id"
+        if (!beginAction(actionKey)) return
+
         viewModelScope.launch {
-            repository.resumeCampaign(id)
-                .onSuccess { changed ->
-                    if (changed) showMessage("سفارش مجدداً فعال شد.")
-                    else showMessage("تغییری انجام نشد؛ وضعیت سفارش احتمالاً قبلاً تغییر کرده است.")
-                }
-                .onFailure { error ->
-                    showMessage(error.message ?: "فعال‌سازی مجدد سفارش ناموفق بود.")
-                }
+            try {
+                repository.resumeCampaign(id)
+                    .onSuccess { changed ->
+                        if (changed) showMessage("سفارش مجدداً فعال شد.")
+                        else showMessage("تغییری انجام نشد؛ وضعیت سفارش احتمالاً قبلاً تغییر کرده است.")
+                    }
+                    .onFailure { error ->
+                        showMessage(error.message ?: "فعال‌سازی مجدد سفارش ناموفق بود.")
+                    }
+            } finally {
+                endAction(actionKey)
+            }
         }
     }
 
     fun cancelCampaign(id: String) {
+        val actionKey = "cancel_campaign:$id"
+        if (!beginAction(actionKey)) return
+
         viewModelScope.launch {
-            val result = repository.cancelCampaign(id)
-            result.onSuccess { refunded ->
-                showMessage("سفارش لغو و $refunded سکه به حسابتان بازگشت.")
-            }.onFailure {
-                showMessage(it.message ?: "خطا در لغو سفارش")
+            try {
+                val result = repository.cancelCampaign(id)
+                result.onSuccess { refunded ->
+                    showMessage("سفارش لغو و $refunded سکه به حسابتان بازگشت.")
+                }.onFailure {
+                    showMessage(it.message ?: "خطا در لغو سفارش")
+                }
+            } finally {
+                endAction(actionKey)
             }
         }
     }
