@@ -2,6 +2,11 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,14 +33,13 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -284,35 +289,78 @@ fun CreateCampaignScreen(
         item {
             Card(
                 shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Text(
                         text = "تعداد بازدید مورد نظر",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
 
-                    // Preset Chips
+                    // Preset options: compact, equal-width buttons with an animated eye icon.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         listOf(100, 250, 500, 1000).forEach { count ->
-                            FilterChip(
-                                selected = targetViews == count,
-                                onClick = { viewModel.targetViewsInput.value = count },
-                                label = { Text("${formatter.format(count)} بازدید") },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = SiteBinBlue.copy(alpha = 0.2f),
-                                    selectedLabelColor = SiteBinBlue
-                                )
+                            val isSelected = targetViews == count
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) {
+                                    SiteBinBlue.copy(alpha = 0.18f)
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                                border = BorderStroke(
+                                    1.2.dp,
+                                    if (isSelected) SiteBinBlue
+                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        viewModel.targetViewsInput.value = count
+                                    },
+                                content = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = formatter.format(count),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Black,
+                                            color = if (isSelected) {
+                                                SiteBinBlue
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurface
+                                            }
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        AnimatedEyeIcon(
+                                            tint = if (isSelected) {
+                                                SiteBinBlue
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            }
+                                        )
+                                    }
+                                }
                             )
                         }
                     }
 
-                    // Stepper Row
+                    // Stepper stays directly below the presets; no artificial vertical gap.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -320,7 +368,8 @@ fun CreateCampaignScreen(
                     ) {
                         Text(
                             text = "تعداد سفارشی:",
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
                         )
 
                         Row(
@@ -334,7 +383,8 @@ fun CreateCampaignScreen(
                                     }
                                 },
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(10.dp))
                                     .background(MaterialTheme.colorScheme.surface)
                             ) {
                                 Icon(Icons.Default.Remove, contentDescription = "کاهش")
@@ -351,7 +401,8 @@ fun CreateCampaignScreen(
                                     viewModel.targetViewsInput.value = targetViews + 50
                                 },
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(10.dp))
                                     .background(MaterialTheme.colorScheme.surface)
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = "افزایش")
@@ -492,14 +543,50 @@ private fun DurationCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val transition = rememberInfiniteTransition(label = "duration_${option.seconds}s")
+    val pulseScale by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (isSelected) 1.035f else 1.018f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = if (isSelected) 900 else 1200,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "duration_scale_${option.seconds}s"
+    )
+
+    val animatedBorderAlpha by transition.animateFloat(
+        initialValue = if (isSelected) 0.62f else 0.26f,
+        targetValue = if (isSelected) 1f else 0.48f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = if (isSelected) 950 else 1350,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "duration_border_${option.seconds}s"
+    )
+
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) SiteBinBlue.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+        color = if (isSelected) {
+            SiteBinBlue.copy(alpha = 0.2f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
         border = BorderStroke(
             1.5.dp,
-            if (isSelected) SiteBinBlue else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            if (isSelected) {
+                SiteBinBlue.copy(alpha = animatedBorderAlpha)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = animatedBorderAlpha)
+            }
         ),
         modifier = modifier
+            .scale(pulseScale)
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
     ) {
@@ -521,6 +608,41 @@ private fun DurationCard(
             )
         }
     }
+}
+
+@Composable
+private fun AnimatedEyeIcon(
+    tint: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "preset_eye")
+    val scale by transition.animateFloat(
+        initialValue = 0.90f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "preset_eye_scale"
+    )
+    val alpha by transition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "preset_eye_alpha"
+    )
+
+    Icon(
+        imageVector = Icons.Default.Visibility,
+        contentDescription = null,
+        tint = tint.copy(alpha = alpha),
+        modifier = modifier
+            .size(22.dp)
+            .scale(scale)
+    )
 }
 
 @Composable
