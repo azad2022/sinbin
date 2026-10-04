@@ -10,6 +10,7 @@ import com.example.data.model.DailyBonusResult
 import com.example.data.model.DurationOption
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
+import com.example.data.model.ViewCompletionResult
 import com.example.data.model.ViewSession
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -601,7 +602,7 @@ class ServerEmulatedEngine(
         sessionId: String,
         idempotencyKey: String,
         callerUserId: String?
-    ): Result<Long> = lock.withLock {
+    ): Result<ViewCompletionResult> = lock.withLock {
         val cleanKey = idempotencyKey.trim()
         if (cleanKey.isEmpty()) {
             return Result.failure(IllegalArgumentException("INVALID_IDEMPOTENCY_KEY: Idempotency key cannot be empty"))
@@ -626,12 +627,34 @@ class ServerEmulatedEngine(
             if (callerUserId != null && existingRecord.viewerId != callerUserId) {
                 return Result.failure(IllegalStateException("IDEMPOTENCY_KEY_CONFLICT: Key has already been used by another user"))
             }
-            return Result.success(existingRecord.reward)
+            val account = profiles[record.viewerId]
+                ?: return Result.failure(IllegalStateException("Viewer profile not found"))
+            return Result.success(
+                ViewCompletionResult(
+                    reward = existingRecord.reward,
+                    availableCoins = account.availableCoins,
+                    lifetimeEarned = account.lifetimeEarned,
+                    completedViewsCount = account.completedViewsCount,
+                    campaignCompleted = true,
+                    alreadyCompleted = true
+                )
+            )
         }
 
         // Idempotency check 2: Has this session already completed?
         if (record.status == "COMPLETED") {
-            return Result.success(record.rewardCoins)
+            val account = profiles[record.viewerId]
+                ?: return Result.failure(IllegalStateException("Viewer profile not found"))
+            return Result.success(
+                ViewCompletionResult(
+                    reward = record.rewardCoins,
+                    availableCoins = account.availableCoins,
+                    lifetimeEarned = account.lifetimeEarned,
+                    completedViewsCount = account.completedViewsCount,
+                    campaignCompleted = true,
+                    alreadyCompleted = true
+                )
+            )
         }
 
         // Strict State Transition Check: MUST be exactly 'CONTENT_READY'
@@ -737,7 +760,16 @@ class ServerEmulatedEngine(
         )
         userLedger.getOrPut(camp.ownerId) { mutableListOf() }.add(0, spendTx)
 
-        Result.success(reward)
+        Result.success(
+            ViewCompletionResult(
+                reward = reward,
+                availableCoins = updatedViewer.availableCoins,
+                lifetimeEarned = updatedViewer.lifetimeEarned,
+                completedViewsCount = updatedViewer.completedViewsCount,
+                campaignCompleted = isDone,
+                alreadyCompleted = false
+            )
+        )
     }
 
     override suspend fun cancelViewSession(sessionId: String, callerUserId: String?): Result<Boolean> = lock.withLock {
