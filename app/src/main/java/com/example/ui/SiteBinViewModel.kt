@@ -331,12 +331,22 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onKeywordChanged(newKeyword: String) {
-        keywordInput.value = newKeyword.take(128)
+        keywordInput.value = newKeyword
+            .filterNot(Char::isISOControl)
+            .take(25)
     }
 
     fun submitCampaign(onSuccess: () -> Unit) {
         val url = urlInput.value.trim()
         val keyword = keywordInput.value.trim().ifBlank { null }
+        if (keyword != null && keyword.length > 25) {
+            showMessage("کلمه کلیدی نمی‌تواند بیشتر از ۲۵ کاراکتر باشد.")
+            return
+        }
+        if (keyword != null && keyword.any(Char::isISOControl)) {
+            showMessage("کلمه کلیدی شامل کاراکتر غیرمجاز است.")
+            return
+        }
         if (url.isBlank()) {
             urlError.value = "لطفاً آدرس وب‌سایت را وارد کنید."
             return
