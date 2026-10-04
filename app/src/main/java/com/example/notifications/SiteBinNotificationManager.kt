@@ -41,7 +41,7 @@ object SiteBinNotificationManager {
         if (!canPostNotifications(context)) return
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification_coin)
             .setContentTitle("واریز سکه به حساب")
             .setContentText(amount.toString() + " سکه به حساب شما واریز شد")
             .setStyle(NotificationCompat.BigTextStyle().bigText(description))
