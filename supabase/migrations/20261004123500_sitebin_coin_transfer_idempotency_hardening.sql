@@ -52,7 +52,7 @@ BEGIN
   UPDATE public.profiles SET available_coins=available_coins+p_amount,lifetime_earned=lifetime_earned+p_amount,updated_at=pg_catalog.clock_timestamp() WHERE id=v_recipient.id;
   INSERT INTO public.coin_ledger(user_id,amount,transaction_type,description,reference_id,idempotency_key,created_at) VALUES(v_uid,-p_amount,'COIN_TRANSFER_SENT','انتقال '||p_amount||' سکه به '||v_recipient.user_handle,v_transfer.id::text,'transfer_sent_'||v_transfer.id::text,v_transfer.created_at);
   INSERT INTO public.coin_ledger(user_id,amount,transaction_type,description,reference_id,idempotency_key,created_at) VALUES(v_recipient.id,p_amount,'COIN_TRANSFER_RECEIVED','دریافت '||p_amount||' سکه از '||v_sender.user_handle,v_transfer.id::text,'transfer_received_'||v_transfer.id::text,v_transfer.created_at);
-  RETURN pg_catalog.json_build_object('transfer_id',v_transfer.id,'recipient_handle',v_transfer.recipient_id::text,'amount',v_transfer.amount,'note',v_transfer.note,'created_at',extract(epoch from v_transfer.created_at)*1000);
+  RETURN pg_catalog.json_build_object('transfer_id',v_transfer.id,'recipient_handle',v_recipient.user_handle,'amount',v_transfer.amount,'note',v_transfer.note,'created_at',extract(epoch from v_transfer.created_at)*1000);
 END;
 $function$;
 
