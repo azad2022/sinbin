@@ -192,9 +192,7 @@ fun HomeScreen(
                 onDismiss = {
                     celebrationVisible = false
                     onWelcomeCelebrationConsumed()
-                },
-                onCardVisibilityChanged = { celebrationCardVisible = it }
-            )
+                }
         }
     }
 }
