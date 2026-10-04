@@ -19,12 +19,25 @@ object BackendManager {
         }
     }
 
+    /**
+     * Public Supabase API key used for REST/Auth gateway access.
+     *
+     * The live project's publishable key is currently rejected by the
+     * Data API gateway as UNAUTHORIZED_INVALID_API_KEY/bad_length.
+     * Use the active legacy anon key as the compatibility path until the
+     * project publishable key is regenerated and gateway-verified.
+     */
     val apiKey: String by lazy {
-        val buildKey = runCatching { BuildConfig.SUPABASE_PUBLISHABLE_KEY }.getOrDefault("")
-        if (buildKey.isNotBlank() && !buildKey.contains("placeholder")) {
-            buildKey
+        val anonKey = runCatching { BuildConfig.SUPABASE_ANON_KEY }.getOrDefault("")
+        if (anonKey.isNotBlank() && !anonKey.contains("placeholder")) {
+            anonKey
         } else {
-            ""
+            val publishableKey = runCatching { BuildConfig.SUPABASE_PUBLISHABLE_KEY }.getOrDefault("")
+            if (publishableKey.isNotBlank() && !publishableKey.contains("placeholder")) {
+                publishableKey
+            } else {
+                ""
+            }
         }
     }
 
