@@ -46,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,11 +65,13 @@ import com.example.core.security.SafeWebView
 import com.example.ui.ViewerState
 import com.example.ui.theme.SiteBinGold
 import com.example.ui.theme.SiteBinSuccess
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewerScreen(
     viewerState: ViewerState,
+    autoViewEnabled: Boolean = false,
     onContentReady: () -> Unit,
     onUrlBlocked: (String, String) -> Unit,
     onSkip: () -> Unit,
@@ -94,6 +97,13 @@ fun ViewerScreen(
     var showReportDialog by remember { mutableStateOf(false) }
     var pageErrorMsg by remember { mutableStateOf<String?>(null) }
     var isPageLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(viewerState, autoViewEnabled) {
+        if (viewerState is ViewerState.Completed && autoViewEnabled) {
+            delay(1600)
+            onNextSite()
+        }
+    }
 
     val currentSession = when (viewerState) {
         is ViewerState.Loading -> viewerState.session
@@ -413,17 +423,38 @@ fun ViewerScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Button(
-                                    onClick = onNextSite,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text("مشاهده بعدی", maxLines = 1, softWrap = false)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        Icons.Default.NavigateNext,
-                                        contentDescription = null
-                                    )
+                                if (autoViewEnabled) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("viewer_auto_next_status"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text(
+                                            text = "بازدید بعدی به‌صورت خودکار در حال آماده‌سازی است…",
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = onNextSite,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("مشاهده بعدی", maxLines = 1, softWrap = false)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            Icons.Default.NavigateNext,
+                                            contentDescription = null
+                                        )
+                                    }
                                 }
 
                                 OutlinedButton(
