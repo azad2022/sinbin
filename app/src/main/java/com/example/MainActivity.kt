@@ -108,6 +108,8 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     val transactions by viewModel.transactions.collectAsState()
     val dailyBonus by viewModel.dailyBonus.collectAsState()
     val viewerState by viewModel.viewerState.collectAsState()
+    val autoViewEnabled by viewModel.autoViewEnabled.collectAsState()
+    val isUpdatingAutoView by viewModel.isUpdatingAutoView.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -265,6 +267,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                         AppScreen.VIEWER -> {
                             ViewerScreen(
                                 viewerState = viewerState,
+                                autoViewEnabled = autoViewEnabled,
                                 onContentReady = { viewModel.onWebViewContentVisible() },
                                 onUrlBlocked = { url, reason -> viewModel.onUrlBlockedInViewer(url, reason) },
                                 onSkip = { viewModel.skipCurrentSite() },
@@ -330,6 +333,11 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                         viewModel.setNotificationsEnabled(enabled)
                                     }
                                 },
+                                autoViewEnabled = autoViewEnabled,
+                                isUpdatingAutoView = isUpdatingAutoView,
+                                onToggleAutoView = { enabled ->
+                                    viewModel.setAutoViewEnabled(enabled)
+                                }
                             )
                         }
                     }
