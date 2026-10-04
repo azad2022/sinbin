@@ -41,7 +41,9 @@ enum class TransactionType(val labelFarsi: String, val isPositive: Boolean) {
     CAMPAIGN_SPEND("مصرف بودجه بازدید", false),
     CAMPAIGN_REFUND("استرداد بودجه باقیمانده", true),
     REFERRAL_REWARD("پاداش معرفی دوستان", true),
-    PLATFORM_GRANT("اعتبار پلتفرمی", true)
+    PLATFORM_GRANT("اعتبار پلتفرمی", true),
+    COIN_TRANSFER_SENT("انتقال سکه به کاربر دیگر", false),
+    COIN_TRANSFER_RECEIVED("دریافت سکه", true)
 }
 
 data class CoinTransaction(
@@ -53,8 +55,17 @@ data class CoinTransaction(
     val referenceId: String? = null
 )
 
+data class CoinTransferResult(
+    val transferId: String,
+    val recipientHandle: String,
+    val amount: Long,
+    val note: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 data class UserAccount(
     val userId: String,
+    val userHandle: String = "",
     val appInstallId: String,
     val availableCoins: Long,
     val reservedCoins: Long = 0,
