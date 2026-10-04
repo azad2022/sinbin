@@ -4,6 +4,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Timer
@@ -72,7 +74,7 @@ fun CampaignsScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabTitles = listOf("همه", "فعال", "متوقف", "پایان‌یافته")
+    val tabTitles = listOf("همه", "فعال", "متوقف", "پایان")
 
     val filteredList = when (selectedTab) {
         1 -> campaigns.filter { it.status == CampaignStatus.ACTIVE }
@@ -108,7 +110,9 @@ fun CampaignsScreen(
                 .padding(padding)
         ) {
             // Header
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
                 Text(
                     text = "سفارش‌های من",
                     style = MaterialTheme.typography.titleLarge,
@@ -117,8 +121,30 @@ fun CampaignsScreen(
                 Text(
                     text = "مدیریت و مشاهده روند پیشرفت بازدیدهای سایت‌های شما",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
+
+                Button(
+                    onClick = onAddCampaign,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .testTag("add_campaign_button_header")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Visibility,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "ثبت سفارش بازدید",
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                }
             }
 
             // Tab Row
@@ -135,7 +161,10 @@ fun CampaignsScreen(
                         text = {
                             Text(
                                 text = title,
-                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
+                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     )
@@ -247,7 +276,11 @@ private fun CampaignDetailCard(
                         text = campaign.domain,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
                 }
 
@@ -353,41 +386,86 @@ private fun CampaignDetailCard(
 
             // Action Buttons
             if (campaign.status == CampaignStatus.ACTIVE || campaign.status == CampaignStatus.PAUSED) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedButton(
-                        onClick = { showCancelConfirm = true },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Icon(Icons.Default.Cancel, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("لغو و استرداد")
-                    }
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val compactLayout = maxWidth < 380.dp
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    if (campaign.status == CampaignStatus.ACTIVE) {
-                        Button(
-                            onClick = onPause,
-                            shape = RoundedCornerShape(10.dp)
+                    if (compactLayout) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("توقف موقت")
+                            if (campaign.status == CampaignStatus.ACTIVE) {
+                                Button(
+                                    onClick = onPause,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("توقف موقت", maxLines = 1)
+                                }
+                            } else {
+                                Button(
+                                    onClick = onResume,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = SiteBinSuccess)
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("ادامه سفارش", maxLines = 1)
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = { showCancelConfirm = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Icon(Icons.Default.Cancel, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("لغو و استرداد", maxLines = 1)
+                            }
                         }
                     } else {
-                        Button(
-                            onClick = onResume,
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = SiteBinSuccess)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("ادامه سفارش")
+                            OutlinedButton(
+                                onClick = { showCancelConfirm = true },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Icon(Icons.Default.Cancel, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("لغو و استرداد", maxLines = 1)
+                            }
+
+                            if (campaign.status == CampaignStatus.ACTIVE) {
+                                Button(
+                                    onClick = onPause,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("توقف موقت", maxLines = 1)
+                                }
+                            } else {
+                                Button(
+                                    onClick = onResume,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = SiteBinSuccess)
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("ادامه سفارش", maxLines = 1)
+                                }
+                            }
                         }
                     }
                 }
@@ -440,7 +518,9 @@ private fun StatusBadge(status: CampaignStatus) {
             style = MaterialTheme.typography.labelSmall,
             color = textColor,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            maxLines = 1,
+            softWrap = false
         )
     }
 }
