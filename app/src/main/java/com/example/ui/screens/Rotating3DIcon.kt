@@ -53,7 +53,7 @@ fun Rotating3DIcon(
             .graphicsLayer {
                 rotationY = animatedRotationY
                 scaleX = perspectiveScaleX
-                cameraDistance = 18f * density
+                cameraDistance = 18f * density.density
             }
     )
 }
