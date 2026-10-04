@@ -186,10 +186,14 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
-        if (showWelcomeCelebration && welcomeBonusAmount != null) {
+        if (celebrationVisible && welcomeBonusAmount != null) {
             WelcomeBonusCelebration(
                 amount = welcomeBonusAmount,
-                onDismiss = onWelcomeCelebrationConsumed
+                onDismiss = {
+                    celebrationVisible = false
+                    onWelcomeCelebrationConsumed()
+                },
+                onCardVisibilityChanged = { celebrationCardVisible = it }
             )
         }
     }
@@ -247,19 +251,26 @@ private fun WelcomeBonusBanner(amount: Long, onNavigate: (AppScreen) -> Unit) {
 @Composable
 private fun WelcomeBonusCelebration(
     amount: Long,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onCardVisibilityChanged: (Boolean) -> Unit
 ) {
-    var visible by remember { mutableStateOf(false) }
+    var overlayVisible by remember { mutableStateOf(true) }
+    var cardVisible by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
-        visible = true
-        delay(2300)
+        onCardVisibilityChanged(true)
+        delay(850)
+        cardVisible = false
+        onCardVisibilityChanged(false)
+        delay(650)
+        overlayVisible = false
+        delay(250)
         onDismiss()
     }
 
     AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(animationSpec = tween(260)),
+        visible = overlayVisible,
+        enter = fadeIn(animationSpec = tween(220)),
         exit = fadeOut(animationSpec = tween(220)),
         modifier = Modifier.fillMaxSize()
     ) {
@@ -319,16 +330,26 @@ private fun WelcomeBonusCelebration(
                     )
                 }
 
-                Card(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .fillMaxWidth(0.86f),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
+                AnimatedVisibility(
+                    visible = cardVisible,
+                    enter = fadeIn(tween(260)) + androidx.compose.animation.scaleIn(
+                        initialScale = 0.82f,
+                        animationSpec = tween(360, easing = FastOutSlowInEasing)
                     ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
+                    exit = fadeOut(tween(240)) + androidx.compose.animation.scaleOut(
+                        targetScale = 0.88f,
+                        animationSpec = tween(240, easing = FastOutSlowInEasing)
+                    ),
+                    modifier = Modifier.align(Alignment.Center)
                 ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(0.86f),
+                        shape = RoundedCornerShape(28.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
+                    ) {
                     Column(
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 26.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
