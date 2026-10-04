@@ -249,6 +249,7 @@ fun ViewerScreen(
             if (currentSession != null) {
                 SafeWebView(
                     url = currentSession.targetUrl,
+                    contentKey = currentSession.id,
                     onPageStarted = {
                         isPageLoading = true
                         pageErrorMsg = null

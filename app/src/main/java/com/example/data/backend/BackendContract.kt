@@ -8,6 +8,7 @@ import com.example.data.model.CoinTransferResult
 import com.example.data.model.DurationOption
 import com.example.data.model.DailyBonusResult
 import com.example.data.model.UserAccount
+import com.example.data.model.ViewCompletionResult
 import com.example.data.model.ViewSession
 
 /**
@@ -91,7 +92,7 @@ interface ServerAuthoritativeEngine {
         sessionId: String,
         idempotencyKey: String,
         callerUserId: String? = null
-    ): Result<Long>
+    ): Result<ViewCompletionResult>
 
     /** Cancels an active or paused campaign and refunds remaining reserved budget */
     suspend fun cancelCampaign(campaignId: String, callerUserId: String? = null): Result<Long>

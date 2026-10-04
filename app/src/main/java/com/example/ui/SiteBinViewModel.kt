@@ -1,8 +1,10 @@
 package com.example.ui
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.BuildConfig
 import com.example.core.security.PolicyResult
 import com.example.core.security.UrlSecurityPolicy
 import com.example.data.model.Campaign
@@ -154,8 +156,11 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             notificationBaselineReady = true
 
             while (true) {
-                delay(20_000)
-                if (repository.serverState.value is ServerInitializationState.Ready) {
+                delay(60_000)
+                if (
+                    repository.serverState.value is ServerInitializationState.Ready &&
+                    _currentScreen.value != AppScreen.VIEWER
+                ) {
                     refreshFinancialStateForIncomingTransfers()
                 }
             }
@@ -194,6 +199,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     // Viewer Timer State
     private var timerJob: Job? = null
     private var isAppInForeground = true
+    private var isRequestingViewSession = false
     private var contentReadySessionId: String? = null
     private var lastDailyBonusAttemptAt = 0L
 
@@ -220,17 +226,30 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     // --- Viewer Engine ---
 
     fun startViewing() {
-        viewModelScope.launch {
-            val sessionResult = repository.getNextViewSession()
-            val nextSession = sessionResult.getOrNull()
-            if (nextSession == null) {
-                showMessage("در حال حاضر وب‌سایت جدیدی برای مشاهده موجود نیست. لطفاً دقایقی دیگر امتحان کنید.")
-                return@launch
-            }
+        if (isRequestingViewSession) return
 
-            contentReadySessionId = null
-            _viewerState.value = ViewerState.Loading(nextSession)
-            _currentScreen.value = AppScreen.VIEWER
+        viewModelScope.launch {
+            isRequestingViewSession = true
+            try {
+                val requestStartedAt = SystemClock.elapsedRealtime()
+                val sessionResult = repository.getNextViewSession()
+                val elapsedMs = SystemClock.elapsedRealtime() - requestStartedAt
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.d("SiteBinPerf", "operation=request_view_session elapsedMs=$elapsedMs")
+                }
+
+                val nextSession = sessionResult.getOrNull()
+                if (nextSession == null) {
+                    showMessage("در حال حاضر وب‌سایت جدیدی برای مشاهده موجود نیست. لطفاً دقایقی دیگر امتحان کنید.")
+                    return@launch
+                }
+
+                contentReadySessionId = null
+                _viewerState.value = ViewerState.Loading(nextSession)
+                _currentScreen.value = AppScreen.VIEWER
+            } finally {
+                isRequestingViewSession = false
+            }
         }
     }
 
@@ -278,8 +297,8 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
             // Server-authoritative view completion validation
             val result = repository.completeViewSession(session)
-            result.onSuccess { reward ->
-                _viewerState.value = ViewerState.Completed(session, reward)
+            result.onSuccess { completion ->
+                _viewerState.value = ViewerState.Completed(session, completion.reward)
             }.onFailure { err ->
                 _viewerState.value = ViewerState.Error(err.message ?: "اعتبارسنجی بازدید توسط سرور ناموفق بود.")
             }
