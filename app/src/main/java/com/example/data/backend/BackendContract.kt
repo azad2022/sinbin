@@ -31,7 +31,7 @@ interface ServerAuthoritativeEngine {
     suspend fun fetchTransactions(userId: String): Result<List<CoinTransaction>>
 
     /** Claims the server-authoritative daily login bonus for the current authenticated user. */
-    suspend fun claimDailyBonus(): Result<DailyBonusResult>
+    suspend fun claimDailyBonus(callerUserId: String? = null): Result<DailyBonusResult>
 
     /** Atomically transfers available coins between two authenticated accounts. */
     suspend fun transferCoins(
