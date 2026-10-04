@@ -124,27 +124,6 @@ fun CampaignsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp)
                 )
-
-                Button(
-                    onClick = onAddCampaign,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
-                        .testTag("add_campaign_button_header")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Visibility,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "ثبت سفارش بازدید",
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                }
             }
 
             // Tab Row
@@ -200,12 +179,6 @@ fun CampaignsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Button(
-                            onClick = onAddCampaign,
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("ثبت سفارش بازدید")
-                        }
                     }
                 }
             } else {
