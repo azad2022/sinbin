@@ -268,6 +268,7 @@ private fun TransactionRow(tx: CoinTransaction) {
         TransactionType.PLATFORM_GRANT -> Icons.Default.Savings to SiteBinGold
         TransactionType.COIN_TRANSFER_SENT -> Icons.Default.Savings to MaterialTheme.colorScheme.error
         TransactionType.COIN_TRANSFER_RECEIVED -> Icons.Default.CardGiftcard to SiteBinGold
+        TransactionType.DAILY_BONUS -> Icons.Default.CardGiftcard to SiteBinGold
     }
 
     Card(
