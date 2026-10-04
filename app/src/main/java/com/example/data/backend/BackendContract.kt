@@ -2,6 +2,7 @@ package com.example.data.backend
 
 import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
+import com.example.data.model.CoinTransferResult
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
@@ -27,6 +28,15 @@ interface ServerAuthoritativeEngine {
 
     /** Fetch server coin transactions ledger */
     suspend fun fetchTransactions(userId: String): Result<List<CoinTransaction>>
+
+    /** Atomically transfers available coins between two authenticated accounts. */
+    suspend fun transferCoins(
+        recipientHandle: String,
+        amount: Long,
+        idempotencyKey: String,
+        note: String? = null,
+        callerUserId: String? = null
+    ): Result<CoinTransferResult>
 
     /** Fetch active & user campaigns from server */
     suspend fun fetchCampaigns(userId: String): Result<List<Campaign>>
