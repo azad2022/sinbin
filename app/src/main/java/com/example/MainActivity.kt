@@ -289,6 +289,10 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                             WalletScreen(
                                 account = account,
                                 transactions = transactions,
+                                isTransferringCoins = viewModel.isTransferringCoins.collectAsState().value,
+                                onTransferCoins = { recipient, amount, onSuccess ->
+                                    viewModel.transferCoins(recipient, amount, onSuccess)
+                                },
                                 onNavigate = { screen -> viewModel.navigateTo(screen) }
                             )
                         }
@@ -316,10 +320,6 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                         viewModel.setNotificationsEnabled(enabled)
                                     }
                                 },
-                                isTransferringCoins = viewModel.isTransferringCoins.collectAsState().value,
-                                onTransferCoins = { recipient, amount, note, onSuccess ->
-                                    viewModel.transferCoins(recipient, amount, note, onSuccess)
-                                }
                             )
                         }
                     }
