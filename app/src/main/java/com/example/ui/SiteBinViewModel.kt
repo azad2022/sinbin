@@ -88,6 +88,31 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         prefs.edit().putBoolean("is_dark_theme", enabled).apply()
     }
 
+    init {
+        viewModelScope.launch {
+            while (
+                repository.serverState.value !is ServerInitializationState.Ready &&
+                kotlinx.coroutines.isActive
+            ) {
+                delay(250)
+            }
+
+            if (kotlinx.coroutines.isActive) {
+                repository.transactions.value
+                    .filter { it.type == TransactionType.COIN_TRANSFER_RECEIVED }
+                    .forEach { seenIncomingTransferIds.add(it.id) }
+                notificationBaselineReady = true
+            }
+
+            while (kotlinx.coroutines.isActive) {
+                delay(20_000)
+                if (repository.serverState.value is ServerInitializationState.Ready) {
+                    refreshFinancialStateForIncomingTransfers()
+                }
+            }
+        }
+    }
+
     fun retryServerInitialization() {
         viewModelScope.launch {
             repository.initializeServerState()
