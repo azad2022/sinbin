@@ -427,7 +427,6 @@ fun WalletScreen(
         }
     }
 
-    }
 }
 
 @Composable
