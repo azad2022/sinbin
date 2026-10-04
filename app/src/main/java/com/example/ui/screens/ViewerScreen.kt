@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -54,6 +56,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.security.SafeWebView
@@ -131,7 +135,9 @@ fun ViewerScreen(
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(horizontal = 4.dp)
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 4.dp)
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -148,7 +154,11 @@ fun ViewerScreen(
                                 text = currentSession?.domain ?: "در حال اتصال...",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
@@ -315,73 +325,114 @@ fun ViewerScreen(
                 }
             }
 
-            // Completion Banner (Floating Bottom Card)
+            // Completion Confirmation: centered modal-style card for reliable visibility
             androidx.compose.animation.AnimatedVisibility(
                 visible = viewerState is ViewerState.Completed,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                enter = fadeIn() + slideInVertically(initialOffsetY = { it / 8 }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 8 }),
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(16.dp)
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.20f)),
             ) {
-                val reward = (viewerState as? ViewerState.Completed)?.rewardEarned ?: 10L
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 8.dp,
-                    shadowElevation = 8.dp,
-                    modifier = Modifier.fillMaxWidth()
+                val reward = (viewerState as? ViewerState.Completed)?.rewardEarned ?: 0L
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 20.dp, vertical = 24.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("viewer_completion_card"),
+                        shape = RoundedCornerShape(28.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 22.dp, vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = SiteBinSuccess,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Text(
-                                text = "بازدید معتبر تایید شد!",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = SiteBinSuccess
-                            )
-                        }
-
-                        Text(
-                            text = "🪙 +$reward سکه با موفقیت به حساب شما اضافه گردید.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = SiteBinGold
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onBack,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
+                            Surface(
+                                modifier = Modifier.size(68.dp),
+                                shape = CircleShape,
+                                color = SiteBinSuccess.copy(alpha = 0.12f)
                             ) {
-                                Text("بازگشت به خانه")
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = SiteBinSuccess,
+                                        modifier = Modifier.size(38.dp)
+                                    )
+                                }
                             }
 
-                            Button(
-                                onClick = onNextSite,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
+                            Text(
+                                text = "بازدید معتبر تایید شد",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+
+                            Text(
+                                text = "پاداش با موفقیت به کیف پول شما افزوده شد.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = SiteBinGold.copy(alpha = 0.13f)
                             ) {
-                                Text("مشاهده بعدی")
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(Icons.Default.NavigateNext, contentDescription = null)
+                                Text(
+                                    text = "🪙 +$reward سکه",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Black,
+                                    color = SiteBinGold,
+                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = onNextSite,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("مشاهده بعدی", maxLines = 1, softWrap = false)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        Icons.Default.NavigateNext,
+                                        contentDescription = null
+                                    )
+                                }
+
+                                OutlinedButton(
+                                    onClick = onBack,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("بازگشت به خانه", maxLines = 1, softWrap = false)
+                                }
                             }
                         }
                     }
