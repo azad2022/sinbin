@@ -113,7 +113,11 @@ class SupabaseApiClient(
                         seconds = obj.getInt("duration_seconds"),
                         advertiserCost = obj.getLong("advertiser_cost"),
                         viewerReward = obj.getLong("viewer_reward"),
-                        isPopular = obj.optBoolean("is_popular", false)
+                        isPopular = obj.optBoolean("is_popular", false),
+                        keywordAdvertiserCost = obj.optLong(
+                            "keyword_advertiser_cost",
+                            obj.getLong("advertiser_cost") * 3L
+                        )
                     )
                 )
             }
@@ -232,6 +236,7 @@ class SupabaseApiClient(
                         ownerId = item.optString("owner_id"),
                         url = item.optString("url"),
                         domain = item.optString("domain"),
+                        keyword = item.optString("keyword", "").ifBlank { null },
                         durationSeconds = item.optInt("duration_seconds"),
                         targetViews = item.optInt("target_views"),
                         completedViews = item.optInt("completed_views"),
@@ -254,6 +259,7 @@ class SupabaseApiClient(
         domain: String,
         durationSeconds: Int,
         targetViews: Int,
+        keyword: String?,
         callerUserId: String?
     ): Result<Campaign> = withContext(Dispatchers.IO) {
         try {
@@ -263,6 +269,7 @@ class SupabaseApiClient(
                 put("p_domain", domain)
                 put("p_duration_seconds", durationSeconds)
                 put("p_target_views", targetViews)
+                keyword?.trim()?.takeIf { it.isNotBlank() }?.let { put("p_keyword", it) }
             }
             val res = callRpc("create_campaign", body)
             val status = runCatching { CampaignStatus.valueOf(res.optString("status", "ACTIVE")) }.getOrDefault(CampaignStatus.ACTIVE)
@@ -272,6 +279,7 @@ class SupabaseApiClient(
                     ownerId = res.optString("owner_id"),
                     url = res.optString("url"),
                     domain = res.optString("domain"),
+                    keyword = res.optString("keyword", "").ifBlank { null },
                     durationSeconds = res.optInt("duration_seconds"),
                     targetViews = res.optInt("target_views"),
                     completedViews = res.optInt("completed_views", 0),
@@ -298,6 +306,7 @@ class SupabaseApiClient(
                     campaignId = res.getString("campaign_id"),
                     targetUrl = res.getString("target_url"),
                     domain = res.getString("domain"),
+                    keyword = res.optString("keyword", "").ifBlank { null },
                     requiredDurationSeconds = res.getInt("required_duration_seconds"),
                     rewardCoins = res.getLong("reward_coins"),
                     startedAt = res.optLong("started_at", System.currentTimeMillis())
