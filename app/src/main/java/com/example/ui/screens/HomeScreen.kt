@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -253,105 +254,108 @@ private fun WelcomeBonusBanner(amount: Long, onNavigate: (AppScreen) -> Unit) {
 @Composable
 private fun WelcomeBonusCelebration(
     amount: Long,
-    onDismiss: () -> Unit,
-    onCardVisibilityChanged: (Boolean) -> Unit
+    onDismiss: () -> Unit
 ) {
     var overlayVisible by remember { mutableStateOf(true) }
     var cardVisible by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
-        onCardVisibilityChanged(true)
-        delay(850)
+        delay(820)
         cardVisible = false
-        onCardVisibilityChanged(false)
-        delay(650)
+        delay(620)
         overlayVisible = false
-        delay(250)
+        delay(220)
         onDismiss()
     }
 
     AnimatedVisibility(
         visible = overlayVisible,
-        enter = fadeIn(animationSpec = tween(220)),
+        enter = fadeIn(animationSpec = tween(180)),
         exit = fadeOut(animationSpec = tween(220)),
         modifier = Modifier.fillMaxSize()
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.42f))
-                .clickable(onClick = onDismiss),
-            contentAlignment = Alignment.Center
+                .clickable(onClick = onDismiss)
         ) {
             val density = LocalDensity.current
             val particleProgress by animateFloatAsState(
                 targetValue = 1f,
                 animationSpec = tween(
-                    durationMillis = 1300,
-                    delayMillis = 80,
+                    durationMillis = 1250,
                     easing = FastOutSlowInEasing
                 ),
                 label = "welcome_coin_burst"
             )
             val giftScale by animateFloatAsState(
-                targetValue = 1.08f,
-                animationSpec = tween(650, easing = FastOutSlowInEasing),
+                targetValue = 1.10f,
+                animationSpec = tween(620, easing = FastOutSlowInEasing),
                 label = "welcome_gift_scale"
             )
             val giftLift by animateFloatAsState(
                 targetValue = -8f,
-                animationSpec = tween(650, easing = FastOutSlowInEasing),
+                animationSpec = tween(620, easing = FastOutSlowInEasing),
                 label = "welcome_gift_lift"
             )
 
-            val angles = listOf(
-                -160f, -135f, -110f, -72f, -45f, -20f,
-                18f, 45f, 72f, 112f, 135f, 160f
+            val widthPx = with(density) { maxWidth.toPx() }
+            val heightPx = with(density) { maxHeight.toPx() }
+
+            val particles = listOf(
+                -0.46f to -0.40f,
+                -0.34f to -0.48f,
+                -0.18f to -0.43f,
+                0.16f to -0.44f,
+                0.34f to -0.49f,
+                0.46f to -0.35f,
+                -0.48f to 0.36f,
+                -0.32f to 0.48f,
+                -0.12f to 0.42f,
+                0.14f to 0.46f,
+                0.34f to 0.40f,
+                0.48f to 0.30f
             )
 
-            Box(modifier = Modifier.size(320.dp)) {
-                angles.forEachIndexed { index, angleDegrees ->
-                    val angle = angleDegrees * PI / 180.0
-                    val radiusPx = with(density) {
-                        34.dp.toPx() + 118.dp.toPx() * particleProgress
-                    }
-                    val x = cos(angle).toFloat() * radiusPx
-                    val y = sin(angle).toFloat() * radiusPx
+            particles.forEachIndexed { index, (targetX, targetY) ->
+                Text(
+                    text = "🪙",
+                    fontSize = if (index % 3 == 0) 24.sp else 18.sp,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .graphicsLayer {
+                            translationX = widthPx * targetX * particleProgress
+                            translationY = heightPx * targetY * particleProgress
+                            alpha = (1f - particleProgress).coerceAtLeast(0.02f)
+                            rotationZ =
+                                particleProgress * if (index % 2 == 0) 150f else -150f
+                            scaleX = 0.85f + (0.25f * particleProgress)
+                            scaleY = 0.85f + (0.25f * particleProgress)
+                        }
+                )
+            }
 
-                    Text(
-                        text = "🪙",
-                        fontSize = if (index % 3 == 0) 22.sp else 18.sp,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .graphicsLayer {
-                                translationX = x
-                                translationY = y
-                                alpha = (1f - particleProgress).coerceAtLeast(0.08f)
-                                rotationZ = particleProgress * if (index % 2 == 0) 120f else -120f
-                            }
-                    )
-                }
-
-                AnimatedVisibility(
-                    visible = cardVisible,
-                    enter = fadeIn(tween(260)) + androidx.compose.animation.scaleIn(
-                        initialScale = 0.82f,
-                        animationSpec = tween(360, easing = FastOutSlowInEasing)
+            AnimatedVisibility(
+                visible = cardVisible,
+                enter = fadeIn(tween(240)) + androidx.compose.animation.scaleIn(
+                    initialScale = 0.82f,
+                    animationSpec = tween(360, easing = FastOutSlowInEasing)
+                ),
+                exit = fadeOut(tween(220)) + androidx.compose.animation.scaleOut(
+                    targetScale = 0.86f,
+                    animationSpec = tween(220, easing = FastOutSlowInEasing)
+                ),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(0.86f),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
                     ),
-                    exit = fadeOut(tween(240)) + androidx.compose.animation.scaleOut(
-                        targetScale = 0.88f,
-                        animationSpec = tween(240, easing = FastOutSlowInEasing)
-                    ),
-                    modifier = Modifier.align(Alignment.Center)
+                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
                 ) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(0.86f),
-                        shape = RoundedCornerShape(28.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
-                    ) {
                     Column(
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 26.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -383,7 +387,7 @@ private fun WelcomeBonusCelebration(
                             color = SiteBinGold.copy(alpha = 0.13f)
                         ) {
                             Text(
-                                text = "🪙 +${NumberFormat.getNumberInstance(Locale.US).format(amount)} سکه",
+                                text = ""🪙 +" + NumberFormat.getNumberInstance(Locale.US).format(amount) + " سکه"",
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Black,
                                 color = SiteBinGold,
