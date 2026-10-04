@@ -142,7 +142,8 @@ class SiteBinRepository(
     suspend fun createCampaign(
         rawUrl: String,
         durationSeconds: Int,
-        targetViews: Int
+        targetViews: Int,
+        keyword: String? = null
     ): Result<Campaign> {
         val policy = UrlSecurityPolicy.evaluateUrl(rawUrl)
         if (policy is PolicyResult.Blocked) {
@@ -157,6 +158,7 @@ class SiteBinRepository(
             domain = allowed.domain,
             durationSeconds = durationSeconds,
             targetViews = targetViews,
+            keyword = keyword?.trim()?.ifBlank { null },
             callerUserId = currentUserId
         )
 

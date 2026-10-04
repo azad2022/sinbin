@@ -95,6 +95,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     // Create Campaign Form State
     val urlInput = MutableStateFlow("")
+    val keywordInput = MutableStateFlow("")
     val selectedDuration = MutableStateFlow(15)
     val targetViewsInput = MutableStateFlow(100)
     val urlError = MutableStateFlow<String?>(null)
@@ -278,8 +279,13 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun onKeywordChanged(newKeyword: String) {
+        keywordInput.value = newKeyword.take(128)
+    }
+
     fun submitCampaign(onSuccess: () -> Unit) {
         val url = urlInput.value.trim()
+        val keyword = keywordInput.value.trim().ifBlank { null }
         if (url.isBlank()) {
             urlError.value = "لطفاً آدرس وب‌سایت را وارد کنید."
             return
@@ -296,12 +302,14 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             val result = repository.createCampaign(
                 rawUrl = url,
                 durationSeconds = selectedDuration.value,
-                targetViews = targetViewsInput.value
+                targetViews = targetViewsInput.value,
+                keyword = keyword
             )
             isSubmittingCampaign.value = false
 
             result.onSuccess { campaign ->
                 urlInput.value = ""
+                keywordInput.value = ""
                 showMessage("سفارش شما با موفقیت ثبت و فعال شد!")
                 onSuccess()
             }.onFailure { error ->

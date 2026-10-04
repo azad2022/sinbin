@@ -43,7 +43,7 @@ jobs:
           test -n "$SUPABASE_URL"
           test -n "$SUPABASE_PUBLISHABLE_KEY"
           curl --fail --silent --show-error \
-            "$SUPABASE_URL/rest/v1/duration_pricing?select=duration_seconds&order=duration_seconds.asc" \
+            "$SUPABASE_URL/rest/v1/duration_pricing?select=duration_seconds,advertiser_cost,keyword_advertiser_cost,viewer_reward&order=duration_seconds.asc" \
             -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
             -o /tmp/sitebin-duration-pricing.json
           python3 - <<'PY'
@@ -51,7 +51,12 @@ jobs:
           with open('/tmp/sitebin-duration-pricing.json', encoding='utf-8') as f:
               rows = json.load(f)
           assert len(rows) == 5, f"expected 5 pricing rows, got {len(rows)}"
-          print("Supabase duration_pricing smoke test passed")
+          expected = {5: (5, 15, 3), 10: (9, 27, 6), 15: (14, 42, 10), 30: (26, 78, 19), 60: (50, 150, 38)}
+          for row in rows:
+              d = row["duration_seconds"]
+              assert d in expected, row
+              assert (row["advertiser_cost"], row["keyword_advertiser_cost"], row["viewer_reward"]) == expected[d], row
+          print("Supabase duration_pricing keyword smoke test passed")
           PY
 
       - name: Unit tests

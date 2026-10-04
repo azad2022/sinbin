@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -76,6 +77,7 @@ fun CreateCampaignScreen(
 
     val formatter = NumberFormat.getNumberInstance(Locale.US)
     val url by viewModel.urlInput.collectAsState()
+    val keyword by viewModel.keywordInput.collectAsState()
     val urlError by viewModel.urlError.collectAsState()
     val selectedDuration by viewModel.selectedDuration.collectAsState()
     val targetViews by viewModel.targetViewsInput.collectAsState()
@@ -84,7 +86,10 @@ fun CreateCampaignScreen(
     val currentOption = viewModel.durationOptions.find { it.seconds == selectedDuration }
         ?: viewModel.durationOptions[2]
 
-    val totalCost = currentOption.advertiserCost * targetViews
+    val cleanKeyword = keyword.trim().ifBlank { null }
+    val keywordCampaign = cleanKeyword != null
+    val costPerViewPreview = currentOption.advertiserCostForKeyword(cleanKeyword)
+    val totalCost = costPerViewPreview * targetViews
     val canAfford = account.availableCoins >= totalCost
     val isFormValid = url.isNotBlank() && urlError == null && canAfford && !isSubmitting
 
@@ -159,7 +164,76 @@ fun CreateCampaignScreen(
             }
         }
 
-        // Section 2: Duration Choice
+        // Section 2: Optional Keyword
+        item {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = null,
+                            tint = SiteBinBlue,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "کلمه کلیدی (اختیاری)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = keyword,
+                        onValueChange = viewModel::onKeywordChanged,
+                        placeholder = { Text("مثلاً سولانا") },
+                        singleLine = true,
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null, tint = SiteBinBlue)
+                        },
+                        supportingText = {
+                            Text("${keyword.length}/128")
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("campaign_keyword_input"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = SiteBinBlue,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                        )
+                    )
+
+                    Text(
+                        text = if (keywordCampaign) {
+                            "این سفارش با قیمت ویژه کلمه کلیدی محاسبه می‌شود."
+                        } else {
+                            "اختیاری است؛ در صورت خالی بودن، سفارش به‌صورت بازدید مستقیم ثبت می‌شود."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Text(
+                        text = "این گزینه برای بازدیدهای هدفمند بر اساس عبارت انتخابی شما طراحی شده و می‌تواند به افزایش ترافیک مرتبط و دیده‌شدن سایت کمک کند.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // Section 3: Duration Choice
         item {
             Card(
                 shape = RoundedCornerShape(18.dp),
@@ -179,7 +253,7 @@ fun CreateCampaignScreen(
                         )
                     }
                     Text(
-                        text = "هرچه مدت زمان بیشتر باشد، تاثیر سئو و تعامل کاربر با سایت شما بیشتر خواهد بود.",
+                        text = "هرچه مدت زمان بیشتر باشد، زمان بیشتری برای تعامل کاربر با سایت فراهم می‌شود و هزینه هر بازدید افزایش می‌یابد.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -195,6 +269,7 @@ fun CreateCampaignScreen(
                             DurationCard(
                                 option = opt,
                                 isSelected = isSelected,
+                                displayCost = if (keywordCampaign) opt.keywordAdvertiserCost else opt.advertiserCost,
                                 onClick = { viewModel.selectedDuration.value = opt.seconds },
                                 modifier = Modifier.weight(1f)
                             )
@@ -307,7 +382,24 @@ fun CreateCampaignScreen(
 
                     SummaryRow(label = "مدت زمان هر مشاهده:", value = "${currentOption.seconds} ثانیه")
                     SummaryRow(label = "تعداد بازدید درخواستی:", value = "${formatter.format(targetViews)} بازدید")
-                    SummaryRow(label = "هزینه هر بازدید:", value = "${currentOption.advertiserCost} سکه")
+                    SummaryRow(
+                        label = "نوع بازدید:",
+                        value = if (keywordCampaign) "کلمه کلیدی" else "بازدید مستقیم"
+                    )
+                    SummaryRow(
+                        label = "هزینه هر بازدید:",
+                        value = "$costPerViewPreview سکه"
+                    )
+                    if (keywordCampaign) {
+                        SummaryRow(
+                            label = "هزینه بازدید مستقیم:",
+                            value = "${currentOption.advertiserCost} سکه"
+                        )
+                        SummaryRow(
+                            label = "هزینه ویژه کلمه کلیدی:",
+                            value = "${currentOption.keywordAdvertiserCost} سکه"
+                        )
+                    }
                     SummaryRow(label = "موجودی فعلی شما:", value = "🪙 ${formatter.format(account.availableCoins)} سکه")
 
                     Box(
@@ -395,6 +487,7 @@ fun CreateCampaignScreen(
 private fun DurationCard(
     option: DurationOption,
     isSelected: Boolean,
+    displayCost: Long,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -421,7 +514,7 @@ private fun DurationCard(
                 color = if (isSelected) SiteBinBlue else MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "${option.advertiserCost} 🪙",
+                text = "${displayCost} 🪙",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

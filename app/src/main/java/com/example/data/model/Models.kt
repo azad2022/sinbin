@@ -14,6 +14,7 @@ data class Campaign(
     val ownerId: String,
     val url: String,
     val domain: String,
+    val keyword: String? = null,
     val durationSeconds: Int,
     val targetViews: Int,
     val completedViews: Int = 0,
@@ -71,14 +72,19 @@ data class DurationOption(
     val seconds: Int,
     val advertiserCost: Long,
     val viewerReward: Long,
-    val isPopular: Boolean = false
-)
+    val isPopular: Boolean = false,
+    val keywordAdvertiserCost: Long = advertiserCost * 3L
+) {
+    fun advertiserCostForKeyword(keyword: String?): Long =
+        if (keyword.isNullOrBlank()) advertiserCost else keywordAdvertiserCost
+}
 
 data class ViewSession(
     val id: String = UUID.randomUUID().toString(),
     val campaignId: String,
     val targetUrl: String,
     val domain: String,
+    val keyword: String? = null,
     val requiredDurationSeconds: Int,
     val rewardCoins: Long,
     val startedAt: Long = System.currentTimeMillis()
