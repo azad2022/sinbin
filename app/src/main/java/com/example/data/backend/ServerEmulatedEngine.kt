@@ -28,7 +28,9 @@ import kotlin.concurrent.withLock
  * - Allows completing in-flight sessions of PAUSED campaigns
  * - Strict Idempotency and exact CONTENT_READY state transition on view completion
  */
-class ServerEmulatedEngine : ServerAuthoritativeEngine {
+class ServerEmulatedEngine(
+    private val nowProvider: () -> Long = { System.currentTimeMillis() }
+) : ServerAuthoritativeEngine {
 
     private val lock = ReentrantLock()
 
@@ -113,7 +115,7 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         val grantedCoins = if (isFirstTime) welcomeAmount else 0L
         if (isFirstTime) {
             welcomeBonusGrants[userId] = cleanInstall
-            welcomeGrantDates[userId] = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            welcomeGrantDates[userId] = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowProvider()))
             val welcomeTx = CoinTransaction(
                 id = UUID.randomUUID().toString(),
                 amount = welcomeAmount,
@@ -192,7 +194,7 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
                 amount = amount,
                 grantDate = today,
                 grantId = grantId,
-                grantedAt = System.currentTimeMillis()
+                grantedAt = nowProvider()
             )
         )
     }
