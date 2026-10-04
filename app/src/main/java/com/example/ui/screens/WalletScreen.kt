@@ -331,8 +331,9 @@ fun WalletScreen(
         item {
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
 
-    if (showTransferDialog) {
+if (showTransferDialog) {
         Dialog(
             onDismissRequest = { if (!isTransferringCoins) showTransferDialog = false }
         ) {
@@ -477,6 +478,68 @@ fun WalletScreen(
         }
     }
 
+    }
+}
+
+@Composable
+private fun TransferCoinsCard(
+    availableCoins: Long,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = SiteBinGold.copy(alpha = 0.08f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = SiteBinGold.copy(alpha = 0.14f),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Send,
+                        contentDescription = null,
+                        tint = SiteBinGold,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "ارسال سکه",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    "انتقال سریع به یک کاربر دیگر",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "موجودی قابل انتقال: ${NumberFormat.getNumberInstance(Locale.US).format(availableCoins)} سکه",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SiteBinGold
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.Send,
+                contentDescription = "انتقال سکه",
+                tint = SiteBinGold
+            )
+        }
     }
 }
 
