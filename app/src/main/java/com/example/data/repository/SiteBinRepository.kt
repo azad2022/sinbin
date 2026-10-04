@@ -6,6 +6,8 @@ import com.example.core.security.UrlSecurityPolicy
 import com.example.data.backend.BackendManager
 import com.example.data.backend.ServerAuthoritativeEngine
 import com.example.data.model.AbuseReport
+import com.example.data.model.AutoViewActivationResult
+import com.example.data.model.AutoViewStatus
 import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
@@ -66,6 +68,9 @@ class SiteBinRepository(
 
     private val _dailyBonus = MutableStateFlow<DailyBonusResult?>(null)
     val dailyBonus: StateFlow<DailyBonusResult?> = _dailyBonus.asStateFlow()
+
+    private val _autoViewStatus = MutableStateFlow(AutoViewStatus(active = false))
+    val autoViewStatus: StateFlow<AutoViewStatus> = _autoViewStatus.asStateFlow()
 
     private val _campaigns = MutableStateFlow<List<Campaign>>(emptyList())
     val campaigns: StateFlow<List<Campaign>> = _campaigns.asStateFlow()
@@ -136,6 +141,7 @@ class SiteBinRepository(
         // available during a transient bonus RPC failure, but the entitlement itself is decided
         // exclusively by PostgreSQL.
         claimDailyBonus()
+        refreshAutoViewStatus()
 
         engine.fetchTransactions(acc.userId)
             .onSuccess { _transactions.value = it }
@@ -161,6 +167,32 @@ class SiteBinRepository(
         )
         if (result.isSuccess) {
             runCatching { refreshServerState() }
+        }
+        return result
+    }
+
+    suspend fun getAutoViewStatus(): Result<AutoViewStatus> {
+        val currentUserId = _account.value.userId
+        val result = engine.getAutoViewStatus(callerUserId = currentUserId)
+        result.onSuccess { _autoViewStatus.value = it }
+        return result
+    }
+
+    suspend fun refreshAutoViewStatus(): Result<AutoViewStatus> = getAutoViewStatus()
+
+    suspend fun activateAutoView(): Result<AutoViewActivationResult> {
+        val currentUserId = _account.value.userId
+        val idempotencyKey = "auto_view_" + UUID.randomUUID().toString()
+        val result = engine.activateAutoView(
+            idempotencyKey = idempotencyKey,
+            callerUserId = currentUserId
+        )
+        result.onSuccess { activation ->
+            _autoViewStatus.value = AutoViewStatus(
+                active = true,
+                expiresAt = activation.expiresAt
+            )
+            engine.fetchAccount(currentUserId).onSuccess { _account.value = it }
         }
         return result
     }
