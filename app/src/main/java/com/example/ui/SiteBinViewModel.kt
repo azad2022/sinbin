@@ -233,7 +233,14 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onForegroundChanged(inForeground: Boolean) {
+        val wasInForeground = isAppInForeground
         isAppInForeground = inForeground
+
+        if (inForeground && !wasInForeground) {
+            viewModelScope.launch {
+                repository.claimDailyBonus()
+            }
+        }
     }
 
     fun onUrlBlockedInViewer(url: String, reason: String) {
