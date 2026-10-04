@@ -38,6 +38,17 @@ import javax.crypto.spec.GCMParameterSpec
 import java.util.concurrent.TimeUnit
 
 /**
+ * Raised when the server-side SiteBin rate limiter returns HTTP 429.
+ *
+ * retryAfterSeconds is authoritative guidance from the server and is used by
+ * callers to avoid immediate retry storms.
+ */
+class RateLimitException(
+    val retryAfterSeconds: Long,
+    message: String
+) : IOException(message)
+
+/**
  * Production-Grade Supabase Client for SiteBin.
  *
  * Guarantees:
@@ -812,6 +823,35 @@ class SupabaseApiClient(
                     return callRpcRaw(functionName, body, isRetry = true)
                 }
             }
+        }
+
+        if (response.code == 429) {
+            val errObj = runCatching { JSONObject(raw) }.getOrNull()
+            val details = errObj?.optString("details", "").orEmpty()
+
+            val bodyRetryAfter = runCatching {
+                JSONObject(details).optLong("retry_after_seconds", 0L)
+            }.getOrDefault(0L)
+
+            val headerRetryAfter = response.header("Retry-After")
+                ?.trim()
+                ?.toLongOrNull()
+                ?: 0L
+
+            val retryAfterSeconds = maxOf(
+                1L,
+                headerRetryAfter,
+                bodyRetryAfter
+            )
+
+            val serverMessage = errObj?.optString("message")
+                ?.takeIf { it.isNotBlank() }
+                ?: "تعداد درخواست‌های شما بیش از حد مجاز است."
+
+            throw RateLimitException(
+                retryAfterSeconds = retryAfterSeconds,
+                message = "$serverMessage لطفاً ${retryAfterSeconds} ثانیه دیگر دوباره تلاش کنید."
+            )
         }
 
         if (!response.isSuccessful) {
