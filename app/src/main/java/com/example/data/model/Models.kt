@@ -43,6 +43,7 @@ enum class TransactionType(val labelFarsi: String, val isPositive: Boolean) {
     REFERRAL_REWARD("پاداش معرفی دوستان", true),
     PLATFORM_GRANT("اعتبار پلتفرمی", true),
     DAILY_BONUS("هدیه ورود روزانه", true),
+    AUTO_VIEW_SUBSCRIPTION("فعال‌سازی بازدید خودکار", false),
     COIN_TRANSFER_SENT("انتقال سکه به کاربر دیگر", false),
     COIN_TRANSFER_RECEIVED("دریافت سکه", true)
 }
@@ -118,4 +119,19 @@ data class AbuseReport(
     val reason: String,
     val details: String = "",
     val timestamp: Long = System.currentTimeMillis()
+)
+
+
+data class AutoViewStatus(
+    val active: Boolean,
+    val expiresAt: Long? = null
+)
+
+data class AutoViewActivationResult(
+    val activated: Boolean,
+    val charged: Boolean,
+    val amount: Long,
+    val expiresAt: Long?,
+    val availableCoins: Long,
+    val purchaseId: String? = null
 )
