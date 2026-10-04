@@ -32,15 +32,16 @@ import java.util.concurrent.TimeUnit
  * Production-Grade Supabase Client for SiteBin.
  *
  * Guarantees:
- * 1. Authenticated User Sessions: Real Supabase Auth (JWT) is always acquired. Never falls back to anon key.
+ * 1. Authenticated User Sessions: Real Supabase Auth (JWT) is always acquired. The API key is never used as user identity.
  * 2. Unguessable Security: Cryptographically random device secrets (256-bit entropy) instead of deterministic hashes.
  * 3. Session Persistence & Auto-Refresh: Stores access & refresh tokens locally; automatically refreshes expired sessions.
  * 4. Single Source of Truth for Pricing: Dynamically fetches duration_pricing matrix from Supabase database.
  * 5. Strict Server-Authoritative Execution: All mutations execute via PostgreSQL SECURITY DEFINER RPCs.
+ * 6. Public API key is sent only in the `apikey` header; user identity comes from the Auth JWT.
  */
 class SupabaseApiClient(
     private val supabaseUrl: String,
-    private val supabasePublishableKey: String,
+    private val supabaseApiKey: String,
     private val context: Context? = null
 ) : ServerAuthoritativeEngine {
 
@@ -94,7 +95,7 @@ class SupabaseApiClient(
         try {
             val request = Request.Builder()
                 .url("$supabaseUrl/rest/v1/duration_pricing?select=*&order=duration_seconds.asc")
-                .addHeader("apikey", supabasePublishableKey)
+                .addHeader("apikey", supabaseApiKey)
                 .get()
                 .build()
 
@@ -155,7 +156,7 @@ class SupabaseApiClient(
             val url = "$supabaseUrl/rest/v1/profiles?id=eq.$userId&select=*"
             val request = Request.Builder()
                 .url(url)
-                .addHeader("apikey", supabasePublishableKey)
+                .addHeader("apikey", supabaseApiKey)
                 .addHeader("Authorization", "Bearer $token")
                 .get()
                 .build()
@@ -178,7 +179,7 @@ class SupabaseApiClient(
             val url = "$supabaseUrl/rest/v1/coin_ledger?user_id=eq.$userId&order=created_at.desc&limit=100"
             val request = Request.Builder()
                 .url(url)
-                .addHeader("apikey", supabasePublishableKey)
+                .addHeader("apikey", supabaseApiKey)
                 .addHeader("Authorization", "Bearer $token")
                 .get()
                 .build()
@@ -213,7 +214,7 @@ class SupabaseApiClient(
             val url = "$supabaseUrl/rest/v1/campaigns?owner_id=eq.$userId&select=*&order=created_at.desc"
             val request = Request.Builder()
                 .url(url)
-                .addHeader("apikey", supabasePublishableKey)
+                .addHeader("apikey", supabaseApiKey)
                 .addHeader("Authorization", "Bearer $token")
                 .get()
                 .build()
@@ -389,7 +390,7 @@ class SupabaseApiClient(
         val now = System.currentTimeMillis()
 
         // 1. If active token exists and is valid for at least 60 seconds, use it
-        if (!token.isNullOrBlank() && token != supabasePublishableKey && (tokenExpiresAt == 0L || now < (tokenExpiresAt - 60_000L))) {
+        if (!token.isNullOrBlank() && token != supabaseApiKey && (tokenExpiresAt == 0L || now < (tokenExpiresAt - 60_000L))) {
             return token
         }
 
@@ -411,7 +412,7 @@ class SupabaseApiClient(
         val now = System.currentTimeMillis()
 
         // 1. Valid existing token
-        if (!currentUserToken.isNullOrBlank() && currentUserToken != supabasePublishableKey && (tokenExpiresAt == 0L || now < (tokenExpiresAt - 60_000L))) {
+        if (!currentUserToken.isNullOrBlank() && currentUserToken != supabaseApiKey && (tokenExpiresAt == 0L || now < (tokenExpiresAt - 60_000L))) {
             return
         }
 
@@ -443,7 +444,7 @@ class SupabaseApiClient(
             val tokenRes = httpClient.newCall(
                 Request.Builder()
                     .url("$supabaseUrl/auth/v1/token?grant_type=password")
-                    .addHeader("apikey", supabasePublishableKey)
+                    .addHeader("apikey", supabaseApiKey)
                     .post(authBody)
                     .build()
             ).execute().also { loginStatus = it.code }
@@ -463,7 +464,7 @@ class SupabaseApiClient(
             val tokenRes = httpClient.newCall(
                 Request.Builder()
                     .url("$supabaseUrl/auth/v1/token?grant_type=password")
-                    .addHeader("apikey", supabasePublishableKey)
+                    .addHeader("apikey", supabaseApiKey)
                     .post(authBody)
                     .build()
             ).execute().also { loginStatus = it.code }
@@ -483,7 +484,7 @@ class SupabaseApiClient(
         val signupRes = httpClient.newCall(
             Request.Builder()
                 .url("$supabaseUrl/auth/v1/signup")
-                .addHeader("apikey", supabasePublishableKey)
+                .addHeader("apikey", supabaseApiKey)
                 .post(signupBody)
                 .build()
         ).execute()
@@ -509,7 +510,7 @@ class SupabaseApiClient(
 
             val req = Request.Builder()
                 .url("$supabaseUrl/auth/v1/token?grant_type=refresh_token")
-                .addHeader("apikey", supabasePublishableKey)
+                .addHeader("apikey", supabaseApiKey)
                 .post(body)
                 .build()
 
@@ -629,7 +630,7 @@ class SupabaseApiClient(
         val requestBody = body.toString().toRequestBody(jsonMediaType)
         val request = Request.Builder()
             .url("$supabaseUrl/rest/v1/rpc/$functionName")
-            .addHeader("apikey", supabasePublishableKey)
+            .addHeader("apikey", supabaseApiKey)
             .addHeader("Authorization", "Bearer $token")
             .post(requestBody)
             .build()
