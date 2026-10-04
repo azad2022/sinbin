@@ -1,6 +1,11 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,12 +44,18 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,22 +71,30 @@ import com.example.ui.theme.SiteBinSuccess
 import com.example.ui.theme.SiteBinTeal
 import java.text.NumberFormat
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlinx.coroutines.delay
 
 @Composable
 fun HomeScreen(
     account: UserAccount,
     campaigns: List<Campaign>,
+    welcomeBonusAmount: Long? = null,
     showWelcomeBonus: Boolean = false,
+    showWelcomeCelebration: Boolean = false,
+    onWelcomeCelebrationConsumed: () -> Unit = {},
     onStartViewing: () -> Unit,
     onNavigate: (AppScreen) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
 
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
+    Box(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
@@ -84,9 +103,12 @@ fun HomeScreen(
             HomeHeader(account = account, onNavigate = onNavigate)
         }
 
-        if (showWelcomeBonus) {
+        if (showWelcomeBonus && welcomeBonusAmount != null) {
             item {
-                WelcomeBonusBanner(onNavigate = onNavigate)
+                WelcomeBonusBanner(
+                    amount = welcomeBonusAmount,
+                    onNavigate = onNavigate
+                )
             }
         }
 
@@ -163,10 +185,17 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
+        if (showWelcomeCelebration && welcomeBonusAmount != null) {
+            WelcomeBonusCelebration(
+                amount = welcomeBonusAmount,
+                onDismiss = onWelcomeCelebrationConsumed
+            )
+        }
+    }
 }
 
 @Composable
-private fun WelcomeBonusBanner(onNavigate: (AppScreen) -> Unit) {
+private fun WelcomeBonusBanner(amount: Long, onNavigate: (AppScreen) -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -193,9 +222,11 @@ private fun WelcomeBonusBanner(onNavigate: (AppScreen) -> Unit) {
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "۱۵۰ سکه هدیه ورود فعال شد",
+                    text = "${NumberFormat.getNumberInstance(Locale.US).format(amount)} سکه هدیه ورود فعال شد",
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false
                 )
                 Text(
                     text = "هدیه خوش‌آمدگویی در کیف پول شما ثبت شده است.",
@@ -208,6 +239,139 @@ private fun WelcomeBonusBanner(onNavigate: (AppScreen) -> Unit) {
                 contentDescription = "کیف پول",
                 tint = SiteBinGold
             )
+        }
+    }
+}
+
+@Composable
+private fun WelcomeBonusCelebration(
+    amount: Long,
+    onDismiss: () -> Unit
+) {
+    var visible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        visible = true
+        delay(2300)
+        onDismiss()
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(260)),
+        exit = fadeOut(animationSpec = tween(220)),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.42f))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            val density = LocalDensity.current
+            val particleProgress by animateFloatAsState(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 1300,
+                    delayMillis = 80,
+                    easing = FastOutSlowInEasing
+                ),
+                label = "welcome_coin_burst"
+            )
+            val giftScale by animateFloatAsState(
+                targetValue = 1.08f,
+                animationSpec = tween(650, easing = FastOutSlowInEasing),
+                label = "welcome_gift_scale"
+            )
+            val giftLift by animateFloatAsState(
+                targetValue = -8f,
+                animationSpec = tween(650, easing = FastOutSlowInEasing),
+                label = "welcome_gift_lift"
+            )
+
+            val angles = listOf(
+                -160f, -135f, -110f, -72f, -45f, -20f,
+                18f, 45f, 72f, 112f, 135f, 160f
+            )
+
+            Box(modifier = Modifier.size(320.dp)) {
+                angles.forEachIndexed { index, angleDegrees ->
+                    val angle = angleDegrees * PI / 180.0
+                    val radiusPx = with(density) {
+                        34.dp.toPx() + 118.dp.toPx() * particleProgress
+                    }
+                    val x = cos(angle).toFloat() * radiusPx
+                    val y = sin(angle).toFloat() * radiusPx
+
+                    Text(
+                        text = "🪙",
+                        fontSize = if (index % 3 == 0) 22.sp else 18.sp,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .graphicsLayer {
+                                translationX = x
+                                translationY = y
+                                alpha = (1f - particleProgress).coerceAtLeast(0.08f)
+                                rotationZ = particleProgress * if (index % 2 == 0) 120f else -120f
+                            }
+                    )
+                }
+
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth(0.86f)
+                        .clickable(onClick = {}),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 26.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "🎁",
+                            fontSize = 64.sp,
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = giftScale
+                                scaleY = giftScale
+                                translationY = giftLift
+                            }
+                        )
+                        Text(
+                            text = "هدیه خوش‌آمدگویی",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Black,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Text(
+                            text = "سکه‌ها با موفقیت به کیف پول شما اضافه شدند",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = SiteBinGold.copy(alpha = 0.13f)
+                        ) {
+                            Text(
+                                text = "🪙 +${NumberFormat.getNumberInstance(Locale.US).format(amount)} سکه",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Black,
+                                color = SiteBinGold,
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
