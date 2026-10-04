@@ -446,7 +446,7 @@ class SupabaseApiClient(
                     .addHeader("apikey", supabasePublishableKey)
                     .post(authBody)
                     .build()
-            ).also { loginStatus = it.code }
+            ).execute().also { loginStatus = it.code }
             val tokenRaw = tokenRes.body?.string() ?: ""
             if (tokenRes.isSuccessful) {
                 handleAuthSuccess(tokenRaw)
@@ -466,7 +466,7 @@ class SupabaseApiClient(
                     .addHeader("apikey", supabasePublishableKey)
                     .post(authBody)
                     .build()
-            ).also { loginStatus = it.code }
+            ).execute().also { loginStatus = it.code }
             val raw = tokenRes.body?.string() ?: ""
             if (tokenRes.isSuccessful) {
                 handleAuthSuccess(raw)
