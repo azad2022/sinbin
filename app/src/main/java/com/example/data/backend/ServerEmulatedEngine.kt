@@ -629,13 +629,15 @@ class ServerEmulatedEngine(
             }
             val account = profiles[record.viewerId]
                 ?: return Result.failure(IllegalStateException("Viewer profile not found"))
+            val campaign = campaigns[record.campaignId]
+            val campaignCompleted = campaign?.let { it.completedViews >= it.targetViews } == true
             return Result.success(
                 ViewCompletionResult(
                     reward = existingRecord.reward,
                     availableCoins = account.availableCoins,
                     lifetimeEarned = account.lifetimeEarned,
                     completedViewsCount = account.completedViewsCount,
-                    campaignCompleted = true,
+                    campaignCompleted = campaignCompleted,
                     alreadyCompleted = true
                 )
             )
@@ -645,13 +647,15 @@ class ServerEmulatedEngine(
         if (record.status == "COMPLETED") {
             val account = profiles[record.viewerId]
                 ?: return Result.failure(IllegalStateException("Viewer profile not found"))
+            val campaign = campaigns[record.campaignId]
+            val campaignCompleted = campaign?.let { it.completedViews >= it.targetViews } == true
             return Result.success(
                 ViewCompletionResult(
                     reward = record.rewardCoins,
                     availableCoins = account.availableCoins,
                     lifetimeEarned = account.lifetimeEarned,
                     completedViewsCount = account.completedViewsCount,
-                    campaignCompleted = true,
+                    campaignCompleted = campaignCompleted,
                     alreadyCompleted = true
                 )
             )
@@ -724,11 +728,12 @@ class ServerEmulatedEngine(
             ?: return Result.failure(IllegalStateException("Viewer profile not found"))
 
         val reward = record.rewardCoins
-        profiles[record.viewerId] = viewer.copy(
+        val updatedViewer = viewer.copy(
             availableCoins = viewer.availableCoins + reward,
             lifetimeEarned = viewer.lifetimeEarned + reward,
             completedViewsCount = viewer.completedViewsCount + 1
         )
+        profiles[record.viewerId] = updatedViewer
 
         // 4. Mark Session Completed & Idempotent
         record.status = "COMPLETED"
