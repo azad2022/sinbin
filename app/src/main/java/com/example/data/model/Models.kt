@@ -43,7 +43,8 @@ enum class TransactionType(val labelFarsi: String, val isPositive: Boolean) {
     REFERRAL_REWARD("پاداش معرفی دوستان", true),
     PLATFORM_GRANT("اعتبار پلتفرمی", true),
     COIN_TRANSFER_SENT("انتقال سکه به کاربر دیگر", false),
-    COIN_TRANSFER_RECEIVED("دریافت سکه", true)
+    COIN_TRANSFER_RECEIVED("دریافت سکه", true),
+    DAILY_BONUS("هدیه روزانه ورود", true)
 }
 
 data class CoinTransaction(
