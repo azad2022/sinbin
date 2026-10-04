@@ -8,6 +8,7 @@ import com.example.core.security.UrlSecurityPolicy
 import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
+import com.example.data.model.TransactionType
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
@@ -91,21 +92,16 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         viewModelScope.launch {
-            while (
-                repository.serverState.value !is ServerInitializationState.Ready &&
-                kotlinx.coroutines.isActive
-            ) {
+            while (repository.serverState.value !is ServerInitializationState.Ready) {
                 delay(250)
             }
 
-            if (kotlinx.coroutines.isActive) {
-                repository.transactions.value
+            repository.transactions.value
                     .filter { it.type == TransactionType.COIN_TRANSFER_RECEIVED }
                     .forEach { seenIncomingTransferIds.add(it.id) }
-                notificationBaselineReady = true
-            }
+            notificationBaselineReady = true
 
-            while (kotlinx.coroutines.isActive) {
+            while (true) {
                 delay(20_000)
                 if (repository.serverState.value is ServerInitializationState.Ready) {
                     refreshFinancialStateForIncomingTransfers()
