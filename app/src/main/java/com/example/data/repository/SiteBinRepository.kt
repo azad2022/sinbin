@@ -167,7 +167,8 @@ class SiteBinRepository(
     }
 
     suspend fun claimDailyBonus(): Result<DailyBonusResult> {
-        val result = engine.claimDailyBonus()
+        val currentUserId = _account.value.userId
+        val result = engine.claimDailyBonus(callerUserId = currentUserId)
         result.onSuccess { bonus ->
             _dailyBonus.value = bonus
 
