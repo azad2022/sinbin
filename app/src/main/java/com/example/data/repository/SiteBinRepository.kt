@@ -200,6 +200,14 @@ class SiteBinRepository(
         targetViews: Int,
         keyword: String? = null
     ): Result<Campaign> {
+        val cleanKeyword = keyword?.trim()?.ifBlank { null }
+        if (cleanKeyword != null && cleanKeyword.length > 25) {
+            return Result.failure(IllegalArgumentException("INVALID_KEYWORD: Keyword must be at most 25 characters"))
+        }
+        if (cleanKeyword != null && cleanKeyword.any(Char::isISOControl)) {
+            return Result.failure(IllegalArgumentException("INVALID_KEYWORD: Keyword contains control characters"))
+        }
+
         val policy = UrlSecurityPolicy.evaluateUrl(rawUrl)
         if (policy is PolicyResult.Blocked) {
             return Result.failure(IllegalArgumentException(policy.reason))
@@ -213,7 +221,7 @@ class SiteBinRepository(
             domain = allowed.domain,
             durationSeconds = durationSeconds,
             targetViews = targetViews,
-            keyword = keyword?.trim()?.ifBlank { null },
+            keyword = cleanKeyword,
             callerUserId = currentUserId
         )
 
