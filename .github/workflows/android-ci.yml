@@ -41,18 +41,10 @@ jobs:
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
 
-      - name: Build release APK
-        run: gradle --no-daemon assembleRelease
-
-      - name: Build release AAB
-        run: gradle --no-daemon bundleRelease
-
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sitebin-android-artifacts
+          name: sitebin-android-debug
           if-no-files-found: error
           path: |
             app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/bundle/release/*.aab

@@ -21,6 +21,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.security.KeyStore
+import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -424,53 +425,80 @@ class SupabaseApiClient(
             }
         }
 
-        // 3. Acquire or generate a high-entropy cryptographically secure random device secret (256-bit)
+        // 3. Acquire or generate a high-entropy cryptographically secure random device secret (256-bit).
+        // Keep the email stable for existing installations, but never build a password
+        // longer than Supabase Auth's 72-character limit.
         val deviceSecret = getOrGenerateDeviceSecret()
-
-        // Construct unique user credentials bound to this private device secret
         val cleanInstall = installId.filter { it.isLetterOrDigit() }.ifEmpty { "dev" }
         val email = "sitebin_${cleanInstall.take(12)}_${deviceSecret.take(12)}@sitebin.internal"
-        val password = "SB_${deviceSecret}_Auth9!"
+        val legacyPassword = "SB_${deviceSecret}_Auth9!"
+        val derivedPassword = buildDerivedDevicePassword(deviceSecret)
 
-        val authBody = JSONObject().apply {
-            put("email", email)
-            put("password", password)
-        }.toString().toRequestBody(jsonMediaType)
-
-        // 4. Try Token Login first (fast path for existing account; avoids hitting signup rate limits)
-        val tokenUrl = "$supabaseUrl/auth/v1/token?grant_type=password"
-        val tokenReq = Request.Builder()
-            .url(tokenUrl)
-            .addHeader("apikey", supabasePublishableKey)
-            .post(authBody)
-            .build()
-
-        val tokenRes = httpClient.newCall(tokenReq).execute()
-        val tokenRaw = tokenRes.body?.string() ?: ""
-        if (tokenRes.isSuccessful) {
-            handleAuthSuccess(tokenRaw)
-            return
+        // 4. Preserve compatibility with credentials created by the previous client.
+        var loginStatus = 0
+        run {
+            val authBody = JSONObject().apply {
+                put("email", email)
+                put("password", legacyPassword)
+            }.toString().toRequestBody(jsonMediaType)
+            val tokenRes = httpClient.newCall(
+                Request.Builder()
+                    .url("$supabaseUrl/auth/v1/token?grant_type=password")
+                    .addHeader("apikey", supabasePublishableKey)
+                    .post(authBody)
+                    .build()
+            ).also { loginStatus = it.code }
+            val tokenRaw = tokenRes.body?.string() ?: ""
+            if (tokenRes.isSuccessful) {
+                handleAuthSuccess(tokenRaw)
+                return
+            }
         }
 
-        // 5. If login fails (user does not exist yet), try Signup
-        val signupReq = Request.Builder()
-            .url("$supabaseUrl/auth/v1/signup")
-            .addHeader("apikey", supabasePublishableKey)
-            .post(authBody)
-            .build()
+        // 5. Support the new bounded credential without breaking older installations.
+        if (derivedPassword != legacyPassword) {
+            val authBody = JSONObject().apply {
+                put("email", email)
+                put("password", derivedPassword)
+            }.toString().toRequestBody(jsonMediaType)
+            val tokenRes = httpClient.newCall(
+                Request.Builder()
+                    .url("$supabaseUrl/auth/v1/token?grant_type=password")
+                    .addHeader("apikey", supabasePublishableKey)
+                    .post(authBody)
+                    .build()
+            ).also { loginStatus = it.code }
+            val raw = tokenRes.body?.string() ?: ""
+            if (tokenRes.isSuccessful) {
+                handleAuthSuccess(raw)
+                return
+            }
+        }
 
-        val signupRes = httpClient.newCall(signupReq).execute()
+        // 6. New signups always use the bounded password.
+        val signupBody = JSONObject().apply {
+            put("email", email)
+            put("password", derivedPassword)
+        }.toString().toRequestBody(jsonMediaType)
+
+        val signupRes = httpClient.newCall(
+            Request.Builder()
+                .url("$supabaseUrl/auth/v1/signup")
+                .addHeader("apikey", supabasePublishableKey)
+                .post(signupBody)
+                .build()
+        )
+        val signupStatus = signupRes.code
         val signupRaw = signupRes.body?.string() ?: ""
         if (signupRes.isSuccessful) {
             handleAuthSuccess(signupRaw)
             if (!currentUserToken.isNullOrBlank()) return
         }
 
-        // 6. Strict Failure: do not create an anonymous Supabase user and do not
-        // fall back to the publishable key. SiteBin financial RPCs require a
-        // non-anonymous authenticated session.
+        // 7. Strict Failure: never use the publishable key as a user identity.
+        // Status codes make the Debug startup error actionable without exposing credentials.
         throw IllegalStateException(
-            "SUPABASE_AUTH_FAILED: Unable to create or authenticate a permanent Supabase user session. Ensure email/password sign-in is enabled and email confirmation is configured for this app."
+            "SUPABASE_AUTH_FAILED: login HTTP $loginStatus; signup HTTP $signupStatus"
         )
     }
 
@@ -511,6 +539,16 @@ class SupabaseApiClient(
             tokenExpiresAt = System.currentTimeMillis() + (expiresIn * 1000L)
             saveSession()
         }
+    }
+
+    private fun buildDerivedDevicePassword(deviceSecret: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(deviceSecret.toByteArray(Charsets.UTF_8))
+        val encoded = Base64.encodeToString(
+            digest,
+            Base64.NO_WRAP or Base64.URL_SAFE
+        )
+        return "SB_$encoded"
     }
 
     private fun getOrGenerateDeviceSecret(): String {

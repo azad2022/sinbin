@@ -134,12 +134,13 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
 
     when (val state = serverState) {
         ServerInitializationState.Initializing -> {
-            StartupScreen(isRetry = false, onRetry = {})
+            StartupScreen(isRetry = false, message = null, onRetry = {})
         }
 
         is ServerInitializationState.Failed -> {
             StartupScreen(
                 isRetry = true,
+                message = state.message,
                 onRetry = viewModel::retryServerInitialization
             )
         }
@@ -250,6 +251,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
 @Composable
 private fun StartupScreen(
     isRetry: Boolean,
+    message: String?,
     onRetry: () -> Unit
 ) {
     androidx.compose.material3.Surface(
@@ -291,6 +293,15 @@ private fun StartupScreen(
                     color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
+                if (BuildConfig.DEBUG && !message.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "جزئیات تشخیص:\n${message.trim().take(320)}",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
                 Spacer(modifier = Modifier.height(20.dp))
                 Button(
                     onClick = onRetry,
