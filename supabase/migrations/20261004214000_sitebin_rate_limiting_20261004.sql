@@ -265,7 +265,7 @@ $function$;
 revoke execute on function private.enforce_user_rate_limit(uuid, text)
 from public, anon, authenticated, authenticator;
 
-create or replace function private.check_request()
+create or replace function public.check_request()
 returns void
 language plpgsql
 security definer
@@ -274,12 +274,20 @@ as $function$
 declare
     v_method text := current_setting('request.method', true);
     v_path text := trim(both '/' from current_setting('request.path', true));
-    v_uid uuid := auth.uid();
+    v_claim_sub text := nullif(current_setting('request.jwt.claim.sub', true), '');
+    v_claims text := current_setting('request.jwt.claims', true);
+    v_uid uuid;
     v_action text;
 begin
     if v_method is null or v_method in ('GET', 'HEAD') then
         return;
     end if;
+
+    if v_claim_sub is null and v_claims is not null and pg_catalog.btrim(v_claims) <> '' then
+        v_claim_sub := (v_claims::jsonb ->> 'sub');
+    end if;
+
+    v_uid := nullif(v_claim_sub, '')::uuid;
 
     if v_uid is null then
         return;
@@ -311,8 +319,9 @@ begin
 end;
 $function$;
 
-revoke execute on function private.check_request() from public, anon, authenticated;
-grant execute on function private.check_request() to authenticator;
+revoke all on function public.check_request() from public, anon, authenticated;
+grant execute on function public.check_request() to authenticator;
 
-alter role authenticator set pgrst.db_pre_request = 'private.check_request';
+drop function if exists private.check_request();
+alter role authenticator set pgrst.db_pre_request = 'public.check_request';
 notify pgrst, 'reload config';
