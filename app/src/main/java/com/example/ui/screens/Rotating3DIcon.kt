@@ -31,7 +31,7 @@ fun Rotating3DIcon(
 ) {
     val density = LocalDensity.current
     val transition = rememberInfiniteTransition(label = "rotating_3d_icon")
-    val rotationY by transition.animateFloat(
+    val animatedRotationY by transition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
@@ -41,7 +41,7 @@ fun Rotating3DIcon(
         label = "rotation_y"
     )
 
-    val normalizedRadians = Math.toRadians(rotationY.toDouble())
+    val normalizedRadians = Math.toRadians(animatedRotationY.toDouble())
     val perspectiveScaleX = 0.42f + 0.58f * abs(cos(normalizedRadians)).toFloat()
 
     Icon(
@@ -51,7 +51,7 @@ fun Rotating3DIcon(
         modifier = modifier
             .size(size)
             .graphicsLayer {
-                rotationY = rotationY
+                rotationY = animatedRotationY
                 scaleX = perspectiveScaleX
                 cameraDistance = 18f * density
             }
