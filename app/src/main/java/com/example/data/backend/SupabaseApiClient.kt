@@ -486,7 +486,7 @@ class SupabaseApiClient(
                 .addHeader("apikey", supabasePublishableKey)
                 .post(signupBody)
                 .build()
-        )
+        ).execute()
         val signupStatus = signupRes.code
         val signupRaw = signupRes.body?.string() ?: ""
         if (signupRes.isSuccessful) {
