@@ -4,6 +4,8 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.example.data.model.AutoViewActivationResult
+import com.example.data.model.AutoViewStatus
 import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
@@ -201,6 +203,64 @@ class SupabaseApiClient(
                     } else {
                         null
                     }
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getAutoViewStatus(callerUserId: String?): Result<AutoViewStatus> = withContext(Dispatchers.IO) {
+        try {
+            val res = callRpc("get_auto_view_status", JSONObject())
+            val expiresAt = if (res.has("expires_at") && !res.isNull("expires_at")) {
+                res.optLong("expires_at", 0L).takeIf { it > 0L }
+            } else {
+                null
+            }
+            val active = res.optBoolean("active", false)
+            Result.success(AutoViewStatus(active = active, expiresAt = expiresAt))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun activateAutoView(
+        idempotencyKey: String,
+        callerUserId: String?
+    ): Result<AutoViewActivationResult> = withContext(Dispatchers.IO) {
+        try {
+            val cleanKey = idempotencyKey.trim()
+            if (cleanKey.length < 16 || cleanKey.length > 128 || cleanKey.any(Char::isWhitespace)) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("INVALID_IDEMPOTENCY_KEY: Invalid auto-view activation request key")
+                )
+            }
+
+            val body = JSONObject().apply {
+                put("p_idempotency_key", cleanKey)
+            }
+            val res = callRpc("activate_auto_view", body)
+            if (!res.optBoolean("success", false) || !res.optBoolean("activated", false)) {
+                return@withContext Result.failure(
+                    IllegalStateException("فعال‌سازی بازدید خودکار توسط سرور تایید نشد.")
+                )
+            }
+
+            val expiresAt = if (res.has("expires_at") && !res.isNull("expires_at")) {
+                res.optLong("expires_at", 0L).takeIf { it > 0L }
+            } else {
+                null
+            }
+
+            Result.success(
+                AutoViewActivationResult(
+                    activated = true,
+                    charged = res.optBoolean("charged", false),
+                    amount = res.optLong("amount", 0L),
+                    expiresAt = expiresAt,
+                    availableCoins = res.optLong("available_coins", 0L),
+                    purchaseId = res.optString("purchase_id", "").ifBlank { null }
                 )
             )
         } catch (e: Exception) {
