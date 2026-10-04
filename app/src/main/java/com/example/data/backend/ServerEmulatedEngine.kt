@@ -3,6 +3,7 @@ package com.example.data.backend
 import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
+import com.example.data.model.CoinTransferResult
 import com.example.data.model.DurationOption
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
@@ -46,12 +47,18 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
     private val campaigns = mutableMapOf<String, Campaign>()
     private val viewSessions = mutableMapOf<String, ServerViewSessionRecord>()
     private val userLedger = mutableMapOf<String, MutableList<CoinTransaction>>() // userId -> ledger
-    private val idempotencyRecords = mutableMapOf<String, IdempotencyRecord>() // idempotencyKey -> IdempotencyRecord
+    private val idempotencyRecords = mutableMapOf<String, IdempotencyRecord>() // idempotencyKey -> view IdempotencyRecord
+    private val transferIdempotency = mutableMapOf<String, TransferIdempotencyRecord>() // idempotencyKey -> transfer result
 
     data class IdempotencyRecord(
         val sessionId: String,
         val viewerId: String,
         val reward: Long
+    )
+
+    data class TransferIdempotencyRecord(
+        val senderId: String,
+        val result: CoinTransferResult
     )
 
     data class ServerViewSessionRecord(
@@ -112,6 +119,7 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
 
         val newAccount = UserAccount(
             userId = userId,
+            userHandle = userId,
             appInstallId = cleanInstall,
             availableCoins = grantedCoins,
             reservedCoins = 0L,
@@ -135,6 +143,86 @@ class ServerEmulatedEngine : ServerAuthoritativeEngine {
         Result.success(userLedger[userId]?.toList() ?: emptyList())
     }
 
+    override suspend fun transferCoins(
+        recipientHandle: String,
+        amount: Long,
+        idempotencyKey: String,
+        note: String?,
+        callerUserId: String?
+    ): Result<CoinTransferResult> = lock.withLock {
+        val senderId = callerUserId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return Result.failure(IllegalStateException("UNAUTHORIZED: Authentication token required"))
+        val key = idempotencyKey.trim()
+        if (key.length < 16 || key.length > 128 || key.any(Char::isWhitespace)) {
+            return Result.failure(IllegalArgumentException("INVALID_IDEMPOTENCY_KEY: Invalid transfer request key"))
+        }
+        if (amount <= 0L || amount > 1_000_000L) {
+            return Result.failure(IllegalArgumentException("INVALID_AMOUNT: Transfer amount must be between 1 and 1,000,000 coins"))
+        }
+        transferIdempotency[key]?.let { previous ->
+            if (previous.senderId != senderId) {
+                return Result.failure(IllegalStateException("IDEMPOTENCY_CONFLICT: Transfer request key belongs to another account"))
+            }
+            return Result.success(previous.result)
+        }
+        val sender = profiles[senderId]
+            ?: return Result.failure(NoSuchElementException("PROFILE_NOT_FOUND: Sender profile does not exist"))
+        val normalizedHandle = recipientHandle.trim()
+        if (normalizedHandle.isBlank() || normalizedHandle.length > 64 ||
+            !normalizedHandle.matches(Regex("^[A-Za-z0-9_]+$"))) {
+            return Result.failure(IllegalArgumentException("INVALID_RECIPIENT: Invalid user ID format"))
+        }
+        val recipient = profiles.values.firstOrNull {
+            it.userHandle.equals(normalizedHandle, ignoreCase = true)
+        } ?: return Result.failure(NoSuchElementException("RECIPIENT_NOT_FOUND: User ID was not found"))
+        if (recipient.userId == senderId) {
+            return Result.failure(IllegalArgumentException("INVALID_RECIPIENT: You cannot transfer coins to yourself"))
+        }
+        if (amount > sender.availableCoins) {
+            return Result.failure(IllegalStateException(
+                "INSUFFICIENT_BALANCE: Available balance (" + sender.availableCoins + ") coins is less than transfer amount (" + amount + ") coins"
+            ))
+        }
+        val cleanNote = note?.trim()?.ifBlank { null }
+        if (!cleanNote.isNullOrBlank() && (cleanNote.length > 160 || cleanNote.any(Char::isISOControl))) {
+            return Result.failure(IllegalArgumentException("INVALID_NOTE: Transfer note must be at most 160 characters"))
+        }
+        val transferId = UUID.randomUUID().toString()
+        profiles[senderId] = sender.copy(
+            availableCoins = sender.availableCoins - amount,
+            lifetimeSpent = sender.lifetimeSpent + amount
+        )
+        profiles[recipient.userId] = recipient.copy(
+            availableCoins = recipient.availableCoins + amount,
+            lifetimeEarned = recipient.lifetimeEarned + amount
+        )
+        userLedger.getOrPut(senderId) { mutableListOf() }.add(
+            0,
+            CoinTransaction(
+                amount = -amount,
+                type = TransactionType.COIN_TRANSFER_SENT,
+                description = "انتقال " + amount + " سکه به " + recipient.userHandle,
+                referenceId = transferId
+            )
+        )
+        userLedger.getOrPut(recipient.userId) { mutableListOf() }.add(
+            0,
+            CoinTransaction(
+                amount = amount,
+                type = TransactionType.COIN_TRANSFER_RECEIVED,
+                description = "دریافت " + amount + " سکه از " + sender.userHandle,
+                referenceId = transferId
+            )
+        )
+        val result = CoinTransferResult(
+            transferId = transferId,
+            recipientHandle = recipient.userHandle,
+            amount = amount,
+            note = cleanNote
+        )
+        transferIdempotency[key] = TransferIdempotencyRecord(senderId, result)
+        Result.success(result)
+    }
     override suspend fun fetchCampaigns(userId: String): Result<List<Campaign>> = lock.withLock {
         // Matches RLS: caller sees own campaigns and active campaigns
         val list = campaigns.values.filter { it.ownerId == userId || it.status == CampaignStatus.ACTIVE }
