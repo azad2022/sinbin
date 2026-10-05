@@ -15,6 +15,7 @@ data class Campaign(
     val url: String,
     val domain: String,
     val keyword: String? = null,
+    val resolverStatus: String = "NOT_REQUIRED",
     val durationSeconds: Int,
     val targetViews: Int,
     val completedViews: Int = 0,
