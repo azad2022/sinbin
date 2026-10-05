@@ -6,7 +6,6 @@ import com.google.android.gms.auth.blockstore.DeleteBytesRequest
 import com.google.android.gms.auth.blockstore.RetrieveBytesRequest
 import com.google.android.gms.auth.blockstore.StoreBytesData
 import com.google.android.gms.tasks.Tasks
-import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 /**
@@ -23,11 +22,27 @@ class BlockStoreSessionStore(
         private const val VERSION = 1
         private const val TIMEOUT_SECONDS = 5L
 
-        private fun encodeField(value: String): String =
-            Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray(Charsets.UTF_8))
+        private const val HEX = "0123456789abcdef"
 
-        private fun decodeField(value: String): String =
-            String(Base64.getUrlDecoder().decode(value), Charsets.UTF_8)
+        private fun encodeField(value: String): String = buildString {
+            for (byte in value.toByteArray(Charsets.UTF_8)) {
+                val unsigned = byte.toInt() and 0xFF
+                append(HEX[unsigned ushr 4])
+                append(HEX[unsigned and 0x0F])
+            }
+        }
+
+        private fun decodeField(value: String): String {
+            if (value.length % 2 != 0) error("Invalid hex payload")
+            val bytes = ByteArray(value.length / 2)
+            for (index in bytes.indices) {
+                val high = Character.digit(value[index * 2], 16)
+                val low = Character.digit(value[index * 2 + 1], 16)
+                if (high < 0 || low < 0) error("Invalid hex payload")
+                bytes[index] = ((high shl 4) or low).toByte()
+            }
+            return String(bytes, Charsets.UTF_8)
+        }
 
         internal fun encode(refreshToken: String, userId: String?): ByteArray =
             buildString {
