@@ -497,10 +497,23 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 message.substringAfter(":", message).trim().ifBlank {
                     "آدرس وب‌سایت معتبر نیست. لطفاً یک آدرس HTTPS وارد کنید."
                 }
-            message.startsWith("UNSAFE_TARGET:", ignoreCase = true) ->
-                message.substringAfter(":", message).trim().ifBlank {
-                    "این آدرس برای حفظ امنیت قابل استفاده نیست."
+            message.startsWith("UNSAFE_TARGET:", ignoreCase = true) -> {
+                val detail = message.substringAfter(":", "").trim()
+                when {
+                    detail.contains("Private or reserved IPv4", ignoreCase = true) ||
+                        detail.contains("private or reserved address", ignoreCase = true) ->
+                        "این وب‌سایت از سمت سرور به یک آدرس IP خصوصی یا رزروشده متصل می‌شود و برای حفظ امنیت قابل بررسی نیست."
+                    detail.contains("IPv6", ignoreCase = true) ->
+                        "آدرس‌های IPv6 در بررسی خودکار وب‌سایت پشتیبانی نمی‌شوند."
+                    detail.contains("Redirect left", ignoreCase = true) ||
+                        detail.contains("Redirect", ignoreCase = true) ->
+                        "وب‌سایت به یک مقصد ناامن یا خارج از دامنه اصلی هدایت می‌شود."
+                    detail.contains("Internal", ignoreCase = true) ->
+                        "این مقصد داخلی است و برای حفظ امنیت قابل بررسی نیست."
+                    else ->
+                        "این آدرس از نظر امنیتی قابل بررسی نیست. لطفاً آدرس وب‌سایت عمومی خود را بررسی کنید."
                 }
+            }
             else ->
                 "بررسی وب‌سایت در حال حاضر انجام نشد. لطفاً چند لحظه دیگر دوباره تلاش کنید."
         }
