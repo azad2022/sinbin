@@ -16,3 +16,8 @@
 local.properties
 .env
 debug.keystore
+
+# Android release signing material (never commit)
+*.jks
+*.keystore
+*.b64
