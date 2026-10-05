@@ -1,7 +1,6 @@
 package com.example.data.backend
 
 import com.example.data.model.AutoViewActivationResult
-import com.example.data.backend.DeviceEvidence
 import com.example.data.model.AutoViewStatus
 import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
