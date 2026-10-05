@@ -773,3 +773,5 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 }
+
+// CI-only no-op marker: debug artifact build verification.
