@@ -24,8 +24,8 @@ class BlockStoreSessionStoreTest {
 
     @Test
     fun codec_rejectsUnknownVersionAndMissingRefreshToken() {
-        val unknown = """{"version":999,"refresh_token":"x"}""".toByteArray()
-        val missing = """{"version":1}""".toByteArray()
+        val unknown = "999\neA\n".toByteArray()
+        val missing = "1\n\n".toByteArray()
 
         assertNull(BlockStoreSessionStore.decode(unknown))
         assertNull(BlockStoreSessionStore.decode(missing))
