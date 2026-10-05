@@ -68,6 +68,7 @@ import com.example.ui.SiteBinViewModel
 import com.example.ui.ViewerState
 import com.example.ui.screens.CampaignsScreen
 import com.example.ui.screens.CreateCampaignScreen
+import com.example.ui.screens.HelpGuideScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.SettingsScreen
@@ -310,6 +311,13 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                             )
                         }
 
+                        AppScreen.HELP -> {
+                            BackHandler { viewModel.navigateTo(AppScreen.SETTINGS) }
+                            HelpGuideScreen(
+                                onBack = { viewModel.navigateTo(AppScreen.SETTINGS) }
+                            )
+                        }
+
                         AppScreen.SETTINGS -> {
                             val isDarkTheme by viewModel.isDarkTheme.collectAsState()
                             BackHandler { viewModel.navigateTo(AppScreen.HOME) }
@@ -337,7 +345,8 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                 isUpdatingAutoView = isUpdatingAutoView,
                                 onToggleAutoView = { enabled ->
                                     viewModel.setAutoViewEnabled(enabled)
-                                }
+                                },
+                                onOpenHelp = { viewModel.navigateTo(AppScreen.HELP) }
                             )
                         }
                     }
