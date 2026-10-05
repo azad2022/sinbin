@@ -32,7 +32,7 @@ import kotlin.concurrent.withLock
  * - Strict Idempotency and exact CONTENT_READY state transition on view completion
  */
 class ServerEmulatedEngine(
-    private val nowProvider: () -> Long = { nowProvider() }
+    private val nowProvider: () -> Long = { System.currentTimeMillis() }
 ) : ServerAuthoritativeEngine {
 
     private val lock = ReentrantLock()
