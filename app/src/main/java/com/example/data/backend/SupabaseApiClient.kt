@@ -821,7 +821,8 @@ class SupabaseApiClient(
                 RefreshOutcome.INVALID -> {
                     // A revoked session must not trap the app forever. Clear only the
                     // invalid recovery token, then allow normal first-account signup.
-                    blockStoreSessionStore.clear()
+                    val store = blockStoreSessionStore
+                    store?.clear()
                     currentRefreshToken = null
                     currentUserId = null
                 }
