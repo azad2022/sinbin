@@ -10,6 +10,13 @@ ALTER TABLE public.campaigns
   ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS resolver_version INTEGER NOT NULL DEFAULT 1;
 
+-- Existing rows must be backfilled before consistency constraints are added.
+UPDATE public.campaigns
+SET resolver_status = CASE WHEN keyword IS NULL THEN 'NOT_REQUIRED' ELSE 'READY' END,
+    resolved_target_url = CASE WHEN keyword IS NULL THEN NULL ELSE url END,
+    resolved_at = CASE WHEN keyword IS NULL THEN NULL ELSE COALESCE(resolved_at, updated_at) END
+WHERE resolver_status = 'NOT_REQUIRED';
+
 ALTER TABLE public.campaigns
   DROP CONSTRAINT IF EXISTS campaigns_resolver_status_check;
 
@@ -41,14 +48,6 @@ ALTER TABLE public.campaigns
       AND resolved_target_url ~* '^https://'
     )
   );
-
--- Existing keyword campaigns keep their current destination until the resolver is
--- explicitly run. New keyword campaigns start pending.
-UPDATE public.campaigns
-SET resolver_status = CASE WHEN keyword IS NULL THEN 'NOT_REQUIRED' ELSE 'READY' END,
-    resolved_target_url = CASE WHEN keyword IS NULL THEN NULL ELSE url END,
-    resolved_at = CASE WHEN keyword IS NULL THEN NULL ELSE COALESCE(resolved_at, updated_at) END
-WHERE resolver_status = 'NOT_REQUIRED';
 
 ALTER TABLE public.view_sessions
   DROP CONSTRAINT IF EXISTS view_sessions_keyword_check;
@@ -355,7 +354,7 @@ BEGIN
         p_duration_seconds, p_target_views, 0,
         v_advertiser_cost, v_total_cost, 0, v_total_cost,
         'ACTIVE',
-        CASE WHEN v_clean_keyword IS NULL THEN NULL ELSE NULL END,
+        NULL,
         v_resolver_status,
         NULL,
         1,
@@ -471,7 +470,6 @@ BEGIN
         )
     )::uuid;
 
-    -- Preferred pool: keyword campaigns are eligible only after server resolution.
     SELECT c.*
     INTO v_campaign
     FROM public.campaigns c
@@ -578,24 +576,13 @@ BEGIN
     END IF;
 
     INSERT INTO public.view_sessions(
-        campaign_id,
-        viewer_id,
-        keyword,
-        required_duration_seconds,
-        reward_coins,
-        status,
-        started_at,
-        created_at
+        campaign_id, viewer_id, keyword,
+        required_duration_seconds, reward_coins, status, started_at, created_at
     )
     VALUES(
-        v_campaign.id,
-        v_uid,
-        v_campaign.keyword,
-        v_campaign.duration_seconds,
-        v_price.viewer_reward,
-        'INITIALIZED',
-        pg_catalog.clock_timestamp(),
-        pg_catalog.clock_timestamp()
+        v_campaign.id, v_uid, v_campaign.keyword,
+        v_campaign.duration_seconds, v_price.viewer_reward,
+        'INITIALIZED', pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp()
     )
     RETURNING * INTO v_new_session;
 
