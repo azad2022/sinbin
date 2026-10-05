@@ -11,10 +11,17 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -34,7 +41,6 @@ import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.MonetizationOn
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -53,11 +59,21 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlin.math.max
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -368,52 +384,186 @@ private fun StartupScreen(
         modifier = Modifier.fillMaxSize(),
         color = androidx.compose.material3.MaterialTheme.colorScheme.background
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            contentAlignment = Alignment.Center
         ) {
             if (!isRetry) {
-                Spacer(modifier = Modifier.height(24.dp))
-                LinearProgressIndicator(
+                StartupLoadingBar(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp)
+                        .height(64.dp)
                 )
-                Spacer(modifier = Modifier.height(24.dp))
             } else {
-                Text(
-                    text = "اتصال به حساب برقرار نشد",
-                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "برای حفظ صحت موجودی و پاداش‌ها، بدون تأیید سرور وارد برنامه نمی‌شویم.",
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                if (BuildConfig.DEBUG && !message.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(16.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
-                        text = "جزئیات تشخیص:\n${message.trim().take(320)}",
-                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                        color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                        text = "اتصال به حساب برقرار نشد",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "برای حفظ صحت موجودی و پاداش‌ها، بدون تأیید سرور وارد برنامه نمی‌شویم.",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
-                }
-                Spacer(modifier = Modifier.height(20.dp))
-                Button(
-                    onClick = onRetry,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("تلاش دوباره")
+                    if (BuildConfig.DEBUG && !message.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "جزئیات تشخیص:\n${message.trim().take(320)}",
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Button(
+                        onClick = onRetry,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("تلاش دوباره")
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StartupLoadingBar(
+    modifier: Modifier = Modifier
+) {
+    var progress = androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0.06f) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val startedAt = android.os.SystemClock.elapsedRealtime()
+        while (true) {
+            val elapsedSeconds =
+                (android.os.SystemClock.elapsedRealtime() - startedAt) / 1000f
+            // Time-based visual progress: it advances while initialization is in flight,
+            // but intentionally never claims 100% before the real server state becomes Ready.
+            val eased = 1f - kotlin.math.exp(-elapsedSeconds / 3.2f)
+            progress.floatValue = (0.06f + eased * 0.90f).coerceAtMost(0.96f)
+            kotlinx.coroutines.delay(32L)
+        }
+    }
+
+    val stripeTransition = rememberInfiniteTransition(label = "startup_loader_stripes")
+    val stripeOffset by stripeTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 40f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "startup_loader_stripe_offset"
+    )
+
+    Canvas(
+        modifier = modifier
+            .clipToBounds()
+    ) {
+        val trackHeight = 14.dp.toPx()
+        val radius = trackHeight / 2f
+        val top = (size.height - trackHeight) / 2f
+        val left = 2.dp.toPx()
+        val right = size.width - 2.dp.toPx()
+        val trackWidth = max(0f, right - left)
+        val fillRight = left + trackWidth * progress.floatValue.coerceIn(0f, 1f)
+
+        drawRoundRect(
+            color = Color(0xFF07182E),
+            topLeft = Offset(left, top),
+            size = androidx.compose.ui.geometry.Size(trackWidth, trackHeight),
+            cornerRadius = CornerRadius(radius, radius)
+        )
+
+        val fillPath = Path().apply {
+            addRoundRect(
+                RoundRect(
+                    rect = Rect(
+                        left = left,
+                        top = top,
+                        right = fillRight,
+                        bottom = top + trackHeight
+                    ),
+                    cornerRadius = CornerRadius(radius, radius)
+                )
+            )
+        }
+
+        clipPath(fillPath) {
+            drawRoundRect(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF27E6FF),
+                        Color(0xFF4DA3FF),
+                        Color(0xFF7A5CFF),
+                        Color(0xFFB44CFF)
+                    ),
+                    start = Offset(left, top),
+                    end = Offset(right, top + trackHeight)
+                ),
+                topLeft = Offset(left, top),
+                size = androidx.compose.ui.geometry.Size(
+                    max(0f, fillRight - left),
+                    trackHeight
+                ),
+                cornerRadius = CornerRadius(radius, radius)
+            )
+
+            val stripeWidth = 8.dp.toPx()
+            val stripeStep = 28.dp.toPx()
+            var x = left - trackHeight * 2f - stripeStep + stripeOffset
+
+            while (x < fillRight + trackHeight * 2f) {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.13f),
+                    start = Offset(x, top + trackHeight * 1.65f),
+                    end = Offset(x + trackHeight * 1.65f, top - trackHeight * 0.65f),
+                    strokeWidth = stripeWidth,
+                    cap = StrokeCap.Butt
+                )
+                x += stripeStep
+            }
+        }
+
+        val indicatorX = fillRight
+        val indicatorY = top - 17.dp.toPx()
+
+        drawCircle(
+            color = Color(0xFF43C8FF).copy(alpha = 0.13f),
+            radius = 15.dp.toPx(),
+            center = Offset(indicatorX, indicatorY)
+        )
+        drawCircle(
+            color = Color(0xFF43C8FF).copy(alpha = 0.22f),
+            radius = 9.dp.toPx(),
+            center = Offset(indicatorX, indicatorY)
+        )
+        drawLine(
+            color = Color(0xFF49D6FF).copy(alpha = 0.75f),
+            start = Offset(indicatorX, indicatorY + 7.dp.toPx()),
+            end = Offset(indicatorX, top - 1.dp.toPx()),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+        drawCircle(
+            color = Color(0xFF7BE7FF),
+            radius = 4.5.dp.toPx(),
+            center = Offset(indicatorX, indicatorY)
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = 0.85f),
+            radius = 1.45.dp.toPx(),
+            center = Offset(indicatorX - 1.dp.toPx(), indicatorY - 1.3.dp.toPx())
+        )
     }
 }
 
