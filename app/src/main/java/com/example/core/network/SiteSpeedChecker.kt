@@ -36,12 +36,16 @@ object SiteSpeedChecker {
 
     suspend fun check(rawUrl: String): Result<SiteSpeedResult> {
         val validation = UrlSecurityPolicy.evaluateUrl(rawUrl)
-        if (validation is PolicyResult.Blocked) {
-            return Result.failure(IllegalArgumentException(validation.reason))
-        }
+        val allowed = validation as? PolicyResult.Allowed
+            ?: return Result.failure(
+                IllegalArgumentException(
+                    (validation as? PolicyResult.Blocked)?.reason
+                        ?: "آدرس وب‌سایت قابل بررسی نیست."
+                )
+            )
 
         val request = Request.Builder()
-            .url(rawUrl.trim())
+            .url(allowed.normalizedUrl)
             .get()
             .header("Accept", "text/html,application/xhtml+xml,*/*;q=0.8")
             .header("Cache-Control", "no-cache")
