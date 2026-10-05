@@ -102,6 +102,7 @@ fun ViewerScreen(
     var showReportDialog by remember { mutableStateOf(false) }
     var pageErrorMsg by remember { mutableStateOf<String?>(null) }
     var isPageLoading by remember { mutableStateOf(true) }
+    var reloadAttempt by remember { mutableStateOf(0) }
 
     LaunchedEffect(viewerState, autoViewEnabled, autoAdvanceCancelled) {
         if (viewerState is ViewerState.Completed && autoViewEnabled && !autoAdvanceCancelled) {
@@ -117,6 +118,13 @@ fun ViewerScreen(
         is ViewerState.Viewing -> viewerState.session
         is ViewerState.Completed -> viewerState.session
         else -> null
+    }
+
+    // Reset the retry counter for every new authoritative viewing session and
+    // explicitly put the loading overlay back into the loading state.
+    LaunchedEffect(currentSession?.id) {
+        reloadAttempt = 0
+        isPageLoading = currentSession != null
     }
 
     // A slow destination must not keep the viewer waiting indefinitely. The session is
@@ -273,7 +281,7 @@ fun ViewerScreen(
             if (currentSession != null) {
                 SafeWebView(
                     url = currentSession.targetUrl,
-                    contentKey = currentSession.id,
+                    contentKey = currentSession.id + ":" + reloadAttempt,
                     onPageStarted = {
                         isPageLoading = true
                         pageErrorMsg = null
@@ -352,7 +360,13 @@ fun ViewerScreen(
                             OutlinedButton(onClick = onSkip) {
                                 Text("رد کردن سایت")
                             }
-                            Button(onClick = { pageErrorMsg = null }) {
+                            Button(
+                                onClick = {
+                                    pageErrorMsg = null
+                                    isPageLoading = true
+                                    reloadAttempt += 1
+                                }
+                            ) {
                                 Text("تلاش مجدد")
                             }
                         }
