@@ -477,6 +477,35 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun preflightUserMessage(error: Throwable): String {
+        val message = error.message?.trim().orEmpty()
+
+        return when {
+            error is java.net.UnknownHostException ->
+                "آدرس وب‌سایت پیدا نشد. دامنه را بررسی کنید."
+            error is java.net.SocketTimeoutException ->
+                "پاسخ وب‌سایت بیش از حد طول کشید. لطفاً دوباره تلاش کنید."
+            error is javax.net.ssl.SSLException ->
+                "ارتباط امن با وب‌سایت برقرار نشد. گواهی SSL سایت را بررسی کنید."
+            error is java.net.ConnectException ->
+                "ارتباط با وب‌سایت برقرار نشد. لطفاً آدرس و وضعیت سایت را بررسی کنید."
+            message.contains("Expected URL scheme", ignoreCase = true) ||
+                message.contains("Malformed URL", ignoreCase = true) ||
+                message.contains("Illegal character", ignoreCase = true) ->
+                "آدرس وب‌سایت قابل بررسی نیست. لطفاً یک آدرس معتبر HTTPS وارد کنید."
+            message.startsWith("INVALID_URL:", ignoreCase = true) ->
+                message.substringAfter(":", message).trim().ifBlank {
+                    "آدرس وب‌سایت معتبر نیست. لطفاً یک آدرس HTTPS وارد کنید."
+                }
+            message.startsWith("UNSAFE_TARGET:", ignoreCase = true) ->
+                message.substringAfter(":", message).trim().ifBlank {
+                    "این آدرس برای حفظ امنیت قابل استفاده نیست."
+                }
+            else ->
+                "بررسی وب‌سایت در حال حاضر انجام نشد. لطفاً چند لحظه دیگر دوباره تلاش کنید."
+        }
+    }
+
     private fun scheduleWebsitePreflight(url: String) {
         websitePreflightJob = viewModelScope.launch {
             delay(650L)
@@ -493,9 +522,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 _websitePreflightState.value = when (error) {
                     is RateLimitException -> WebsitePreflightState.RateLimited(error.retryAfterSeconds)
                     else -> WebsitePreflightState.Failed(
-                        error.message?.substringAfter(": ", error.message ?: "بررسی سایت ناموفق بود.")
-                            ?.ifBlank { "بررسی سایت ناموفق بود." }
-                            ?: "بررسی سایت ناموفق بود."
+                        preflightUserMessage(error)
                     )
                 }
             }
@@ -523,9 +550,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             _websitePreflightState.value = when (it) {
                 is RateLimitException -> WebsitePreflightState.RateLimited(it.retryAfterSeconds)
                 else -> WebsitePreflightState.Failed(
-                    it.message?.substringAfter(": ", it.message ?: "بررسی سایت ناموفق بود.")
-                        ?.ifBlank { "بررسی سایت ناموفق بود." }
-                        ?: "بررسی سایت ناموفق بود."
+                    preflightUserMessage(it)
                 )
             }
         }
