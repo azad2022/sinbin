@@ -71,6 +71,15 @@ class SupabaseApiClient(
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
+    // The Edge Function itself has a 6s server-side fetch deadline. Keep the client
+    // bounded as well so a stalled function/network path cannot leave the UI hanging
+    // for the generic 20s REST read timeout.
+    private val preflightHttpClient = httpClient.newBuilder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .callTimeout(12, TimeUnit.SECONDS)
+        .build()
+
     private val prefs by lazy {
         context?.getSharedPreferences("sitebin_supabase_session", Context.MODE_PRIVATE)
     }
@@ -426,7 +435,7 @@ class SupabaseApiClient(
                     .post(body)
                     .build()
 
-                httpClient.newCall(request).execute().use { response ->
+                preflightHttpClient.newCall(request).execute().use { response ->
                     return Triple(response.code, response.body?.string().orEmpty(), response.header("Retry-After"))
                 }
             }
