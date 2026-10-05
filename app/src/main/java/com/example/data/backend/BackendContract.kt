@@ -1,6 +1,7 @@
 package com.example.data.backend
 
 import com.example.data.model.AutoViewActivationResult
+import com.example.data.backend.DeviceEvidence
 import com.example.data.model.AutoViewStatus
 import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
@@ -59,8 +60,19 @@ interface ServerAuthoritativeEngine {
     /** Fetch server-authoritative duration pricing matrix dynamically from database */
     suspend fun fetchDurationPricing(): Result<List<DurationOption>> = Result.success(durationOptions)
 
-    /** Initialize account with server identity and grant exactly one welcome bonus */
-    suspend fun initAccount(installId: String, handle: String? = null): Result<UserAccount>
+    /**
+     * Initialize application account and submit platform device evidence.
+     * Eligibility is always decided server-side; installId is not a trust root.
+     */
+    suspend fun initAccount(
+        evidence: DeviceEvidence,
+        handle: String? = null
+    ): Result<UserAccount>
+
+    /** Legacy compatibility path. The server intentionally receives no strong evidence here,
+     * so legacy clients can initialize an account but cannot mint a new welcome bonus. */
+    suspend fun initAccount(installId: String, handle: String? = null): Result<UserAccount> =
+        initAccount(DeviceEvidence(installId = installId), handle)
 
     /** Fetch latest server-authoritative account state */
     suspend fun fetchAccount(userId: String): Result<UserAccount>
