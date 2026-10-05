@@ -215,6 +215,59 @@ BEGIN
     RAISE EXCEPTION 'TEST_AMOUNT_FAILED: amount parameter overload exists';
   END IF;
 
+  -- Legacy reinstall regression: existing account gets a new install_id but the
+  -- first strong evidence is attached to its already-claimed identity. A new Auth
+  -- user with the same device evidence must still receive zero welcome coins.
+  v_existing_300 := (
+    SELECT user_id
+    FROM public.welcome_bonus_grants
+    WHERE amount=300
+    ORDER BY granted_at
+    LIMIT 1
+  );
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub',v_existing_300::text,'role','authenticated','is_anonymous',false)::text,
+    true
+  );
+
+  SELECT public.init_user_account(
+    'brand_new_install_after_reinstall_' || v_tag,
+    NULL,
+    'abcdef1234567890',
+    '823e4567-e89b-42d3-a456-426614174000',
+    'DEVELOPER',
+    repeat('5',64)
+  ) INTO v_profile;
+
+  v_uid := gen_random_uuid();
+  INSERT INTO auth.users(id,aud,role,email,created_at,updated_at,is_sso_user,is_anonymous)
+  VALUES(
+    v_uid,'authenticated','authenticated',
+    'sitebin_legacy_attacker_'||replace(v_uid::text,'-','')||'@sitebin.internal',
+    clock_timestamp(),clock_timestamp(),false,false
+  );
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
+    true
+  );
+
+  SELECT public.init_user_account(
+    'attacker_new_install_after_reinstall_' || v_tag,
+    NULL,
+    'abcdef1234567890',
+    '823e4567-e89b-42d3-a456-426614174000',
+    'DEVELOPER',
+    repeat('6',64)
+  ) INTO v_profile;
+
+  IF (v_profile->>'available_coins')::bigint <> 0 THEN
+    RAISE EXCEPTION 'LEGACY_REINSTALL_FAILED: attacker received % coins',v_profile->>'available_coins';
+  END IF;
+
   -- Tests 16/17: historical 150-coin and 300-coin users must not be reminted.
   SELECT user_id INTO v_existing_150
   FROM public.welcome_bonus_grants
