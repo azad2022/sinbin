@@ -284,6 +284,9 @@ BEGIN
     END IF;
 
     v_clean_install := NULLIF(pg_catalog.btrim(COALESCE(p_install_id, '')), '');
+    IF v_clean_install IS NULL THEN
+        v_clean_install := 'server_' || v_uid::text;
+    END IF;
 
     IF v_clean_install IS NOT NULL AND pg_catalog.length(v_clean_install) > 256 THEN
         v_clean_install := pg_catalog.left(v_clean_install, 256);
