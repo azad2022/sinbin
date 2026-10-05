@@ -1,0 +1,1 @@
+-- Historical migration marker. Null install IDs are handled in the canonical device identity RPC.
