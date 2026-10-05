@@ -448,7 +448,7 @@ private fun StartupLoadingBar(
                 (android.os.SystemClock.elapsedRealtime() - startedAt) / 1000f
             // Time-based visual progress: it advances while initialization is in flight,
             // but intentionally never claims 100% before the real server state becomes Ready.
-            val eased = 1f - kotlin.math.exp(-elapsedSeconds / 3.2f)
+            val eased = (1.0 - kotlin.math.exp((-elapsedSeconds / 3.2f).toDouble())).toFloat()
             progress.floatValue = (0.06f + eased * 0.90f).coerceAtMost(0.96f)
             kotlinx.coroutines.delay(32L)
         }
