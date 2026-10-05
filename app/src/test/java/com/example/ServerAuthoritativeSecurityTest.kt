@@ -34,24 +34,24 @@ class ServerAuthoritativeSecurityTest {
 
         assertTrue(result.isSuccess)
         val account = result.getOrThrow()
-        assertEquals(150L, account.availableCoins)
-        assertEquals(150L, account.lifetimeEarned)
+        assertEquals(300L, account.availableCoins)
+        assertEquals(300L, account.lifetimeEarned)
         assertEquals(0L, account.reservedCoins)
 
         val txs = engine.fetchTransactions(account.userId).getOrThrow()
         assertEquals(1, txs.size)
-        assertEquals(150L, txs[0].amount)
+        assertEquals(300L, txs[0].amount)
     }
 
     @Test
     fun testWelcomeBonus_repeatedInitializationGivesNoSecondBonus() = runBlocking {
         val installId = "inst_test_2"
         val first = engine.initAccount(installId, handle = "user_beta").getOrThrow()
-        assertEquals(150L, first.availableCoins)
+        assertEquals(300L, first.availableCoins)
 
         // Simulate app restart / repeated initialization
         val second = engine.initAccount(installId, handle = "user_beta").getOrThrow()
-        assertEquals(150L, second.availableCoins)
+        assertEquals(300L, second.availableCoins)
 
         val txs = engine.fetchTransactions(second.userId).getOrThrow()
         // Must remain exactly 1 transaction
@@ -62,11 +62,11 @@ class ServerAuthoritativeSecurityTest {
     fun testWelcomeBonus_reinstallWithSameIdentityGivesNoSecondBonus() = runBlocking {
         val userHandle = "user_gamma"
         val firstInstall = engine.initAccount("inst_device_1", handle = userHandle).getOrThrow()
-        assertEquals(150L, firstInstall.availableCoins)
+        assertEquals(300L, firstInstall.availableCoins)
 
         // User reinstalls app (new installId, but links to same server identity)
         val secondInstall = engine.initAccount("inst_device_2", handle = userHandle).getOrThrow()
-        assertEquals(150L, secondInstall.availableCoins)
+        assertEquals(300L, secondInstall.availableCoins)
 
         val txs = engine.fetchTransactions(userHandle).getOrThrow()
         assertEquals(1, txs.size)
@@ -76,7 +76,7 @@ class ServerAuthoritativeSecurityTest {
     fun testWelcomeBonus_sameInstallIdCannotRegisterSecondAccount() = runBlocking {
         val sharedInstallId = "device_hardware_uuid_999"
         val firstAccount = engine.initAccount(sharedInstallId, handle = "user_first").getOrThrow()
-        assertEquals(150L, firstAccount.availableCoins)
+        assertEquals(300L, firstAccount.availableCoins)
 
         // Attempting to farm welcome bonus by creating a second account with same device install ID must be rejected
         val secondAccountResult = engine.initAccount(sharedInstallId, handle = "user_attacker")
@@ -98,7 +98,7 @@ class ServerAuthoritativeSecurityTest {
     @Test
     fun testCampaign_insufficientCoinsRejected() = runBlocking {
         val account = engine.initAccount("inst_camp_1", handle = "user_camp_1").getOrThrow()
-        // Welcome bonus is 150 coins. Let's request a campaign needing 1400 coins (100 views * 14 coins)
+        // Welcome bonus is 300 coins. Let's request a campaign needing 1400 coins (100 views * 14 coins)
         val result = engine.createCampaign(
             url = "https://example.com",
             normalizedUrl = "https://example.com",
@@ -113,7 +113,7 @@ class ServerAuthoritativeSecurityTest {
 
         // Balance must remain intact
         val refetched = engine.fetchAccount(account.userId).getOrThrow()
-        assertEquals(150L, refetched.availableCoins)
+        assertEquals(300L, refetched.availableCoins)
         assertEquals(0L, refetched.reservedCoins)
     }
 
@@ -136,7 +136,7 @@ class ServerAuthoritativeSecurityTest {
         assertEquals(CampaignStatus.ACTIVE, campaign.status)
 
         val refetched = engine.fetchAccount(account.userId).getOrThrow()
-        assertEquals(10L, refetched.availableCoins) // 150 - 140
+        assertEquals(160L, refetched.availableCoins) // 300 - 140
         assertEquals(140L, refetched.reservedCoins)
 
         val txs = engine.fetchTransactions(account.userId).getOrThrow()
@@ -161,7 +161,7 @@ class ServerAuthoritativeSecurityTest {
         assertTrue(result.exceptionOrNull()?.message?.contains("INVALID_KEYWORD") == true)
 
         val account = engine.fetchAccount("keyword_user").getOrThrow()
-        assertEquals(150L, account.availableCoins)
+        assertEquals(300L, account.availableCoins)
         assertEquals(0L, account.reservedCoins)
     }
 
@@ -256,7 +256,7 @@ class ServerAuthoritativeSecurityTest {
         assertEquals(3L, completion.reward) // 5s duration reward = 3 coins
         assertEquals(initialBalance + completion.reward, completion.availableCoins)
         assertEquals(1, completion.completedViewsCount)
-        assertEquals(150L + completion.reward, completion.lifetimeEarned)
+        assertEquals(300L + completion.reward, completion.lifetimeEarned)
         assertTrue(!completion.alreadyCompleted)
 
         val refetchedViewer = engine.fetchAccount(viewer.userId).getOrThrow()
@@ -537,10 +537,10 @@ class ServerAuthoritativeSecurityTest {
 
     @Test
     fun testConcurrency_twoSimultaneousCampaignCreationsCannotOverspend() = runBlocking {
-        // User has 150 coins.
-        // We attempt 2 simultaneous campaign creations each demanding 140 coins (Total = 280 > 150)
+        // User has 300 coins.
+        // We attempt 2 simultaneous campaign creations each demanding 280 coins (Total = 560 > 300)
         val user = engine.initAccount("inst_overspend", handle = "user_overspend").getOrThrow()
-        assertEquals(150L, user.availableCoins)
+        assertEquals(300L, user.availableCoins)
 
         val task1 = async {
             engine.createCampaign(
@@ -548,7 +548,7 @@ class ServerAuthoritativeSecurityTest {
                 normalizedUrl = "https://site1.com",
                 domain = "site1.com",
                 durationSeconds = 15,
-                targetViews = 10 // 140 coins
+                targetViews = 20 // 280 coins
             )
         }
         val task2 = async {
