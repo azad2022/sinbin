@@ -403,6 +403,38 @@ BEGIN
        OR (v_install_fp IS NOT NULL AND di.installation_key_fingerprint = v_install_fp)
        OR (v_legacy_install_hmac IS NOT NULL AND di.legacy_install_id_hmac = v_legacy_install_hmac);
 
+    -- Existing legacy accounts may reinstall and generate a new install_id.
+    -- When no strong signal has ever been associated with their legacy entitlement,
+    -- bind the newly observed strong evidence to that existing device identity.
+    -- This prevents a second Auth user on the same physical device from finding
+    -- an unclaimed "new" identity after the first legacy user reinstalls.
+    IF v_user_has_grant
+       AND v_device_ids_found = 0
+       AND v_android_hmac IS NOT NULL THEN
+        SELECT di.id
+        INTO v_device_id
+        FROM private.device_identities di
+        JOIN private.welcome_bonus_entitlements e
+          ON e.device_identity_id = di.id
+        WHERE e.beneficiary_auth_uid = v_uid
+          AND di.android_id_hmac IS NULL
+          AND di.app_set_id_hmac IS NULL
+          AND di.installation_key_fingerprint IS NULL
+        LIMIT 1
+        FOR UPDATE;
+
+        IF v_device_id IS NOT NULL THEN
+            UPDATE private.device_identities
+            SET android_id_hmac = v_android_hmac,
+                app_set_id_hmac = COALESCE(v_app_set_hmac, app_set_id_hmac),
+                app_set_scope = COALESCE(v_app_set_scope, app_set_scope),
+                installation_key_fingerprint = COALESCE(v_install_hmac, installation_key_fingerprint),
+                last_seen_at = clock_timestamp(),
+                current_auth_uid = v_uid
+            WHERE id = v_device_id;
+        END IF;
+    END IF;
+
     IF v_device_ids_found > 1 THEN
         v_risk_level := 'HIGH';
         v_risk_score := 100;
