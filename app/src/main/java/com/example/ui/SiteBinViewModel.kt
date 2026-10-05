@@ -5,6 +5,8 @@ import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.BuildConfig
+import com.example.core.network.SiteSpeedChecker
+import com.example.core.network.SiteSpeedLevel
 import com.example.core.security.PolicyResult
 import com.example.core.security.UrlSecurityPolicy
 import com.example.data.model.Campaign
@@ -29,6 +31,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
 
 enum class AppScreen {
@@ -52,6 +56,17 @@ sealed class ViewerState {
     data class Completed(val session: ViewSession, val rewardEarned: Long) : ViewerState()
     data class Blocked(val rawUrl: String, val reason: String) : ViewerState()
     data class Error(val message: String) : ViewerState()
+}
+
+sealed interface WebsiteSpeedCheckState {
+    data object Idle : WebsiteSpeedCheckState
+    data object Checking : WebsiteSpeedCheckState
+    data class Completed(
+        val level: SiteSpeedLevel,
+        val elapsedMs: Long
+    ) : WebsiteSpeedCheckState
+    data class TimedOut(val elapsedMs: Long) : WebsiteSpeedCheckState
+    data class Failed(val message: String) : WebsiteSpeedCheckState
 }
 
 class SiteBinViewModel(application: Application) : AndroidViewModel(application) {
@@ -197,6 +212,10 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     val targetViewsInput = MutableStateFlow(100)
     val urlError = MutableStateFlow<String?>(null)
     val isSubmittingCampaign = MutableStateFlow(false)
+
+    private var websiteSpeedCheckJob: Job? = null
+    private val _websiteSpeedState = MutableStateFlow<WebsiteSpeedCheckState>(WebsiteSpeedCheckState.Idle)
+    val websiteSpeedState: StateFlow<WebsiteSpeedCheckState> = _websiteSpeedState.asStateFlow()
 
     // Viewer Timer State
     private var timerJob: Job? = null
@@ -445,15 +464,50 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     fun onUrlChanged(newUrl: String) {
         urlInput.value = newUrl
+        websiteSpeedCheckJob?.cancel()
+        websiteSpeedCheckJob = null
+        _websiteSpeedState.value = WebsiteSpeedCheckState.Idle
+
         if (newUrl.isNotBlank()) {
             val check = UrlSecurityPolicy.evaluateUrl(newUrl)
             if (check is PolicyResult.Blocked) {
                 urlError.value = check.reason
             } else {
                 urlError.value = null
+                scheduleWebsiteSpeedCheck(newUrl.trim())
             }
         } else {
             urlError.value = null
+        }
+    }
+
+    private fun scheduleWebsiteSpeedCheck(url: String) {
+        websiteSpeedCheckJob = viewModelScope.launch {
+            delay(650L)
+            if (urlInput.value.trim() != url) return@launch
+
+            _websiteSpeedState.value = WebsiteSpeedCheckState.Checking
+            val result = SiteSpeedChecker.check(url)
+
+            if (urlInput.value.trim() != url) return@launch
+
+            result.onSuccess { speed ->
+                _websiteSpeedState.value = WebsiteSpeedCheckState.Completed(
+                    level = SiteSpeedChecker.classify(speed.elapsedMs),
+                    elapsedMs = speed.elapsedMs
+                )
+            }.onFailure { error ->
+                if (error is InterruptedIOException ||
+                    error is SocketTimeoutException ||
+                    error.message?.contains("timeout", ignoreCase = true) == true
+                ) {
+                    _websiteSpeedState.value = WebsiteSpeedCheckState.TimedOut(7_000L)
+                } else {
+                    _websiteSpeedState.value = WebsiteSpeedCheckState.Failed(
+                        "سرعت پاسخ سایت قابل بررسی نبود."
+                    )
+                }
+            }
         }
     }
 
