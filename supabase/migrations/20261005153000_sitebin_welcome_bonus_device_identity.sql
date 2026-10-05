@@ -375,7 +375,7 @@ BEGIN
     -- different strong signals point at different known device identities.
     SELECT
       count(DISTINCT di.id),
-      min(di.id)
+      min(di.id::text)::uuid
     INTO
       v_device_ids_found,
       v_device_id
@@ -494,7 +494,7 @@ BEGIN
         IF v_device_id IS NULL THEN
             SELECT
               count(DISTINCT di.id),
-              min(di.id)
+              min(di.id::text)::uuid
             INTO
               v_device_ids_found,
               v_device_id
