@@ -67,6 +67,8 @@ import com.example.ui.theme.SiteBinGold
 import com.example.ui.theme.SiteBinSuccess
 import kotlinx.coroutines.delay
 
+internal const val VIEWER_PAGE_LOAD_TIMEOUT_MS = 6_000L
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewerScreen(
@@ -81,11 +83,14 @@ fun ViewerScreen(
     modifier: Modifier = Modifier
 ) {
     var showExitConfirmDialog by remember { mutableStateOf(false) }
+    var autoAdvanceCancelled by remember { mutableStateOf(false) }
 
     val handleBackPress = {
         if (viewerState is ViewerState.Viewing) {
             showExitConfirmDialog = true
         } else {
+            // Explicit user navigation must win over a pending automatic advance.
+            autoAdvanceCancelled = true
             onBack()
         }
     }
@@ -98,10 +103,12 @@ fun ViewerScreen(
     var pageErrorMsg by remember { mutableStateOf<String?>(null) }
     var isPageLoading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(viewerState, autoViewEnabled) {
-        if (viewerState is ViewerState.Completed && autoViewEnabled) {
+    LaunchedEffect(viewerState, autoViewEnabled, autoAdvanceCancelled) {
+        if (viewerState is ViewerState.Completed && autoViewEnabled && !autoAdvanceCancelled) {
             delay(1600)
-            onNextSite()
+            if (!autoAdvanceCancelled) {
+                onNextSite()
+            }
         }
     }
 
@@ -110,6 +117,23 @@ fun ViewerScreen(
         is ViewerState.Viewing -> viewerState.session
         is ViewerState.Completed -> viewerState.session
         else -> null
+    }
+
+    // A slow destination must not keep the viewer waiting indefinitely. The session is
+    // cancelled through the authoritative ViewModel path and the next site is requested.
+    LaunchedEffect(currentSession?.id, isPageLoading) {
+        val loadingSessionId = currentSession?.id ?: return@LaunchedEffect
+        if (!isPageLoading || viewerState is ViewerState.Completed) return@LaunchedEffect
+
+        delay(VIEWER_PAGE_LOAD_TIMEOUT_MS)
+        if (
+            isPageLoading &&
+            currentSession?.id == loadingSessionId &&
+            viewerState is ViewerState.Loading
+        ) {
+            pageErrorMsg = null
+            onSkip()
+        }
     }
 
     Column(
@@ -604,6 +628,7 @@ fun ViewerScreen(
                 Button(
                     onClick = {
                         showExitConfirmDialog = false
+                        autoAdvanceCancelled = true
                         onBack()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)

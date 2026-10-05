@@ -34,7 +34,7 @@ import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.MonetizationOn
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -376,20 +376,13 @@ private fun StartupScreen(
             verticalArrangement = Arrangement.Center
         ) {
             if (!isRetry) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(20.dp))
-                Text(
-                    text = "در حال آماده‌سازی حساب شما…",
-                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                Spacer(modifier = Modifier.height(24.dp))
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "ارتباط امن با سرور و دریافت موجودی حساب در حال بررسی است.",
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
+                Spacer(modifier = Modifier.height(24.dp))
             } else {
                 Text(
                     text = "اتصال به حساب برقرار نشد",
