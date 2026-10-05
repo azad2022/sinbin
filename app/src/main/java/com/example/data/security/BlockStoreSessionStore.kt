@@ -6,7 +6,7 @@ import com.google.android.gms.auth.blockstore.DeleteBytesRequest
 import com.google.android.gms.auth.blockstore.RetrieveBytesRequest
 import com.google.android.gms.auth.blockstore.StoreBytesData
 import com.google.android.gms.tasks.Tasks
-import org.json.JSONObject
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 /**
@@ -23,23 +23,26 @@ class BlockStoreSessionStore(
         private const val VERSION = 1
         private const val TIMEOUT_SECONDS = 5L
 
+        private fun encodeField(value: String): String =
+            Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray(Charsets.UTF_8))
+
+        private fun decodeField(value: String): String =
+            String(Base64.getUrlDecoder().decode(value), Charsets.UTF_8)
+
         internal fun encode(refreshToken: String, userId: String?): ByteArray =
-            JSONObject()
-                .put("version", VERSION)
-                .put("refresh_token", refreshToken)
-                .put("user_id", userId ?: JSONObject.NULL)
-                .toString()
-                .toByteArray(Charsets.UTF_8)
+            buildString {
+                append(VERSION).append('\n')
+                append(encodeField(refreshToken)).append('\n')
+                append(userId?.let(::encodeField) ?: "")
+            }.toByteArray(Charsets.UTF_8)
 
         internal fun decode(bytes: ByteArray): Session? = runCatching {
-            val json = JSONObject(String(bytes, Charsets.UTF_8))
-            if (json.optInt("version", 0) != VERSION) return@runCatching null
-            val refreshToken = json.optString("refresh_token").trim()
+            val parts = String(bytes, Charsets.UTF_8).split('\n', limit = 3)
+            if (parts.size != 3 || parts[0].toIntOrNull() != VERSION) return@runCatching null
+            val refreshToken = decodeField(parts[1]).trim()
             if (refreshToken.isBlank()) return@runCatching null
-            Session(
-                refreshToken = refreshToken,
-                userId = json.optString("user_id").takeIf { it.isNotBlank() }
-            )
+            val userId = parts[2].takeIf { it.isNotBlank() }?.let(::decodeField)
+            Session(refreshToken = refreshToken, userId = userId)
         }.getOrNull()
     }
 
