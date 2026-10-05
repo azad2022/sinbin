@@ -226,6 +226,11 @@ async function fetchHtml(url: string, origin: string): Promise<{
         },
       });
 
+      // Measure time to the final response headers (TTFB-like latency), not time spent
+      // streaming the diagnostic body. Otherwise larger HTML responses are incorrectly
+      // scored as slower websites.
+      const responseMs = Math.max(0, Math.round(performance.now() - startedAt));
+
       if (response.status >= 300 && response.status < 400) {
         if (redirects >= MAX_REDIRECTS) {
           throw new Error("REDIRECT_LIMIT: تعداد تغییر مسیرهای وب‌سایت بیش از حد مجاز است.");
@@ -250,7 +255,6 @@ async function fetchHtml(url: string, origin: string): Promise<{
         continue;
       }
 
-      const responseMs = Math.max(0, Math.round(performance.now() - startedAt));
       const contentType = response.headers.get("content-type");
       const contentDisposition = response.headers.get("content-disposition");
       const rawLength = response.headers.get("content-length");
