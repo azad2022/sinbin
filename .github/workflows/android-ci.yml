@@ -189,3 +189,4 @@ jobs:
         run: rm -f "$KEYSTORE_PATH"
 
 # Production release workflow is intentionally gated by an explicit release commit or manual dispatch.
+# Release trigger marker: final production artifact verification.
