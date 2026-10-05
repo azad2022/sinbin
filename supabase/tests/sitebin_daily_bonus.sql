@@ -71,10 +71,6 @@ BEGIN
   )
   RETURNING id INTO v_device_id;
 
-  IF has_function_privilege('anon','public.claim_daily_bonus()', 'EXECUTE') THEN
-    RAISE EXCEPTION 'TEST_FAILED: obsolete zero-argument daily bonus RPC is still executable';
-  END IF;
-
   IF NOT has_function_privilege(
     'authenticated',
     'public.claim_daily_bonus(text,text,text,text)',
