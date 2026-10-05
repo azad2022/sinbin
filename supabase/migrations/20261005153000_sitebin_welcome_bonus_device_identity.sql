@@ -204,7 +204,7 @@ FROM public.welcome_bonus_grants g
 WHERE g.install_id IS NOT NULL
   AND pg_catalog.btrim(g.install_id) <> ''
 GROUP BY g.install_id, g.user_id
-ON CONFLICT (legacy_install_id_hmac) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 INSERT INTO private.welcome_bonus_entitlements(
   device_identity_id,
