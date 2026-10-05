@@ -6,10 +6,13 @@ const MAX_HTML_BYTES = 1_000_000;
 const FETCH_TIMEOUT_MS = 6_000;
 const MAX_LINKS_FROM_PAGE = 40;
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status: number = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    },
   });
 }
 
@@ -30,7 +33,7 @@ function normalizeText(value: string): string {
 function tokenize(value: string): string[] {
   return normalizeText(value)
     .split(/[^\p{L}\p{N}]+/u)
-    .filter((x) => x.length >= 2);
+    .filter((token) => token.length >= 2);
 }
 
 function decodeHtml(value: string): string {
@@ -48,21 +51,20 @@ function decodeHtml(value: string): string {
 function stripHtml(value: string): string {
   return decodeHtml(
     value
-      .replace(/<script[\\s\\S]*?<\\/script>/gi, " ")
-      .replace(/<style[\\s\\S]*?<\\/style>/gi, " ")
-      .replace(/<noscript[\\s\\S]*?<\\/noscript>/gi, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
       .replace(/<[^>]+>/g, " "),
-  ).replace(/\\s+/g, " ").trim();
+  ).replace(/\s+/g, " ").trim();
 }
 
 function extractFirst(html: string, regex: RegExp): string {
-  const match = regex.exec(html);
-  return decodeHtml(match?.[1] ?? "").trim();
+  return decodeHtml(regex.exec(html)?.[1] ?? "").trim();
 }
 
 function extractAnchors(html: string, baseUrl: string, origin: string): string[] {
   const urls = new Set<string>();
-  const re = /<a\\b[^>]*href\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))/gi;
+  const re = /<a\b[^>]*href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
   let match: RegExpExecArray | null;
 
   while ((match = re.exec(html)) !== null && urls.size < MAX_LINKS_FROM_PAGE) {
@@ -70,14 +72,13 @@ function extractAnchors(html: string, baseUrl: string, origin: string): string[]
     if (!href || href.startsWith("#")) continue;
 
     try {
-      const u = new URL(href, baseUrl);
-      if (u.protocol !== "https:" || u.origin !== origin) continue;
-      u.hash = "";
-      const pathname = u.pathname.toLowerCase();
-      if (/\\.(apk|exe|dmg|zip|rar|7z|pdf|docx?|xlsx?|pptx?|mp4|mp3)(?:$|\\?)/i.test(pathname)) continue;
-      urls.add(u.toString());
+      const url = new URL(href, baseUrl);
+      if (url.protocol !== "https:" || url.origin !== origin) continue;
+      url.hash = "";
+      if (/\.(apk|exe|dmg|zip|rar|7z|pdf|docx?|xlsx?|pptx?|mp4|mp3)(?:$|\?)/i.test(url.pathname)) continue;
+      urls.add(url.toString());
     } catch {
-      // Ignore malformed anchors.
+      // Ignore malformed or non-URL hrefs.
     }
   }
 
@@ -85,27 +86,31 @@ function extractAnchors(html: string, baseUrl: string, origin: string): string[]
 }
 
 function extractCanonical(html: string, baseUrl: string, origin: string): string | null {
-  const re = /<link\\b[^>]*rel\\s*=\\s*["'][^"']*canonical[^"']*["'][^>]*>/i;
-  const tag = re.exec(html)?.[0];
+  const tag = html.match(/<link\b[^>]*rel\s*=\s*["'][^"']*canonical[^"']*["'][^>]*>/i)?.[0];
   if (!tag) return null;
 
-  const href = extractFirst(tag, /href\\s*=\\s*["']([^"']+)["']/i);
+  const href = extractFirst(tag, /href\s*=\s*["']([^"']+)["']/i);
   if (!href) return null;
 
   try {
-    const u = new URL(href, baseUrl);
-    if (u.protocol !== "https:" || u.origin !== origin) return null;
-    u.hash = "";
-    return u.toString();
+    const url = new URL(href, baseUrl);
+    if (url.protocol !== "https:" || url.origin !== origin) return null;
+    url.hash = "";
+    return url.toString();
   } catch {
     return null;
   }
 }
 
 function isPrivateIpv4(ip: string): boolean {
-  const parts = ip.split(".").map((x) => Number(x));
-  if (parts.length !== 4 || parts.some((x) => !Number.isInteger(x) || x < 0 || x > 255)) return true;
-  const [a, b] = parts;
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return true;
+  }
+
+  const a = parts[0];
+  const b = parts[1];
+
   return (
     a === 0 ||
     a === 10 ||
@@ -123,14 +128,23 @@ function isPrivateIpv4(ip: string): boolean {
 }
 
 function isPrivateIpv6(ip: string): boolean {
-  const v = ip.toLowerCase();
-  if (v === "::" || v === "::1") return true;
-  if (v.startsWith("fc") || v.startsWith("fd") || v.startsWith("fe80")) return true;
-  if (v.startsWith("ff")) return true;
-  if (v.startsWith("::ffff:")) {
-    const mapped = v.slice("::ffff:".length);
+  const value = ip.toLowerCase();
+  if (
+    value === "::" ||
+    value === "::1" ||
+    value.startsWith("fc") ||
+    value.startsWith("fd") ||
+    value.startsWith("fe80") ||
+    value.startsWith("ff")
+  ) {
+    return true;
+  }
+
+  if (value.startsWith("::ffff:")) {
+    const mapped = value.slice("::ffff:".length);
     if (mapped.includes(".")) return isPrivateIpv4(mapped);
   }
+
   return false;
 }
 
@@ -146,7 +160,7 @@ async function assertPublicHost(host: string): Promise<void> {
   }
 
   if (addresses.length === 0) {
-    throw new Error("FETCH_FAILED: Target hostname has no public DNS address");
+    throw new Error("FETCH_FAILED: Target hostname has no DNS address");
   }
 
   for (const address of addresses) {
@@ -168,13 +182,14 @@ async function readLimited(response: Response): Promise<string> {
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
+      const result = await reader.read();
+      if (result.done) break;
+
+      total += result.value.byteLength;
       if (total > MAX_HTML_BYTES) {
         throw new Error("PAGE_TOO_LARGE: HTML document exceeds resolver safety limit");
       }
-      chunks.push(value);
+      chunks.push(result.value);
     }
   } finally {
     reader.releaseLock();
@@ -190,11 +205,7 @@ async function readLimited(response: Response): Promise<string> {
   return new TextDecoder("utf-8", { fatal: false }).decode(merged);
 }
 
-async function fetchHtml(
-  url: string,
-  origin: string,
-  redirects = 0,
-): Promise<{ url: string; html: string }> {
+async function fetchHtml(url: string, origin: string, redirects: number = 0): Promise<{ url: string; html: string }> {
   if (redirects > 3) throw new Error("FETCH_FAILED: Too many redirects");
 
   const parsed = new URL(url);
@@ -227,20 +238,20 @@ async function fetchHtml(
       if (next.protocol !== "https:" || next.origin !== origin) {
         throw new Error("UNSAFE_TARGET: Redirect leaves the advertiser origin");
       }
+
       return fetchHtml(next.toString(), origin, redirects + 1);
     }
 
     if (!response.ok) {
-      throw new Error(`FETCH_FAILED: Advertiser page returned HTTP ${response.status}`);
+      throw new Error("FETCH_FAILED: Advertiser page returned HTTP " + response.status);
     }
 
     const contentType = response.headers.get("content-type") ?? "";
-    if (!/text/html|application/xhtml\+xml/i.test(contentType)) {
+    if (!/(text\/html|application\/xhtml\+xml)/i.test(contentType)) {
       throw new Error("FETCH_FAILED: Target did not return HTML");
     }
 
-    const html = await readLimited(response);
-    return { url, html };
+    return { url, html: await readLimited(response) };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error("FETCH_FAILED: Resolver request timed out");
@@ -258,64 +269,60 @@ function scorePage(
   description: string,
   headings: string,
   body: string,
-): { score: number; matchedTokens: number; phrase: boolean } {
+): { score: number; matchedTokens: number } {
   const normalizedKeyword = normalizeText(keyword);
   const tokens = [...new Set(tokenize(keyword))];
 
-  const nTitle = normalizeText(title);
-  const nDescription = normalizeText(description);
-  const nHeadings = normalizeText(headings);
-  const nBody = normalizeText(body);
-  const nUrl = normalizeText(new URL(pageUrl).pathname.replace(/[\/_-]+/g, " "));
-
-  const phrase =
-    normalizedKeyword.length >= 4 &&
-    (nTitle.includes(normalizedKeyword) ||
-      nHeadings.includes(normalizedKeyword) ||
-      nDescription.includes(normalizedKeyword) ||
-      nBody.includes(normalizedKeyword));
+  const normalizedTitle = normalizeText(title);
+  const normalizedDescription = normalizeText(description);
+  const normalizedHeadings = normalizeText(headings);
+  const normalizedBody = normalizeText(body);
+  const normalizedPath = normalizeText(new URL(pageUrl).pathname.replace(/[\/_-]+/g, " "));
 
   let score = 0;
-  if (nTitle.includes(normalizedKeyword)) score += 60;
-  if (nHeadings.includes(normalizedKeyword)) score += 45;
-  if (nDescription.includes(normalizedKeyword)) score += 30;
-  if (nBody.includes(normalizedKeyword)) score += 10;
+  if (normalizedTitle.includes(normalizedKeyword)) score += 60;
+  if (normalizedHeadings.includes(normalizedKeyword)) score += 45;
+  if (normalizedDescription.includes(normalizedKeyword)) score += 30;
+  if (normalizedBody.includes(normalizedKeyword)) score += 10;
 
   let matchedTokens = 0;
   for (const token of tokens) {
-    const hit = nTitle.includes(token) || nHeadings.includes(token) || nDescription.includes(token) || nBody.includes(token);
-    if (!hit) continue;
+    const inTitle = normalizedTitle.includes(token);
+    const inHeadings = normalizedHeadings.includes(token);
+    const inDescription = normalizedDescription.includes(token);
+    const inBody = normalizedBody.includes(token);
+
+    if (!(inTitle || inHeadings || inDescription || inBody)) continue;
+
     matchedTokens += 1;
+    if (inTitle) score += 8;
+    else if (inHeadings) score += 6;
+    else if (inDescription) score += 4;
+    else if (inBody) score += 2;
 
-    if (nTitle.includes(token)) score += 8;
-    else if (nHeadings.includes(token)) score += 6;
-    else if (nDescription.includes(token)) score += 4;
-    else score += 2;
-
-    if (nUrl.includes(token)) score += 3;
+    if (normalizedPath.includes(token)) score += 3;
   }
 
-  return { score, matchedTokens, phrase };
+  return { score, matchedTokens };
 }
 
 function rankLinks(links: string[], keyword: string): string[] {
   const tokens = [...new Set(tokenize(keyword))];
 
   return [...links].sort((a, b) => {
-    const score = (url: string) => {
+    const pathScore = (url: string): number => {
       const path = normalizeText(new URL(url).pathname.replace(/[\/_-]+/g, " "));
       return tokens.reduce((sum, token) => sum + (path.includes(token) ? 1 : 0), 0);
     };
-    return score(b) - score(a);
+
+    return pathScore(b) - pathScore(a);
   });
 }
 
-async function resolveFromSite(keyword: string, landingUrl: string): Promise<{
-  resolvedUrl: string;
-  score: number;
-  matchedTokens: number;
-  pagesScanned: number;
-}> {
+async function resolveFromSite(
+  keyword: string,
+  landingUrl: string,
+): Promise<{ resolvedUrl: string; score: number; matchedTokens: number; pagesScanned: number }> {
   const landing = new URL(landingUrl);
   if (landing.protocol !== "https:") throw new Error("UNSAFE_TARGET: Advertiser URL must be HTTPS");
 
@@ -326,8 +333,8 @@ async function resolveFromSite(keyword: string, landingUrl: string): Promise<{
   const visited = new Set<string>();
   let best: { resolvedUrl: string; score: number; matchedTokens: number } | null = null;
 
-  for (let i = 0; i < queue.length && visited.size < MAX_PAGES; i += 1) {
-    const current = queue[i];
+  while (queue.length > 0 && visited.size < MAX_PAGES) {
+    const current = queue.shift()!;
     if (visited.has(current)) continue;
     visited.add(current);
 
@@ -338,13 +345,13 @@ async function resolveFromSite(keyword: string, landingUrl: string): Promise<{
       continue;
     }
 
-    const title = extractFirst(page.html, /<title[^>]*>([\\s\\S]*?)<\\/title>/i);
+    const title = extractFirst(page.html, /<title[^>]*>([\s\S]*?)<\/title>/i);
     const description = extractFirst(
       page.html,
-      /<meta[^>]+(?:name|property)\\s*=\\s*["'](?:description|og:description)["'][^>]+content\\s*=\\s*["']([^"']*)["'][^>]*>/i,
+      /<meta[^>]+(?:name|property)\s*=\s*["'](?:description|og:description)["'][^>]+content\s*=\s*["']([^"']*)["'][^>]*>/i,
     );
     const headings = stripHtml(
-      page.html.match(/<h[1-3][^>]*>[\\s\\S]*?<\\/h[1-3]>/gi)?.join(" ") ?? "",
+      page.html.match(/<h[1-3][^>]*>[\s\S]*?<\/h[1-3]>/gi)?.join(" ") ?? "",
     );
     const body = stripHtml(page.html).slice(0, 300_000);
 
@@ -362,20 +369,15 @@ async function resolveFromSite(keyword: string, landingUrl: string): Promise<{
     }
 
     const canonical = extractCanonical(page.html, page.url, origin);
-    if (canonical && !visited.has(canonical)) queue.push(canonical);
+    if (canonical && !visited.has(canonical) && !queue.includes(canonical)) queue.push(canonical);
 
-    const links = rankLinks(extractAnchors(page.html, page.url, origin), keyword);
-    for (const link of links) {
+    for (const link of rankLinks(extractAnchors(page.html, page.url, origin), keyword)) {
       if (!visited.has(link) && !queue.includes(link)) queue.push(link);
       if (queue.length >= MAX_PAGES * 3) break;
     }
   }
 
-  if (
-    best === null ||
-    best.matchedTokens === 0 ||
-    (best.score < 12 && !best.resolvedUrl.endsWith(new URL(landingUrl).pathname))
-  ) {
+  if (!best || best.matchedTokens === 0 || (best.score < 12 && best.resolvedUrl !== landing.toString())) {
     throw new Error("NO_MATCH: No sufficiently relevant page was found on the advertiser site for this keyword");
   }
 
@@ -404,14 +406,24 @@ export default {
       return json({ code: "SERVER_CONFIG", message: "Supabase publishable key is unavailable" }, 500);
     }
 
-    const publishableKeys = JSON.parse(keysRaw);
-    const publishableKey = publishableKeys.default as string;
+    let publishableKey: string;
+    try {
+      const publishableKeys = JSON.parse(keysRaw) as Record<string, string>;
+      publishableKey = publishableKeys.default;
+    } catch {
+      return json({ code: "SERVER_CONFIG", message: "Supabase publishable key configuration is invalid" }, 500);
+    }
+
+    if (!publishableKey) {
+      return json({ code: "SERVER_CONFIG", message: "Default publishable key is unavailable" }, 500);
+    }
+
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, publishableKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
+      global: { headers: { Authorization: "Bearer " + token } },
     });
 
-    const { data: authData, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !authData.user) {
+    const authResult = await supabase.auth.getUser(token);
+    if (authResult.error || !authResult.data.user) {
       return json({ code: "UNAUTHORIZED", message: "Invalid user session" }, 401);
     }
 
@@ -441,7 +453,7 @@ export default {
       return json({ code: "CAMPAIGN_NOT_FOUND", message: "Campaign not found" }, 404);
     }
 
-    if (campaign.owner_id !== authData.user.id) {
+    if (campaign.owner_id !== authResult.data.user.id) {
       return json({ code: "FORBIDDEN", message: "Campaign does not belong to the caller" }, 403);
     }
 
@@ -463,10 +475,13 @@ export default {
     try {
       const resolved = await resolveFromSite(campaign.keyword, campaign.url);
 
-      const { data: saved, error: saveError } = await supabase.rpc("set_campaign_resolved_target", {
-        p_campaign_id: campaign.id,
-        p_resolved_target_url: resolved.resolvedUrl,
-      });
+      const { data: saved, error: saveError } = await supabase.rpc(
+        "set_campaign_resolved_target",
+        {
+          p_campaign_id: campaign.id,
+          p_resolved_target_url: resolved.resolvedUrl,
+        },
+      );
 
       if (saveError) {
         return json({ code: "DATABASE_ERROR", message: saveError.message }, 500);
@@ -485,9 +500,12 @@ export default {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Resolver failed";
-      const [code, ...rest] = message.split(":");
+      const split = message.indexOf(":");
+      const code = split > 0 ? message.slice(0, split) : "RESOLVER_FAILED";
+      const detail = split > 0 ? message.slice(split + 1).trim() : message;
+
       return json(
-        { code: code || "RESOLVER_FAILED", message: rest.join(":").trim() || message },
+        { code, message: detail },
         code === "NO_MATCH" ? 422 : 502,
       );
     }
