@@ -228,9 +228,15 @@ class SupabaseApiClient(
         }
     }
 
-    override suspend fun claimDailyBonus(callerUserId: String?): Result<DailyBonusResult> = withContext(Dispatchers.IO) {
+    override suspend fun claimDailyBonus(evidence: DeviceEvidence, callerUserId: String?): Result<DailyBonusResult> = withContext(Dispatchers.IO) {
         try {
-            val res = callRpc("claim_daily_bonus", JSONObject())
+            val body = JSONObject().apply {
+                put("p_android_id", evidence.androidId ?: JSONObject.NULL)
+                put("p_app_set_id", evidence.appSetId ?: JSONObject.NULL)
+                put("p_app_set_scope", evidence.appSetScope ?: JSONObject.NULL)
+                put("p_installation_key_fingerprint", evidence.installationKeyFingerprint ?: JSONObject.NULL)
+            }
+            val res = callRpc("claim_daily_bonus", body)
             val amount = res.optLong("amount", 0L)
             if (res.optBoolean("granted", false) && amount <= 0L) {
                 return@withContext Result.failure(
