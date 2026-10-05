@@ -48,6 +48,8 @@ class SiteBinRepository(
     private val scope = CoroutineScope(Dispatchers.IO)
     private val prefs = context.getSharedPreferences("sitebin_prefs", Context.MODE_PRIVATE)
     private val deviceEvidenceProvider = AndroidDeviceEvidenceProvider(context)
+    @Volatile
+    private var currentDeviceEvidence: DeviceEvidence? = null
 
     private val _serverState = MutableStateFlow<ServerInitializationState>(ServerInitializationState.Initializing)
     val serverState: StateFlow<ServerInitializationState> = _serverState.asStateFlow()
@@ -126,6 +128,7 @@ class SiteBinRepository(
     suspend fun refreshServerState() {
         val installId = getOrGenerateInstallId()
         val deviceEvidence = deviceEvidenceProvider.collect(installId)
+        currentDeviceEvidence = deviceEvidence
 
         val pricingResult = engine.fetchDurationPricing()
         if (pricingResult.isFailure) {
@@ -204,7 +207,10 @@ class SiteBinRepository(
 
     suspend fun claimDailyBonus(): Result<DailyBonusResult> {
         val currentUserId = _account.value.userId
-        val result = engine.claimDailyBonus(callerUserId = currentUserId)
+        val evidence = currentDeviceEvidence ?: deviceEvidenceProvider.collect(getOrGenerateInstallId()).also {
+            currentDeviceEvidence = it
+        }
+        val result = engine.claimDailyBonus(evidence = evidence, callerUserId = currentUserId)
         result.onSuccess { bonus ->
             _dailyBonus.value = bonus
 
