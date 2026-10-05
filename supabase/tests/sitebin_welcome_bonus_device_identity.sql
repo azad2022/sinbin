@@ -25,7 +25,7 @@ BEGIN
   -- Create isolated real Auth identities for the test.
   CREATE TEMP TABLE tmp_sitebin_test_users(id uuid PRIMARY KEY) ON COMMIT DROP;
 
-  FOR i IN 1..12 LOOP
+  FOR i IN 1..13 LOOP
     v_uid := gen_random_uuid();
 
     INSERT INTO auth.users(
@@ -153,7 +153,13 @@ BEGIN
   END IF;
 
   -- Test 11: insufficient device evidence fails closed without blocking the app.
-  v_uid := (SELECT id FROM tmp_sitebin_test_users ORDER BY id DESC LIMIT 1);
+  v_uid := (
+    SELECT id
+    FROM tmp_sitebin_test_users
+    WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id=tmp_sitebin_test_users.id)
+    ORDER BY id
+    LIMIT 1
+  );
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
@@ -168,7 +174,13 @@ BEGIN
   END IF;
 
   -- Test 9: malformed/tampered evidence is ignored and cannot mint.
-  v_uid := (SELECT id FROM tmp_sitebin_test_users ORDER BY id OFFSET 2 LIMIT 1);
+  v_uid := (
+    SELECT id
+    FROM tmp_sitebin_test_users
+    WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id=tmp_sitebin_test_users.id)
+    ORDER BY id
+    LIMIT 1
+  );
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
