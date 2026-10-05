@@ -24,12 +24,32 @@ android {
 
   val releaseKeystorePath = providers.environmentVariable("KEYSTORE_PATH").orNull
   val releaseStorePassword = providers.environmentVariable("STORE_PASSWORD").orNull
-  val releaseKeyAlias = providers.environmentVariable("KEY_ALIAS").orNull ?: "upload"
+  val releaseKeyAlias = providers.environmentVariable("KEY_ALIAS").orNull
   val releaseKeyPassword = providers.environmentVariable("KEY_PASSWORD").orNull
-  val hasReleaseSigning = !releaseKeystorePath.isNullOrBlank() &&
+
+  val releaseSigningValuesPresent =
+      !releaseKeystorePath.isNullOrBlank() &&
       !releaseStorePassword.isNullOrBlank() &&
-      !releaseKeyPassword.isNullOrBlank() &&
+      !releaseKeyAlias.isNullOrBlank() &&
+      !releaseKeyPassword.isNullOrBlank()
+
+  val releaseTasksRequested = gradle.startParameter.taskNames.any { task ->
+    task.contains("release", ignoreCase = true)
+  }
+
+  if (releaseTasksRequested && !releaseSigningValuesPresent) {
+    error(
+        "Release signing configuration is incomplete. " +
+            "KEYSTORE_PATH, STORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD are required."
+    )
+  }
+
+  val hasReleaseSigning = releaseSigningValuesPresent &&
       file(releaseKeystorePath!!).exists()
+
+  if (releaseTasksRequested && !hasReleaseSigning) {
+    error("Release keystore was not found at KEYSTORE_PATH.")
+  }
 
   signingConfigs {
     create("release") {
@@ -47,9 +67,7 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      if (hasReleaseSigning) {
-        signingConfig = signingConfigs.getByName("release")
-      }
+      signingConfig = signingConfigs.getByName("release")
     }
     debug {}
   }
