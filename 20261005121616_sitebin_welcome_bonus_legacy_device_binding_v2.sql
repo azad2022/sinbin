@@ -1,0 +1,1 @@
+-- Historical migration marker. Legacy device binding is included in the canonical device identity RPC.
