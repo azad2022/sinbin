@@ -536,7 +536,7 @@ class ServerEmulatedEngine(
         // - ownerId != userId (Server-Enforced Anti-Self View)
         // - completedViews < targetViews
         // - remaining reservedBudget >= costPerView
-        // - Cooldown: viewer has not completed this campaign within the last 15 minutes
+        // - Viewer has not completed this campaign within the last 15 minutes
         val eligibleCampaigns = campaigns.values.filter { camp ->
             camp.status == CampaignStatus.ACTIVE &&
             camp.ownerId != userId &&
@@ -550,7 +550,29 @@ class ServerEmulatedEngine(
             }
         }
 
-        val selected = eligibleCampaigns.firstOrNull() ?: return Result.success(null)
+        if (eligibleCampaigns.isEmpty()) return Result.success(null)
+
+        // Match production PostgreSQL fairness behavior:
+        // 1) Prefer advertisers this viewer has NOT completed in the last 2 minutes.
+        // 2) Randomize among remaining campaigns to avoid FIFO dominance.
+        // 3) If every advertiser is inside the diversity window, fall back to any
+        //    eligible campaign so inventory is never artificially blocked.
+        val freshAdvertiserCampaigns = eligibleCampaigns.filter { camp ->
+            viewSessions.values.none { vs ->
+                vs.viewerId == userId &&
+                vs.status == "COMPLETED" &&
+                (now - (vs.completedAt ?: 0L)) < 2 * 60 * 1000L &&
+                campaigns[vs.campaignId]?.ownerId == camp.ownerId
+            }
+        }
+
+        val selectedPool = if (freshAdvertiserCampaigns.isNotEmpty()) {
+            freshAdvertiserCampaigns
+        } else {
+            eligibleCampaigns
+        }
+
+        val selected = selectedPool.random()
 
         val pricing = durationOptions.find { it.seconds == selected.durationSeconds }
             ?: durationOptions[2]
