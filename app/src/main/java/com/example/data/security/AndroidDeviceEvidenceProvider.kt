@@ -13,6 +13,7 @@ import java.security.spec.ECGenParameterSpec
 import java.util.Locale
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 
@@ -30,7 +31,7 @@ class AndroidDeviceEvidenceProvider(
 
     suspend fun collect(installId: String): DeviceEvidence {
         val androidId = readAndroidId()
-        val appSet = readAppSetId()
+        val appSet = withTimeoutOrNull(2_000L) { readAppSetId() }
         val installationKeyFingerprint = runCatching {
             ensureInstallationKeyAndGetFingerprint()
         }.getOrNull()
