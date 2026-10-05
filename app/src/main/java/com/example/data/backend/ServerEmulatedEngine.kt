@@ -156,7 +156,9 @@ class ServerEmulatedEngine(
         Result.success(newAccount)
     }
 
-    override suspend fun claimDailyBonus(callerUserId: String?): Result<DailyBonusResult> = lock.withLock {
+    private val dailyBonusDeviceClaims = mutableSetOf<String>()
+
+    override suspend fun claimDailyBonus(evidence: DeviceEvidence, callerUserId: String?): Result<DailyBonusResult> = lock.withLock {
         val userId = callerUserId?.trim()?.takeIf { it.isNotEmpty() }
             ?: return Result.failure(IllegalStateException("UNAUTHORIZED: Authentication token required"))
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
@@ -172,8 +174,16 @@ class ServerEmulatedEngine(
             )
         }
 
-        val grantKey = "${userId}_${today}"
-        if (!dailyBonusGrants.add(grantKey)) {
+        val deviceKey = listOf(
+            evidence.androidId?.takeIf { it.isNotBlank() }?.let { "android:$it" },
+            evidence.appSetId?.takeIf { it.isNotBlank() }?.let { "appset:$it" },
+            evidence.installationKeyFingerprint?.takeIf { it.isNotBlank() }?.let { "install:$it" },
+            evidence.installId.takeIf { it.isNotBlank() }?.let { "legacy:$it" }
+        ).firstOrNull() ?: return Result.failure(
+            IllegalStateException("DEVICE_EVIDENCE_REQUIRED: Daily bonus requires device evidence")
+        )
+        val grantKey = "${deviceKey}_${today}"
+        if (!dailyBonusDeviceClaims.add(grantKey)) {
             return Result.success(
                 DailyBonusResult(
                     granted = false,
