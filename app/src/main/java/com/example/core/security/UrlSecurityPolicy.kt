@@ -187,6 +187,35 @@ object UrlSecurityPolicy {
         return false
     }
 
+    /**
+     * Returns true only when the user has entered a structurally complete website URL
+     * suitable for an expensive/network-backed preflight.
+     *
+     * This is intentionally a UX/network gate, not a security decision. The full
+     * UrlSecurityPolicy and the server-side preflight remain authoritative.
+     */
+    fun isReadyForPreflight(rawUrl: String?): Boolean {
+        if (rawUrl.isNullOrBlank()) return false
+
+        val trimmed = rawUrl.trim()
+        if (!trimmed.startsWith("https://", ignoreCase = true)) return false
+
+        val uri = runCatching { URI(trimmed) }.getOrNull() ?: return false
+        val host = uri.host?.lowercase(Locale.ROOT) ?: return false
+
+        // A normal public website hostname needs a domain separator and a final
+        // label that looks like a real TLD. This rejects values such as:
+        // "htt", "https", "https://", "https://example", "https://example."
+        if (host.startsWith(".") || host.endsWith(".")) return false
+        if (!host.contains('.')) return false
+
+        val tld = host.substringAfterLast('.')
+        return tld.length >= 2 && (
+            tld.all { it.isLetter() } ||
+                (tld.startsWith("xn--") && tld.length > 4 && tld.drop(4).all { it.isLetterOrDigit() || it == '-' })
+            )
+    }
+
     fun normalizeUrl(rawUrl: String): String {
         var result = rawUrl.trim()
         if (!result.startsWith("https://", ignoreCase = true)) {
