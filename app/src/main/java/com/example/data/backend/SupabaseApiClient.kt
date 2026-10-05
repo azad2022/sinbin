@@ -410,6 +410,127 @@ class SupabaseApiClient(
         }
     }
 
+    override suspend fun preflightCampaignUrl(url: String): Result<WebsitePreflightResult> = withContext(Dispatchers.IO) {
+        try {
+            val cleanUrl = url.trim()
+            val body = JSONObject().apply {
+                put("url", cleanUrl)
+            }.toString().toRequestBody(jsonMediaType)
+
+            fun execute(token: String): Triple<Int, String, String?> {
+                val request = Request.Builder()
+                    .url("$" + "{supabaseUrl}/functions/v1/campaign-url-preflight")
+                    .addHeader("apikey", supabasePublishableKey)
+                    .addHeader("Authorization", "Bearer " + token)
+                    .addHeader("Content-Type", "application/json")
+                    .post(body)
+                    .build()
+
+                httpClient.newCall(request).execute().use { response ->
+                    return Triple(response.code, response.body?.string().orEmpty(), response.header("Retry-After"))
+                }
+            }
+
+            var token = getValidUserToken()
+            var result = execute(token)
+            var status = result.first
+            var raw = result.second
+            var retryAfterHeader = result.third
+
+            if ((status == 401 || status == 403) && !currentRefreshToken.isNullOrBlank()) {
+                val refreshed = refreshSession(currentRefreshToken!!)
+                if (refreshed != null) {
+                    token = refreshed
+                    result = execute(token)
+                    status = result.first
+                    raw = result.second
+                    retryAfterHeader = result.third
+                }
+            }
+
+            if (status == 429) {
+                val obj = runCatching { JSONObject(raw) }.getOrNull()
+                val retryAfterBody = obj?.optLong("retry_after_seconds", 0L) ?: 0L
+                val retryAfterSeconds = maxOf(
+                    1L,
+                    retryAfterHeader?.trim()?.toLongOrNull() ?: 0L,
+                    retryAfterBody
+                )
+                throw RateLimitException(
+                    retryAfterSeconds = retryAfterSeconds,
+                    message = (obj?.optString("message")?.takeIf { it.isNotBlank() }
+                        ?: "تعداد بررسی‌های آدرس شما بیش از حد مجاز است.") +
+                        " لطفاً " + retryAfterSeconds + " ثانیه دیگر دوباره تلاش کنید."
+                )
+            }
+
+            if (status !in 200..299) {
+                val obj = runCatching { JSONObject(raw) }.getOrNull()
+                val code = obj?.optString("code", "PREFLIGHT_FAILED") ?: "PREFLIGHT_FAILED"
+                val message = obj?.optString("message", "بررسی سایت ناموفق بود.")
+                    ?: "بررسی سایت ناموفق بود."
+                throw IOException(code + ": " + message)
+            }
+
+            val json = JSONObject(raw)
+            val diagnosticsJson = json.optJSONArray("diagnostics")
+            val diagnostics = buildList {
+                if (diagnosticsJson != null) {
+                    for (i in 0 until diagnosticsJson.length()) {
+                        val item = diagnosticsJson.optJSONObject(i) ?: continue
+                        val severity = when (item.optString("severity").uppercase(Locale.ROOT)) {
+                            "WARNING" -> WebsiteDiagnosticSeverity.WARNING
+                            "BLOCK" -> WebsiteDiagnosticSeverity.BLOCK
+                            else -> WebsiteDiagnosticSeverity.INFO
+                        }
+                        add(
+                            WebsiteDiagnostic(
+                                code = item.optString("code", "UNKNOWN"),
+                                severity = severity,
+                                message = item.optString("message", "")
+                            )
+                        )
+                    }
+                }
+            }
+
+            val expiresAtEpochMs = json.optLong("expires_at_epoch_ms", 0L)
+                .takeIf { it > 0L }
+                ?: parseTimestamp(json.optString("expires_at", ""))
+
+            Result.success(
+                WebsitePreflightResult(
+                    sourceUrl = json.optString("source_url", cleanUrl),
+                    normalizedUrl = json.getString("normalized_url"),
+                    domain = json.getString("domain"),
+                    finalUrl = json.getString("final_url"),
+                    httpStatus = json.optInt("http_status", 0),
+                    redirectCount = json.optInt("redirect_count", 0),
+                    responseMs = json.optLong("response_ms", 0L),
+                    contentType = json.optString("content_type", "").ifBlank { null },
+                    contentLength = if (json.has("content_length") && !json.isNull("content_length")) {
+                        json.optLong("content_length")
+                    } else {
+                        null
+                    },
+                    viewerCompatibility = when (
+                        json.optString("viewer_compatibility", "INCOMPATIBLE").uppercase(Locale.ROOT)
+                    ) {
+                        "COMPATIBLE" -> WebsiteViewerCompatibility.COMPATIBLE
+                        "NEEDS_ATTENTION" -> WebsiteViewerCompatibility.NEEDS_ATTENTION
+                        else -> WebsiteViewerCompatibility.INCOMPATIBLE
+                    },
+                    qualityScore = json.optInt("quality_score", 0).coerceIn(0, 100),
+                    diagnostics = diagnostics,
+                    expiresAtEpochMs = expiresAtEpochMs,
+                    preflightToken = json.getString("preflight_token")
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     override suspend fun createCampaign(
         url: String,
         normalizedUrl: String,
@@ -417,7 +538,8 @@ class SupabaseApiClient(
         durationSeconds: Int,
         targetViews: Int,
         keyword: String?,
-        callerUserId: String?
+        callerUserId: String?,
+        preflightToken: String?
     ): Result<Campaign> = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().apply {
@@ -427,6 +549,7 @@ class SupabaseApiClient(
                 put("p_duration_seconds", durationSeconds)
                 put("p_target_views", targetViews)
                 keyword?.trim()?.takeIf { it.isNotBlank() }?.let { put("p_keyword", it) }
+                preflightToken?.trim()?.takeIf { it.isNotBlank() }?.let { put("p_preflight_token", it) }
             }
             val res = callRpc("create_campaign", body)
             val status = runCatching { CampaignStatus.valueOf(res.optString("status", "ACTIVE")) }.getOrDefault(CampaignStatus.ACTIVE)

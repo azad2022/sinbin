@@ -397,6 +397,33 @@ class ServerEmulatedEngine(
         Result.success(list)
     }
 
+    override suspend fun preflightCampaignUrl(url: String): Result<WebsitePreflightResult> = lock.withLock {
+        val clean = url.trim()
+        if (clean.isBlank() || !clean.startsWith("https://", ignoreCase = true)) {
+            return Result.failure(IllegalArgumentException("INVALID_URL: Target URL must use HTTPS"))
+        }
+        val normalized = clean
+        val domain = normalized.removePrefix("https://").substringBefore("/").substringBefore("?").substringBefore("#").lowercase()
+        Result.success(
+            WebsitePreflightResult(
+                sourceUrl = clean,
+                normalizedUrl = normalized,
+                domain = domain,
+                finalUrl = normalized,
+                httpStatus = 200,
+                redirectCount = 0,
+                responseMs = 50L,
+                contentType = "text/html",
+                contentLength = 1024L,
+                viewerCompatibility = WebsiteViewerCompatibility.COMPATIBLE,
+                qualityScore = 95,
+                diagnostics = listOf(WebsiteDiagnostic("EMULATED_PREFLIGHT", WebsiteDiagnosticSeverity.INFO, "Preflight emulator result")),
+                expiresAtEpochMs = nowProvider() + 600_000L,
+                preflightToken = "emulated-preflight-token"
+            )
+        )
+    }
+
     override suspend fun createCampaign(
         url: String,
         normalizedUrl: String,
@@ -404,7 +431,8 @@ class ServerEmulatedEngine(
         durationSeconds: Int,
         targetViews: Int,
         keyword: String?,
-        callerUserId: String?
+        callerUserId: String?,
+        preflightToken: String?
     ): Result<Campaign> = lock.withLock {
         val cleanUrl = url.trim()
         val cleanNormalized = normalizedUrl.trim()

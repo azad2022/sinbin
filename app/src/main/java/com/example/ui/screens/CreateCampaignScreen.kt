@@ -51,6 +51,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,7 +67,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
+import com.example.data.backend.WebsiteDiagnosticSeverity
+import com.example.data.backend.WebsiteViewerCompatibility
 import com.example.ui.SiteBinViewModel
+import com.example.ui.WebsitePreflightState
 import com.example.ui.theme.SiteBinBlue
 import com.example.ui.theme.SiteBinBlueDark
 import com.example.ui.theme.SiteBinGoldDark
@@ -89,7 +95,7 @@ fun CreateCampaignScreen(
     val url by viewModel.urlInput.collectAsState()
     val keyword by viewModel.keywordInput.collectAsState()
     val urlError by viewModel.urlError.collectAsState()
-    val websiteSpeedState by viewModel.websiteSpeedState.collectAsState()
+    val websitePreflightState by viewModel.websitePreflightState.collectAsState()
     val selectedDuration by viewModel.selectedDuration.collectAsState()
     val targetViews by viewModel.targetViewsInput.collectAsState()
     val isSubmitting by viewModel.isSubmittingCampaign.collectAsState()
@@ -173,7 +179,7 @@ fun CreateCampaignScreen(
                     }
 
                     WebsiteSpeedStatus(
-                        state = websiteSpeedState,
+                        state = websitePreflightState,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -642,46 +648,48 @@ private fun DurationCard(
 }
 
 @Composable
-private fun WebsiteSpeedStatus(
-    state: com.example.ui.WebsiteSpeedCheckState,
+private fun WebsitePreflightStatus(
+    state: WebsitePreflightState,
     modifier: Modifier = Modifier
 ) {
-    if (state is com.example.ui.WebsiteSpeedCheckState.Idle) return
+    if (state is WebsitePreflightState.Idle) return
+
+    var expanded by remember(state) { mutableStateOf(false) }
 
     val background = when (state) {
-        com.example.ui.WebsiteSpeedCheckState.Checking ->
+        WebsitePreflightState.Checking ->
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        is com.example.ui.WebsiteSpeedCheckState.Completed -> when (state.level) {
-            com.example.core.network.SiteSpeedLevel.GOOD ->
-                SiteBinSuccess.copy(alpha = 0.09f)
-            com.example.core.network.SiteSpeedLevel.ACCEPTABLE ->
+        is WebsitePreflightState.Completed -> when (state.result.viewerCompatibility) {
+            WebsiteViewerCompatibility.COMPATIBLE ->
+                SiteBinSuccess.copy(alpha = 0.08f)
+            WebsiteViewerCompatibility.NEEDS_ATTENTION ->
                 SiteBinGold.copy(alpha = 0.10f)
-            com.example.core.network.SiteSpeedLevel.SLOW ->
+            WebsiteViewerCompatibility.INCOMPATIBLE ->
                 MaterialTheme.colorScheme.error.copy(alpha = 0.08f)
         }
-        is com.example.ui.WebsiteSpeedCheckState.TimedOut ->
-            MaterialTheme.colorScheme.error.copy(alpha = 0.08f)
-        is com.example.ui.WebsiteSpeedCheckState.Failed ->
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        com.example.ui.WebsiteSpeedCheckState.Idle -> Color.Transparent
+        is WebsitePreflightState.RateLimited ->
+            SiteBinGold.copy(alpha = 0.10f)
+        is WebsitePreflightState.Failed ->
+            MaterialTheme.colorScheme.error.copy(alpha = 0.06f)
+        WebsitePreflightState.Idle -> Color.Transparent
     }
 
     val border = when (state) {
-        com.example.ui.WebsiteSpeedCheckState.Checking ->
+        WebsitePreflightState.Checking ->
             MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)
-        is com.example.ui.WebsiteSpeedCheckState.Completed -> when (state.level) {
-            com.example.core.network.SiteSpeedLevel.GOOD ->
-                SiteBinSuccess.copy(alpha = 0.20f)
-            com.example.core.network.SiteSpeedLevel.ACCEPTABLE ->
+        is WebsitePreflightState.Completed -> when (state.result.viewerCompatibility) {
+            WebsiteViewerCompatibility.COMPATIBLE ->
+                SiteBinSuccess.copy(alpha = 0.18f)
+            WebsiteViewerCompatibility.NEEDS_ATTENTION ->
                 SiteBinGold.copy(alpha = 0.22f)
-            com.example.core.network.SiteSpeedLevel.SLOW ->
+            WebsiteViewerCompatibility.INCOMPATIBLE ->
                 MaterialTheme.colorScheme.error.copy(alpha = 0.22f)
         }
-        is com.example.ui.WebsiteSpeedCheckState.TimedOut ->
-            MaterialTheme.colorScheme.error.copy(alpha = 0.22f)
-        is com.example.ui.WebsiteSpeedCheckState.Failed ->
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)
-        com.example.ui.WebsiteSpeedCheckState.Idle -> Color.Transparent
+        is WebsitePreflightState.RateLimited ->
+            SiteBinGold.copy(alpha = 0.22f)
+        is WebsitePreflightState.Failed ->
+            MaterialTheme.colorScheme.error.copy(alpha = 0.18f)
+        WebsitePreflightState.Idle -> Color.Transparent
     }
 
     Surface(
@@ -690,91 +698,165 @@ private fun WebsiteSpeedStatus(
         color = background,
         border = BorderStroke(1.dp, border)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 11.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             when (state) {
-                com.example.ui.WebsiteSpeedCheckState.Checking -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        strokeWidth = 1.8.dp,
-                        color = SiteBinBlue
-                    )
-                    Text(
-                        text = "در حال بررسی سرعت پاسخ سایت…",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                WebsitePreflightState.Checking -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 1.8.dp,
+                            color = SiteBinBlue
+                        )
+                        Text(
+                            text = "در حال بررسی امنیت، پاسخ و سازگاری سایت…",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
 
-                is com.example.ui.WebsiteSpeedCheckState.Completed -> {
-                    val isGood = state.level == com.example.core.network.SiteSpeedLevel.GOOD
-                    val isAcceptable = state.level == com.example.core.network.SiteSpeedLevel.ACCEPTABLE
+                is WebsitePreflightState.Completed -> {
+                    val result = state.result
+                    val compatible = result.viewerCompatibility == WebsiteViewerCompatibility.COMPATIBLE
+                    val needsAttention = result.viewerCompatibility == WebsiteViewerCompatibility.NEEDS_ATTENTION
                     val iconTint = when {
-                        isGood -> SiteBinSuccess
-                        isAcceptable -> SiteBinGoldDark
+                        compatible -> SiteBinSuccess
+                        needsAttention -> SiteBinGoldDark
                         else -> MaterialTheme.colorScheme.error
                     }
-                    val message = when (state.level) {
-                        com.example.core.network.SiteSpeedLevel.GOOD ->
-                            "سرعت پاسخ سایت مناسب است"
-                        com.example.core.network.SiteSpeedLevel.ACCEPTABLE ->
-                            "پاسخ سایت کمی کند است"
-                        com.example.core.network.SiteSpeedLevel.SLOW ->
-                            "هشدار: پاسخ سایت کند است"
+                    val compatibilityText = when (result.viewerCompatibility) {
+                        WebsiteViewerCompatibility.COMPATIBLE -> "سازگاری با بازدیدکننده مناسب است"
+                        WebsiteViewerCompatibility.NEEDS_ATTENTION -> "سایت قابل نمایش است، اما نیاز به توجه دارد"
+                        WebsiteViewerCompatibility.INCOMPATIBLE -> "این سایت در بازدیدکننده قابل نمایش نیست"
                     }
 
-                    Icon(
-                        imageVector = if (isGood) Icons.Default.Check else Icons.Default.Info,
-                        contentDescription = null,
-                        tint = iconTint,
-                        modifier = Modifier.size(17.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (compatible) Icons.Default.Check else Icons.Default.Info,
+                            contentDescription = null,
+                            tint = iconTint,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Text(
+                            text = "امتیاز کیفیت ${result.qualityScore}/100 • ${formatSpeedDuration(result.responseMs)}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (result.viewerCompatibility == WebsiteViewerCompatibility.INCOMPATIBLE) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+                    }
+
                     Text(
-                        text = message + " • " + formatSpeedDuration(state.elapsedMs),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (state.level == com.example.core.network.SiteSpeedLevel.SLOW) {
+                        text = compatibilityText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (result.viewerCompatibility == WebsiteViewerCompatibility.INCOMPATIBLE) {
                             MaterialTheme.colorScheme.error
                         } else {
-                            MaterialTheme.colorScheme.onSurface
+                            MaterialTheme.colorScheme.onSurfaceVariant
                         }
                     )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { expanded = !expanded },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = if (expanded) "بستن جزئیات" else "نمایش جزئیات",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = SiteBinBlue
+                        )
+                        Text(
+                            text = "${result.redirectCount} تغییر مسیر • HTTP ${result.httpStatus}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    AnimatedVisibility(visible = expanded) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            result.diagnostics.take(6).forEach { diagnostic ->
+                                val tint = when (diagnostic.severity) {
+                                    WebsiteDiagnosticSeverity.INFO -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    WebsiteDiagnosticSeverity.WARNING -> SiteBinGoldDark
+                                    WebsiteDiagnosticSeverity.BLOCK -> MaterialTheme.colorScheme.error
+                                }
+                                Text(
+                                    text = "• ${diagnostic.message}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = tint
+                                )
+                            }
+                            Text(
+                                text = "آدرس نهایی: ${result.finalUrl}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2
+                            )
+                        }
+                    }
                 }
 
-                is com.example.ui.WebsiteSpeedCheckState.TimedOut -> {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(17.dp)
-                    )
-                    Text(
-                        text = "هشدار: سایت در زمان مناسب پاسخ نداد. بهتر است سرعت سایت بررسی شود.",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.error
-                    )
+                is WebsitePreflightState.RateLimited -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = SiteBinGoldDark,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Text(
+                            text = "تعداد بررسی‌ها موقتاً محدود شده است؛ ${state.retryAfterSeconds} ثانیه دیگر دوباره تلاش کنید.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
 
-                is com.example.ui.WebsiteSpeedCheckState.Failed -> {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(17.dp)
-                    )
-                    Text(
-                        text = state.message,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                is WebsitePreflightState.Failed -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Text(
+                            text = state.message,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
 
-                com.example.ui.WebsiteSpeedCheckState.Idle -> Unit
+                WebsitePreflightState.Idle -> Unit
             }
         }
     }
@@ -786,6 +868,7 @@ private fun formatSpeedDuration(elapsedMs: Long): String {
         else -> String.format(Locale.US, "%.1fs", elapsedMs / 1_000.0)
     }
 }
+
 
 @Composable
 private fun PresetViewsCard(

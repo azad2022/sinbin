@@ -5,8 +5,6 @@ import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.BuildConfig
-import com.example.core.network.SiteSpeedChecker
-import com.example.core.network.SiteSpeedLevel
 import com.example.core.security.PolicyResult
 import com.example.core.security.UrlSecurityPolicy
 import com.example.data.model.Campaign
@@ -17,6 +15,9 @@ import com.example.data.model.TransactionType
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewSession
+import com.example.data.backend.RateLimitException
+import com.example.data.backend.WebsitePreflightResult
+import com.example.data.backend.WebsiteViewerCompatibility
 import com.example.data.repository.ServerInitializationState
 import com.example.data.repository.SiteBinRepository
 import kotlinx.coroutines.Job
@@ -31,8 +32,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.InterruptedIOException
-import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
 
 enum class AppScreen {
@@ -58,15 +57,12 @@ sealed class ViewerState {
     data class Error(val message: String) : ViewerState()
 }
 
-sealed interface WebsiteSpeedCheckState {
-    data object Idle : WebsiteSpeedCheckState
-    data object Checking : WebsiteSpeedCheckState
-    data class Completed(
-        val level: SiteSpeedLevel,
-        val elapsedMs: Long
-    ) : WebsiteSpeedCheckState
-    data class TimedOut(val elapsedMs: Long) : WebsiteSpeedCheckState
-    data class Failed(val message: String) : WebsiteSpeedCheckState
+sealed interface WebsitePreflightState {
+    data object Idle : WebsitePreflightState
+    data object Checking : WebsitePreflightState
+    data class Completed(val result: WebsitePreflightResult) : WebsitePreflightState
+    data class RateLimited(val retryAfterSeconds: Long) : WebsitePreflightState
+    data class Failed(val message: String) : WebsitePreflightState
 }
 
 class SiteBinViewModel(application: Application) : AndroidViewModel(application) {
@@ -213,9 +209,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     val urlError = MutableStateFlow<String?>(null)
     val isSubmittingCampaign = MutableStateFlow(false)
 
-    private var websiteSpeedCheckJob: Job? = null
-    private val _websiteSpeedState = MutableStateFlow<WebsiteSpeedCheckState>(WebsiteSpeedCheckState.Idle)
-    val websiteSpeedState: StateFlow<WebsiteSpeedCheckState> = _websiteSpeedState.asStateFlow()
+    private var websitePreflightJob: Job? = null
+    private val _websitePreflightState = MutableStateFlow<WebsitePreflightState>(WebsitePreflightState.Idle)
+    val websitePreflightState: StateFlow<WebsitePreflightState> = _websitePreflightState.asStateFlow()
 
     // Viewer Timer State
     private var timerJob: Job? = null
@@ -464,9 +460,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     fun onUrlChanged(newUrl: String) {
         urlInput.value = newUrl
-        websiteSpeedCheckJob?.cancel()
-        websiteSpeedCheckJob = null
-        _websiteSpeedState.value = WebsiteSpeedCheckState.Idle
+        websitePreflightJob?.cancel()
+        websitePreflightJob = null
+        _websitePreflightState.value = WebsitePreflightState.Idle
 
         if (newUrl.isNotBlank()) {
             val check = UrlSecurityPolicy.evaluateUrl(newUrl)
@@ -474,41 +470,66 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 urlError.value = check.reason
             } else {
                 urlError.value = null
-                scheduleWebsiteSpeedCheck(newUrl.trim())
+                scheduleWebsitePreflight(newUrl.trim())
             }
         } else {
             urlError.value = null
         }
     }
 
-    private fun scheduleWebsiteSpeedCheck(url: String) {
-        websiteSpeedCheckJob = viewModelScope.launch {
+    private fun scheduleWebsitePreflight(url: String) {
+        websitePreflightJob = viewModelScope.launch {
             delay(650L)
             if (urlInput.value.trim() != url) return@launch
 
-            _websiteSpeedState.value = WebsiteSpeedCheckState.Checking
-            val result = SiteSpeedChecker.check(url)
+            _websitePreflightState.value = WebsitePreflightState.Checking
+            val result = repository.preflightCampaignUrl(url)
 
             if (urlInput.value.trim() != url) return@launch
 
-            result.onSuccess { speed ->
-                _websiteSpeedState.value = WebsiteSpeedCheckState.Completed(
-                    level = SiteSpeedChecker.classify(speed.elapsedMs),
-                    elapsedMs = speed.elapsedMs
-                )
+            result.onSuccess {
+                _websitePreflightState.value = WebsitePreflightState.Completed(it)
             }.onFailure { error ->
-                if (error is InterruptedIOException ||
-                    error is SocketTimeoutException ||
-                    error.message?.contains("timeout", ignoreCase = true) == true
-                ) {
-                    _websiteSpeedState.value = WebsiteSpeedCheckState.TimedOut(7_000L)
-                } else {
-                    _websiteSpeedState.value = WebsiteSpeedCheckState.Failed(
-                        "سرعت پاسخ سایت قابل بررسی نبود."
+                _websitePreflightState.value = when (error) {
+                    is RateLimitException -> WebsitePreflightState.RateLimited(error.retryAfterSeconds)
+                    else -> WebsitePreflightState.Failed(
+                        error.message?.substringAfter(": ", error.message ?: "بررسی سایت ناموفق بود.")
+                            ?.ifBlank { "بررسی سایت ناموفق بود." }
+                            ?: "بررسی سایت ناموفق بود."
                     )
                 }
             }
         }
+    }
+
+    private suspend fun getFreshPreflightForSubmit(url: String): Result<WebsitePreflightResult> {
+        val normalized = (UrlSecurityPolicy.evaluateUrl(url) as? PolicyResult.Allowed)?.normalizedUrl
+            ?: return Result.failure(IllegalArgumentException("آدرس وب‌سایت قابل بررسی نیست."))
+
+        val cached = (_websitePreflightState.value as? WebsitePreflightState.Completed)?.result
+        if (
+            cached != null &&
+            cached.normalizedUrl == normalized &&
+            cached.expiresAtEpochMs > System.currentTimeMillis() + 15_000L
+        ) {
+            return Result.success(cached)
+        }
+
+        _websitePreflightState.value = WebsitePreflightState.Checking
+        val result = repository.preflightCampaignUrl(url)
+        result.onSuccess {
+            _websitePreflightState.value = WebsitePreflightState.Completed(it)
+        }.onFailure {
+            _websitePreflightState.value = when (it) {
+                is RateLimitException -> WebsitePreflightState.RateLimited(it.retryAfterSeconds)
+                else -> WebsitePreflightState.Failed(
+                    it.message?.substringAfter(": ", it.message ?: "بررسی سایت ناموفق بود.")
+                        ?.ifBlank { "بررسی سایت ناموفق بود." }
+                        ?: "بررسی سایت ناموفق بود."
+                )
+            }
+        }
+        return result
     }
 
     fun onKeywordChanged(newKeyword: String) {
@@ -544,16 +565,31 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         isSubmittingCampaign.value = true
         viewModelScope.launch {
             try {
+                val preflightResult = getFreshPreflightForSubmit(url)
+                if (preflightResult.isFailure) {
+                    val error = preflightResult.exceptionOrNull()
+                    showMessage(error?.message ?: "بررسی نهایی وب‌سایت ناموفق بود.")
+                    return@launch
+                }
+
+                val preflight = preflightResult.getOrThrow()
+                if (preflight.viewerCompatibility == WebsiteViewerCompatibility.INCOMPATIBLE) {
+                    showMessage("این وب‌سایت در بازدیدکننده سایت بین قابل نمایش نیست و سفارش ثبت نشد.")
+                    return@launch
+                }
+
                 val result = repository.createCampaign(
-                    rawUrl = url,
+                    rawUrl = preflight.normalizedUrl,
                     durationSeconds = selectedDuration.value,
                     targetViews = targetViewsInput.value,
-                    keyword = keyword
+                    keyword = keyword,
+                    preflightToken = preflight.preflightToken
                 )
 
                 result.onSuccess { campaign ->
                     urlInput.value = ""
                     keywordInput.value = ""
+                    _websitePreflightState.value = WebsitePreflightState.Idle
                     if (campaign.keyword != null && campaign.resolverStatus != "READY") {
                         showMessage("سفارش ثبت شد؛ در حال آماده‌سازی صفحه مرتبط با کلمه کلیدی است.")
                     } else {

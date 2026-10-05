@@ -427,6 +427,30 @@ export default {
       return json({ code: "UNAUTHORIZED", message: "Invalid user session" }, 401);
     }
 
+    const { error: rateLimitError } = await supabase.rpc("consume_keyword_resolver_rate_limit");
+    if (rateLimitError) {
+      const details = typeof rateLimitError.details === "string" ? rateLimitError.details : "";
+      let retryAfter = 0;
+      try {
+        const parsed = JSON.parse(details);
+        retryAfter = Number(parsed?.retry_after_seconds ?? 0);
+      } catch {
+        const match = details.match(/retry_after_seconds["':\s]+(\d+)/i);
+        retryAfter = Number(match?.[1] ?? 0);
+      }
+      if (String(rateLimitError.code) === "PGRST" || rateLimitError.message.includes("SITEBIN_RATE_LIMITED")) {
+        return json(
+          {
+            code: "RATE_LIMITED",
+            message: "تعداد تلاش‌های تحلیل کلمه کلیدی بیش از حد مجاز است.",
+            retry_after_seconds: Math.max(1, retryAfter),
+          },
+          429,
+        );
+      }
+      return json({ code: "RATE_LIMIT_FAILED", message: "Rate limiter unavailable" }, 500);
+    }
+
     let input: { campaign_id?: string };
     try {
       input = await req.json();

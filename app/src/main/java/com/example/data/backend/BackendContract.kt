@@ -11,6 +11,41 @@ import com.example.data.model.UserAccount
 import com.example.data.model.ViewCompletionResult
 import com.example.data.model.ViewSession
 
+enum class WebsiteViewerCompatibility {
+    COMPATIBLE,
+    NEEDS_ATTENTION,
+    INCOMPATIBLE
+}
+
+enum class WebsiteDiagnosticSeverity {
+    INFO,
+    WARNING,
+    BLOCK
+}
+
+data class WebsiteDiagnostic(
+    val code: String,
+    val severity: WebsiteDiagnosticSeverity,
+    val message: String
+)
+
+data class WebsitePreflightResult(
+    val sourceUrl: String,
+    val normalizedUrl: String,
+    val domain: String,
+    val finalUrl: String,
+    val httpStatus: Int,
+    val redirectCount: Int,
+    val responseMs: Long,
+    val contentType: String?,
+    val contentLength: Long?,
+    val viewerCompatibility: WebsiteViewerCompatibility,
+    val qualityScore: Int,
+    val diagnostics: List<WebsiteDiagnostic>,
+    val expiresAtEpochMs: Long,
+    val preflightToken: String
+)
+
 /**
  * Server-Authoritative Engine Interface
  * Android Client must never mutate financial balance, coin ledger, or campaign progress directly.
@@ -68,7 +103,8 @@ interface ServerAuthoritativeEngine {
         durationSeconds: Int,
         targetViews: Int,
         keyword: String? = null,
-        callerUserId: String? = null
+        callerUserId: String? = null,
+        preflightToken: String? = null
     ): Result<Campaign>
 
     /**

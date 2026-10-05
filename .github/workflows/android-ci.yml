@@ -59,6 +59,14 @@ jobs:
           print("Supabase duration_pricing keyword smoke test passed")
           PY
 
+      - name: Campaign preflight authentication smoke test
+        run: |
+          set -euo pipefail
+          SUPABASE_URL="$(sed -n 's/^SUPABASE_URL=//p' .env.example)"
+          code="$(curl --silent --show-error --output /tmp/sitebin-preflight-unauth.json --write-out '%{http_code}'             -X POST "$SUPABASE_URL/functions/v1/campaign-url-preflight"             -H "Content-Type: application/json"             --data '{"url":"https://example.com"}')"
+          test "$code" = "401"
+          echo "Campaign preflight unauthenticated request correctly rejected"
+
       - name: Unit tests
         run: gradle --no-daemon testDebugUnitTest
 

@@ -16,6 +16,7 @@ import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewCompletionResult
 import com.example.data.model.ViewSession
+import com.example.data.backend.WebsitePreflightResult
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -227,11 +228,15 @@ class SiteBinRepository(
     /**
      * Creates a new campaign on the server with strict server-side budget reservation.
      */
+    suspend fun preflightCampaignUrl(rawUrl: String): Result<WebsitePreflightResult> =
+        engine.preflightCampaignUrl(rawUrl.trim())
+
     suspend fun createCampaign(
         rawUrl: String,
         durationSeconds: Int,
         targetViews: Int,
-        keyword: String? = null
+        keyword: String? = null,
+        preflightToken: String? = null
     ): Result<Campaign> {
         val cleanKeyword = keyword?.trim()?.ifBlank { null }
         if (cleanKeyword != null && cleanKeyword.length > 25) {
@@ -255,7 +260,8 @@ class SiteBinRepository(
             durationSeconds = durationSeconds,
             targetViews = targetViews,
             keyword = cleanKeyword,
-            callerUserId = currentUserId
+            callerUserId = currentUserId,
+            preflightToken = preflightToken
         )
 
         val created = createResult.getOrNull() ?: return createResult
