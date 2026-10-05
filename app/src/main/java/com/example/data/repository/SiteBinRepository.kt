@@ -5,6 +5,7 @@ import com.example.core.security.PolicyResult
 import com.example.core.security.UrlSecurityPolicy
 import com.example.data.backend.BackendManager
 import com.example.data.security.AndroidDeviceEvidenceProvider
+import com.example.data.backend.DeviceEvidence
 import com.example.data.backend.ServerAuthoritativeEngine
 import com.example.data.model.AbuseReport
 import com.example.data.model.AutoViewActivationResult
