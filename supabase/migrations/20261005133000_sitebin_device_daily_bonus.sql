@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS private.daily_bonus_device_claims (
 CREATE INDEX IF NOT EXISTS idx_daily_bonus_device_claims_beneficiary
   ON private.daily_bonus_device_claims(beneficiary_auth_uid, grant_date DESC);
 
+CREATE INDEX IF NOT EXISTS idx_daily_bonus_device_claims_grant_id
+  ON private.daily_bonus_device_claims(daily_bonus_grant_id);
+
 REVOKE ALL ON private.daily_bonus_device_claims
   FROM PUBLIC, anon, authenticated, service_role;
 GRANT ALL ON private.daily_bonus_device_claims TO postgres;
