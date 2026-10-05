@@ -393,14 +393,12 @@ fun CreateCampaignScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
-                                brush = Brush.linearGradient(
+                                brush = Brush.horizontalGradient(
                                     listOf(
                                         SiteBinBlue,
                                         SiteBinBlueDark.copy(alpha = 0.88f),
                                         SiteBinGold.copy(alpha = 0.78f)
-                                    ),
-                                    start = 0f,
-                                    end = 900f
+                                    )
                                 )
                             )
                             .padding(horizontal = 18.dp, vertical = 16.dp)
@@ -689,7 +687,7 @@ private fun PresetViewsCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    brush = Brush.linearGradient(
+                    brush = Brush.horizontalGradient(
                         if (isSelected) {
                             listOf(
                                 SiteBinBlue.copy(alpha = 0.98f),
@@ -702,9 +700,7 @@ private fun PresetViewsCard(
                                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.96f),
                                 SiteBinBlue.copy(alpha = 0.08f)
                             )
-                        },
-                        start = 0f,
-                        end = 520f
+                        }
                     )
                 )
                 .padding(vertical = 9.dp, horizontal = 4.dp)
