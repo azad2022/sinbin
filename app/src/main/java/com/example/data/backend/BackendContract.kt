@@ -79,8 +79,11 @@ interface ServerAuthoritativeEngine {
     /** Fetch server coin transactions ledger */
     suspend fun fetchTransactions(userId: String): Result<List<CoinTransaction>>
 
-    /** Claims the server-authoritative daily login bonus for the current authenticated user. */
-    suspend fun claimDailyBonus(callerUserId: String? = null): Result<DailyBonusResult>
+    /** Claims the server-authoritative daily login bonus for the authenticated device/account. */
+    suspend fun claimDailyBonus(
+        evidence: DeviceEvidence,
+        callerUserId: String? = null
+    ): Result<DailyBonusResult>
 
     /** Returns the server-authoritative seven-day auto-view entitlement state. */
     suspend fun getAutoViewStatus(callerUserId: String? = null): Result<AutoViewStatus>
