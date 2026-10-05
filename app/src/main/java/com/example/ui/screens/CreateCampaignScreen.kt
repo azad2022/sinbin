@@ -178,7 +178,7 @@ fun CreateCampaignScreen(
                         )
                     }
 
-                    WebsiteSpeedStatus(
+                    WebsitePreflightStatus(
                         state = websitePreflightState,
                         modifier = Modifier.fillMaxWidth()
                     )

@@ -107,6 +107,10 @@ interface ServerAuthoritativeEngine {
         preflightToken: String? = null
     ): Result<Campaign>
 
+    /** Runs the authoritative server-side website preflight before campaign creation. */
+    suspend fun preflightCampaignUrl(url: String): Result<WebsitePreflightResult> =
+        Result.failure(UnsupportedOperationException("Website preflight is unavailable."))
+
     /**
      * Requests an eligible view session selected by the server,
      * enforcing anti-self view, cooldowns, and active budget.
