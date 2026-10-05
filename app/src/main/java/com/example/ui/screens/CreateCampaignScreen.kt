@@ -67,6 +67,7 @@ import com.example.data.model.UserAccount
 import com.example.ui.SiteBinViewModel
 import com.example.ui.theme.SiteBinBlue
 import com.example.ui.theme.SiteBinBlueDark
+import com.example.ui.theme.SiteBinGoldDark
 import com.example.ui.theme.SiteBinTeal
 import com.example.ui.theme.SiteBinGold
 import com.example.ui.theme.SiteBinSuccess
