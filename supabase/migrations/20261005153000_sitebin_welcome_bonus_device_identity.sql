@@ -374,6 +374,21 @@ BEGIN
 
     v_user_has_grant := v_user_existing_grant.id IS NOT NULL;
 
+    -- Legacy grants created before device evidence existed are anchored to their
+    -- legacy identity. On the first run of a new client, enrich that same identity
+    -- with strong evidence instead of creating an unclaimed second identity.
+    IF v_user_has_grant AND v_legacy_install_hmac IS NOT NULL THEN
+        SELECT di.id
+        INTO v_device_id
+        FROM private.device_identities di
+        JOIN private.welcome_bonus_entitlements e
+          ON e.device_identity_id = di.id
+        WHERE e.beneficiary_auth_uid = v_uid
+          AND di.legacy_install_id_hmac = v_legacy_install_hmac
+        LIMIT 1
+        FOR UPDATE;
+    END IF;
+
     -- Find all identities touched by the submitted evidence. A conflict means
     -- different strong signals point at different known device identities.
     SELECT
