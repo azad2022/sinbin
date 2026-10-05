@@ -248,7 +248,7 @@ class SiteBinRepository(
         val allowed = policy as PolicyResult.Allowed
 
         val currentUserId = _account.value.userId
-        val result = engine.createCampaign(
+        val createResult = engine.createCampaign(
             url = allowed.normalizedUrl,
             normalizedUrl = allowed.normalizedUrl,
             domain = allowed.domain,
@@ -258,12 +258,38 @@ class SiteBinRepository(
             callerUserId = currentUserId
         )
 
-        result.onSuccess {
-            // Re-sync authoritative server state
-            refreshServerState()
+        val created = createResult.getOrNull() ?: return createResult
+
+        if (cleanKeyword != null) {
+            val resolution = engine.resolveCampaignTarget(created.id)
+            if (resolution.isSuccess) {
+                val resolvedCampaign = engine.fetchCampaigns(currentUserId)
+                    .getOrNull()
+                    ?.firstOrNull { it.id == created.id }
+                    ?: created.copy(resolverStatus = "READY")
+
+                runCatching { refreshServerState() }
+                return Result.success(resolvedCampaign)
+            }
+
+            val resolverMessage = resolution.exceptionOrNull()?.message.orEmpty()
+            if (resolverMessage.startsWith("NO_MATCH:")) {
+                // No-match is deterministic: cancel the newly reserved campaign so
+                // advertiser coins are not stranded in an unusable pending campaign.
+                engine.cancelCampaign(created.id, callerUserId = currentUserId)
+                return Result.failure(
+                    IllegalStateException("NO_MATCH: صفحه‌ای مرتبط با این کلمه کلیدی در سایت پیدا نشد.")
+                )
+            }
+
+            // A transient resolver failure leaves the campaign safely PENDING.
+            // It is excluded from the Viewer queue until a later resolver retry succeeds.
+            runCatching { refreshServerState() }
+            return Result.success(created.copy(resolverStatus = "PENDING"))
         }
 
-        return result
+        runCatching { refreshServerState() }
+        return createResult
     }
 
     /**
