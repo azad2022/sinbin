@@ -468,9 +468,12 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             val check = UrlSecurityPolicy.evaluateUrl(newUrl)
             if (check is PolicyResult.Blocked) {
                 urlError.value = check.reason
-            } else {
+            } else if (UrlSecurityPolicy.isReadyForPreflight(newUrl)) {
                 urlError.value = null
                 scheduleWebsitePreflight(newUrl.trim())
+            } else {
+                // Do not touch the network while the user is still typing an incomplete URL.
+                urlError.value = null
             }
         } else {
             urlError.value = null
