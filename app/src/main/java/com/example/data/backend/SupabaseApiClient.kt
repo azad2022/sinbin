@@ -433,7 +433,7 @@ class SupabaseApiClient(
 
             fun execute(token: String): Triple<Int, String, String?> {
                 val request = Request.Builder()
-                    .url("$" + "{supabaseUrl}/functions/v1/campaign-url-preflight")
+                    .url("${supabaseUrl}/functions/v1/campaign-url-preflight")
                     .addHeader("apikey", supabasePublishableKey)
                     .addHeader("Authorization", "Bearer " + token)
                     .addHeader("Content-Type", "application/json")
