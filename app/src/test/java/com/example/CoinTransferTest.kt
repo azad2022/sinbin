@@ -23,8 +23,8 @@ class CoinTransferTest {
         ).getOrThrow()
 
         assertEquals(40L, result.amount)
-        assertEquals(110L, engine.fetchAccount(sender.userId).getOrThrow().availableCoins)
-        assertEquals(190L, engine.fetchAccount(recipient.userId).getOrThrow().availableCoins)
+        assertEquals(260L, engine.fetchAccount(sender.userId).getOrThrow().availableCoins)
+        assertEquals(340L, engine.fetchAccount(recipient.userId).getOrThrow().availableCoins)
 
         val senderTx = engine.fetchTransactions(sender.userId).getOrThrow()
             .firstOrNull { it.referenceId == result.transferId }
@@ -61,8 +61,8 @@ class CoinTransferTest {
         ).getOrThrow()
 
         assertEquals(first.transferId, second.transferId)
-        assertEquals(125L, engine.fetchAccount(sender.userId).getOrThrow().availableCoins)
-        assertEquals(175L, engine.fetchAccount(recipient.userId).getOrThrow().availableCoins)
+        assertEquals(275L, engine.fetchAccount(sender.userId).getOrThrow().availableCoins)
+        assertEquals(325L, engine.fetchAccount(recipient.userId).getOrThrow().availableCoins)
         assertEquals(1, engine.fetchTransactions(sender.userId).getOrThrow()
             .count { it.referenceId == first.transferId })
     }

@@ -171,21 +171,26 @@ class SupabaseApiClient(
         }
     }
 
-    override suspend fun initAccount(installId: String, handle: String?): Result<UserAccount> = withContext(Dispatchers.IO) {
+    override suspend fun initAccount(
+        evidence: DeviceEvidence,
+        handle: String?
+    ): Result<UserAccount> = withContext(Dispatchers.IO) {
         try {
-            // Pricing is cached briefly and loaded by repository startup.
-            // Avoid an unnecessary duplicate round-trip during account initialization.
-
-            // 1. Ensure real authenticated Supabase session
-            ensureAuthenticated(installId)
+            // Authentication establishes the application session. Welcome Bonus
+            // eligibility is decided independently by PostgreSQL using device evidence.
+            ensureAuthenticated(evidence.installId)
 
             val body = JSONObject().apply {
-                put("p_install_id", installId)
-                if (handle != null) put("p_handle", handle)
+                put("p_install_id", evidence.installId)
+                put("p_handle", handle ?: JSONObject.NULL)
+                put("p_android_id", evidence.androidId ?: JSONObject.NULL)
+                put("p_app_set_id", evidence.appSetId ?: JSONObject.NULL)
+                put("p_app_set_scope", evidence.appSetScope ?: JSONObject.NULL)
+                put("p_installation_key_fingerprint", evidence.installationKeyFingerprint ?: JSONObject.NULL)
             }
 
             val responseJson = callRpc("init_user_account", body)
-            val account = parseUserAccount(responseJson, installId)
+            val account = parseUserAccount(responseJson, evidence.installId)
             currentUserId = account.userId
             saveSession()
             Result.success(account)

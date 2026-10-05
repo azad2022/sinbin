@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.core.security.PolicyResult
 import com.example.core.security.UrlSecurityPolicy
 import com.example.data.backend.BackendManager
+import com.example.data.security.AndroidDeviceEvidenceProvider
 import com.example.data.backend.ServerAuthoritativeEngine
 import com.example.data.model.AbuseReport
 import com.example.data.model.AutoViewActivationResult
@@ -46,6 +47,7 @@ class SiteBinRepository(
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val prefs = context.getSharedPreferences("sitebin_prefs", Context.MODE_PRIVATE)
+    private val deviceEvidenceProvider = AndroidDeviceEvidenceProvider(context)
 
     private val _serverState = MutableStateFlow<ServerInitializationState>(ServerInitializationState.Initializing)
     val serverState: StateFlow<ServerInitializationState> = _serverState.asStateFlow()
@@ -123,6 +125,7 @@ class SiteBinRepository(
      */
     suspend fun refreshServerState() {
         val installId = getOrGenerateInstallId()
+        val deviceEvidence = deviceEvidenceProvider.collect(installId)
 
         val pricingResult = engine.fetchDurationPricing()
         if (pricingResult.isFailure) {
@@ -130,7 +133,7 @@ class SiteBinRepository(
                 ?: IllegalStateException("قیمت‌گذاری سرور در دسترس نیست.")
         }
 
-        val initRes = engine.initAccount(installId)
+        val initRes = engine.initAccount(deviceEvidence)
         if (initRes.isFailure) {
             throw initRes.exceptionOrNull()
                 ?: IllegalStateException("راه‌اندازی حساب در سرور ناموفق بود.")
