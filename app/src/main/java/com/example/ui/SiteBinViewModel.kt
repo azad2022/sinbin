@@ -204,6 +204,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     private var isRequestingViewSession = false
     private var contentReadySessionId: String? = null
     private var lastDailyBonusAttemptAt = 0L
+    private var viewerFlowGeneration = 0L
 
     // Local single-flight guard reduces duplicate taps/coroutines. This is only
     // a UX/reliability layer; the authoritative protection is server-side.
@@ -217,9 +218,13 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     fun navigateTo(screen: AppScreen) {
         if (screen != AppScreen.VIEWER && _currentScreen.value == AppScreen.VIEWER) {
+            viewerFlowGeneration += 1L
             cancelViewerTimer()
             val activeSession = currentViewerSession()
             contentReadySessionId = null
+            // Reset the viewer state before leaving the screen so a pending auto-advance
+            // cannot treat the old Completed state as a valid trigger.
+            _viewerState.value = ViewerState.Idle
             if (activeSession != null) {
                 viewModelScope.launch {
                     repository.cancelViewSession(activeSession.id)
@@ -237,14 +242,22 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     // --- Viewer Engine ---
 
-    fun startViewing() {
+    fun startViewing(expectedViewerFlowGeneration: Long? = null) {
+        if (expectedViewerFlowGeneration != null && _currentScreen.value != AppScreen.VIEWER) return
         if (isRequestingViewSession) return
 
+        val requestGeneration = viewerFlowGeneration
         viewModelScope.launch {
             isRequestingViewSession = true
             try {
                 val requestStartedAt = SystemClock.elapsedRealtime()
                 val sessionResult = repository.getNextViewSession()
+                if (
+                    expectedViewerFlowGeneration != null &&
+                    (requestGeneration != viewerFlowGeneration || _currentScreen.value != AppScreen.VIEWER)
+                ) {
+                    return@launch
+                }
                 val elapsedMs = SystemClock.elapsedRealtime() - requestStartedAt
                 if (BuildConfig.DEBUG) {
                     android.util.Log.d("SiteBinPerf", "operation=request_view_session elapsedMs=$elapsedMs")
@@ -368,6 +381,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
+        val requestGeneration = viewerFlowGeneration
+        if (_currentScreen.value != AppScreen.VIEWER) return
+
         viewModelScope.launch {
             val status = repository.autoViewStatus.value
             val serverStatus = if (status.active) {
@@ -376,8 +392,12 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 repository.getAutoViewStatus().getOrNull()
             }
 
+            if (viewerFlowGeneration != requestGeneration || _currentScreen.value != AppScreen.VIEWER) {
+                return@launch
+            }
+
             if (serverStatus?.active == true) {
-                startViewing()
+                startViewing(expectedViewerFlowGeneration = requestGeneration)
             } else {
                 _autoViewEnabled.value = false
                 prefs.edit().putBoolean("auto_view_enabled", false).apply()
