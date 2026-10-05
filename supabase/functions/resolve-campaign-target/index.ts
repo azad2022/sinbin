@@ -1,7 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const RESOLVER_VERSION = 2;
-const MAX_SITEMAP_URLS = 100;
+const RESOLVER_VERSION = 1;
 const MAX_PAGES = 12;
 const MAX_HTML_BYTES = 1_000_000;
 const FETCH_TIMEOUT_MS = 6_000;
@@ -320,80 +319,6 @@ function rankLinks(links: string[], keyword: string): string[] {
   });
 }
 
-
-async function fetchSitemapUrls(origin: string): Promise<string[]> {
-  const candidates = new Set<string>([
-    new URL("/sitemap.xml", origin).toString(),
-    new URL("/sitemap_index.xml", origin).toString(),
-  ]);
-
-  try {
-    const robotsUrl = new URL("/robots.txt", origin).toString();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    try {
-      const response = await fetch(robotsUrl, {
-        method: "GET",
-        redirect: "manual",
-        signal: controller.signal,
-        headers: { "Accept": "text/plain" },
-      });
-      if (response.ok) {
-        const text = await readLimited(response);
-        for (const match of text.matchAll(/^\s*Sitemap\s*:\s*(\S+)\s*$/gim)) {
-          try {
-            const sitemap = new URL(match[1], origin);
-            if (sitemap.protocol === "https:" && sitemap.origin === origin) {
-              candidates.add(sitemap.toString());
-            }
-          } catch {}
-        }
-      }
-    } finally {
-      clearTimeout(timeout);
-    }
-  } catch {}
-
-  const urls = new Set<string>();
-
-  for (const sitemapUrl of candidates) {
-    if (urls.size >= MAX_SITEMAP_URLS) break;
-
-    try {
-      const parsed = new URL(sitemapUrl);
-      await assertPublicHost(parsed.hostname);
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-      try {
-        const response = await fetch(sitemapUrl, {
-          method: "GET",
-          redirect: "manual",
-          signal: controller.signal,
-          headers: { "Accept": "application/xml,text/xml,text/plain" },
-        });
-
-        if (!response.ok) continue;
-
-        const xml = await readLimited(response);
-        for (const match of xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)) {
-          try {
-            const url = new URL(match[1], origin);
-            if (url.protocol !== "https:" || url.origin !== origin) continue;
-            url.hash = "";
-            urls.add(url.toString());
-            if (urls.size >= MAX_SITEMAP_URLS) break;
-          } catch {}
-        }
-      } finally {
-        clearTimeout(timeout);
-      }
-    } catch {}
-  }
-
-  return [...urls];
-}
-
 async function resolveFromSite(
   keyword: string,
   landingUrl: string,
@@ -407,13 +332,6 @@ async function resolveFromSite(
   const queue: string[] = [landing.toString()];
   const visited = new Set<string>();
   let best: { resolvedUrl: string; score: number; matchedTokens: number } | null = null;
-
-  // Seed candidates from same-origin sitemap/robots declarations. This lets the
-  // resolver find deep product/article pages that are not linked from the landing page.
-  const sitemapUrls = await fetchSitemapUrls(origin);
-  for (const sitemapUrl of rankLinks(sitemapUrls, keyword)) {
-    if (!queue.includes(sitemapUrl)) queue.push(sitemapUrl);
-  }
 
   while (queue.length > 0 && visited.size < MAX_PAGES) {
     const current = queue.shift()!;
