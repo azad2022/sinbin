@@ -49,6 +49,7 @@ class DailyBonusTest {
                 installId = "daily-install-a",
                 androidId = "0123456789abcdef"
             )
+            val secondBefore = engine.fetchAccount(second.userId).getOrThrow()
 
             now += 24 * 60 * 60 * 1000L
 
@@ -59,11 +60,11 @@ class DailyBonusTest {
             assertEquals(50L, granted.amount)
             assertEquals("ALREADY_CLAIMED", replay.reason)
             assertEquals(
-                50L,
+                first.availableCoins + 50L,
                 engine.fetchAccount(first.userId).getOrThrow().availableCoins
             )
             assertEquals(
-                50L,
+                secondBefore.availableCoins,
                 engine.fetchAccount(second.userId).getOrThrow().availableCoins
             )
         }
