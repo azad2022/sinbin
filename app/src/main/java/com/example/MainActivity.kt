@@ -11,6 +11,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.example.ui.theme.SiteBinSuccess
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -103,8 +108,20 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     }
 
     val serverState by viewModel.serverState.collectAsState()
+    var startupUiComplete by remember { mutableStateOf(false) }
     val currentScreen by viewModel.currentScreen.collectAsState()
     val account by viewModel.account.collectAsState()
+
+    LaunchedEffect(serverState) {
+        if (serverState == ServerInitializationState.Ready) {
+            // Keep the startup bar visible long enough to reach 100% before
+            // replacing the startup surface with the actual application UI.
+            kotlinx.coroutines.delay(650L)
+            startupUiComplete = true
+        } else {
+            startupUiComplete = false
+        }
+    }
     val campaigns by viewModel.campaigns.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
     val dailyBonus by viewModel.dailyBonus.collectAsState()
@@ -180,7 +197,9 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
         }
 
         ServerInitializationState.Ready -> {
-            if (!isOnboardingCompleted) {
+            if (!startupUiComplete) {
+                StartupScreen(isRetry = false, message = null, onRetry = {}, complete = true)
+            } else if (!isOnboardingCompleted) {
                 OnboardingScreen(
                     onFinish = {
                         prefs.edit().putBoolean("onboarding_done", true).apply()
@@ -362,55 +381,81 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
 private fun StartupScreen(
     isRetry: Boolean,
     message: String?,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    complete: Boolean = false
 ) {
+    val targetProgress = when {
+        isRetry -> 0f
+        complete -> 1f
+        else -> 0.94f
+    }
+
+    val progress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = tween(
+            durationMillis = when {
+                isRetry -> 220
+                complete -> 650
+                else -> 8_500
+            },
+            easing = androidx.compose.animation.core.LinearEasing
+        ),
+        label = "startup_progress"
+    )
+
     androidx.compose.material3.Surface(
         modifier = Modifier.fillMaxSize(),
         color = androidx.compose.material3.MaterialTheme.colorScheme.background
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(horizontal = 32.dp),
+            contentAlignment = Alignment.Center
         ) {
             if (!isRetry) {
-                Spacer(modifier = Modifier.height(24.dp))
                 LinearProgressIndicator(
+                    progress = { progress.coerceIn(0f, 1f) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp)
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(999.dp)),
+                    color = SiteBinSuccess,
+                    trackColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
                 )
-                Spacer(modifier = Modifier.height(24.dp))
             } else {
-                Text(
-                    text = "اتصال به حساب برقرار نشد",
-                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "برای حفظ صحت موجودی و پاداش‌ها، بدون تأیید سرور وارد برنامه نمی‌شویم.",
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                if (BuildConfig.DEBUG && !message.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(16.dp))
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
                     Text(
-                        text = "جزئیات تشخیص:\n${message.trim().take(320)}",
-                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                        color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                        text = "اتصال به حساب برقرار نشد",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "برای حفظ صحت موجودی و پاداش‌ها، بدون تأیید سرور وارد برنامه نمی‌شویم.",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
-                }
-                Spacer(modifier = Modifier.height(20.dp))
-                Button(
-                    onClick = onRetry,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("تلاش دوباره")
+                    if (BuildConfig.DEBUG && !message.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "جزئیات تشخیص:\n" + message.trim().take(320),
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Button(
+                        onClick = onRetry,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("تلاش دوباره")
+                    }
                 }
             }
         }

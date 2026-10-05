@@ -18,7 +18,10 @@ import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewCompletionResult
 import com.example.data.model.ViewSession
+import com.example.data.security.BlockStoreSessionStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -83,6 +86,9 @@ class SupabaseApiClient(
     private val prefs by lazy {
         context?.getSharedPreferences("sitebin_supabase_session", Context.MODE_PRIVATE)
     }
+
+    private val blockStoreSessionStore by lazy { context?.let(::BlockStoreSessionStore) }
+    private val authenticationMutex = Mutex()
 
     // Dynamic Pricing (Single Source of Truth)
     private var _dynamicPricing: List<DurationOption> = listOf(
@@ -222,9 +228,15 @@ class SupabaseApiClient(
         }
     }
 
-    override suspend fun claimDailyBonus(callerUserId: String?): Result<DailyBonusResult> = withContext(Dispatchers.IO) {
+    override suspend fun claimDailyBonus(evidence: DeviceEvidence, callerUserId: String?): Result<DailyBonusResult> = withContext(Dispatchers.IO) {
         try {
-            val res = callRpc("claim_daily_bonus", JSONObject())
+            val body = JSONObject().apply {
+                put("p_android_id", evidence.androidId ?: JSONObject.NULL)
+                put("p_app_set_id", evidence.appSetId ?: JSONObject.NULL)
+                put("p_app_set_scope", evidence.appSetScope ?: JSONObject.NULL)
+                put("p_installation_key_fingerprint", evidence.installationKeyFingerprint ?: JSONObject.NULL)
+            }
+            val res = callRpc("claim_daily_bonus", body)
             val amount = res.optLong("amount", 0L)
             if (res.optBoolean("granted", false) && amount <= 0L) {
                 return@withContext Result.failure(
@@ -779,25 +791,50 @@ class SupabaseApiClient(
         throw IllegalStateException("UNAUTHENTICATED: No valid Supabase user session token found. Call initAccount first.")
     }
 
-    @Synchronized
-    private fun ensureAuthenticated(installId: String) {
+    private suspend fun ensureAuthenticated(installId: String) = authenticationMutex.withLock {
         val now = System.currentTimeMillis()
 
         // 1. Valid existing token
         if (!currentUserToken.isNullOrBlank() && currentUserToken != supabasePublishableKey && (tokenExpiresAt == 0L || now < (tokenExpiresAt - 60_000L))) {
-            return
+            return@withLock
         }
 
-        // 2. Try refreshing token if available
+        // 2. Try refreshing the locally persisted session first.
         val refreshToken = currentRefreshToken
         if (!refreshToken.isNullOrBlank()) {
             val refreshed = refreshSession(refreshToken)
             if (refreshed != null) {
-                return
+                return@withLock
             }
         }
 
-        // 3. Acquire or generate a high-entropy cryptographically secure random device secret (256-bit).
+        // 3. On a reinstall, restore the previous Supabase session from Block Store
+        // before ever creating a new Auth user. This preserves the canonical Auth UID,
+        // profile, campaigns and ledger without rewriting financial history.
+        val restored = blockStoreSessionStore?.load()
+        if (restored != null) {
+            currentUserToken = null
+            currentUserId = restored.userId
+            currentRefreshToken = restored.refreshToken
+            when (refreshSessionOutcome(restored.refreshToken)) {
+                RefreshOutcome.SUCCESS -> return@withLock
+                RefreshOutcome.INVALID -> {
+                    // A revoked session must not trap the app forever. Clear only the
+                    // invalid recovery token, then allow normal first-account signup.
+                    val store = blockStoreSessionStore
+                    store?.clear()
+                    currentRefreshToken = null
+                    currentUserId = null
+                }
+                RefreshOutcome.TRANSIENT -> {
+                    // Never create a second account merely because the network/Auth
+                    // service is temporarily unavailable after a restore.
+                    throw IOException("AUTH_RESTORE_UNAVAILABLE: Saved account could not be restored right now.")
+                }
+            }
+        }
+
+        // 4. Acquire or generate a high-entropy cryptographically secure random device secret (256-bit).
         // Keep the email stable for existing installations, but never build a password
         // longer than Supabase Auth's 72-character limit.
         val deviceSecret = getOrGenerateDeviceSecret()
@@ -874,8 +911,10 @@ class SupabaseApiClient(
         )
     }
 
-    private fun refreshSession(refreshToken: String): String? {
-        try {
+    private enum class RefreshOutcome { SUCCESS, INVALID, TRANSIENT }
+
+    private fun refreshSessionOutcome(refreshToken: String): RefreshOutcome {
+        return try {
             val body = JSONObject().apply {
                 put("refresh_token", refreshToken)
             }.toString().toRequestBody(jsonMediaType)
@@ -890,11 +929,25 @@ class SupabaseApiClient(
             val raw = res.body?.string() ?: ""
             if (res.isSuccessful) {
                 handleAuthSuccess(raw)
-                return currentUserToken
+                RefreshOutcome.SUCCESS
+            } else if (res.code == 400 && run {
+                val lower = raw.lowercase(Locale.ROOT)
+                lower.contains("invalid_grant") ||
+                    lower.contains("refresh_token_not_found") ||
+                    lower.contains("invalid refresh token") ||
+                    lower.contains("refresh token not found")
+            }) {
+                RefreshOutcome.INVALID
+            } else {
+                RefreshOutcome.TRANSIENT
             }
-        } catch (_: Exception) {}
-        return null
+        } catch (_: Exception) {
+            RefreshOutcome.TRANSIENT
+        }
     }
+
+    private fun refreshSession(refreshToken: String): String? =
+        refreshSessionOutcome(refreshToken).takeIf { it == RefreshOutcome.SUCCESS }?.let { currentUserToken }
 
     private fun handleAuthSuccess(responseJson: String) {
         val json = JSONObject(responseJson)
@@ -928,6 +981,10 @@ class SupabaseApiClient(
         putSecureString("refresh_token", currentRefreshToken)
         putSecureString("user_id", currentUserId)
         putSecureString("token_expires_at", tokenExpiresAt.toString())
+
+        // Best-effort external session continuity. Failure here must never change
+        // the authoritative Supabase session or financial state.
+        blockStoreSessionStore?.save(currentRefreshToken, currentUserId)
     }
 
     private fun getKeystoreKey(): SecretKey {

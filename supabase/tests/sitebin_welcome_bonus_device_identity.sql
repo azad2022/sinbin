@@ -325,6 +325,99 @@ BEGIN
     RAISE EXCEPTION 'TEST16_17_FAILED: historical account changed';
   END IF;
 
+  -- Test 18: an existing zero-balance profile created during transient evidence
+  -- failure can recover its Welcome entitlement from the server-known canonical device.
+  DECLARE
+    v_recovery_uid uuid := gen_random_uuid();
+    v_recovery_profile json;
+  BEGIN
+    INSERT INTO auth.users(
+      id, aud, role, email, email_confirmed_at,
+      created_at, updated_at, is_sso_user, is_anonymous
+    )
+    VALUES(
+      v_recovery_uid,
+      'authenticated',
+      'authenticated',
+      'sitebin_recovery_' || replace(v_recovery_uid::text,'-','') || '@sitebin.internal',
+      clock_timestamp(),
+      clock_timestamp(),
+      clock_timestamp(),
+      false,
+      false
+    );
+
+    INSERT INTO private.device_identities(
+      android_id_hmac,
+      installation_key_fingerprint,
+      first_seen_at,
+      last_seen_at,
+      first_auth_uid,
+      current_auth_uid,
+      risk_score,
+      risk_level,
+      integrity_status,
+      platform_metadata
+    )
+    VALUES(
+      private.device_identifier_hmac('android_id','abcdefabcdefabcd'),
+      private.device_identifier_hmac('installation_key_fingerprint',repeat('a',64)),
+      clock_timestamp(),
+      clock_timestamp(),
+      v_recovery_uid,
+      v_recovery_uid,
+      80,
+      'LOW',
+      'NOT_CHECKED',
+      jsonb_build_object('source','recovery_regression')
+    );
+
+    INSERT INTO public.profiles(
+      id,user_handle,app_install_id,available_coins,reserved_coins,
+      lifetime_earned,lifetime_spent,trust_score,completed_views_count,
+      received_views_count,welcome_bonus_claimed
+    )
+    VALUES(
+      v_recovery_uid,'recovery_'||substr(replace(v_recovery_uid::text,'-',''),1,10),
+      'recovery-install',0,0,0,0,100,0,0,false
+    );
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub',v_recovery_uid::text,'role','authenticated','is_anonymous',false)::text,
+      true
+    );
+
+    SELECT public.init_user_account(
+      'recovery-install',
+      NULL,
+      NULL,
+      NULL,
+      NULL,
+      NULL
+    ) INTO v_recovery_profile;
+
+    IF (v_recovery_profile->>'available_coins')::bigint <> 300
+       OR (v_recovery_profile->>'welcome_bonus_claimed')::boolean IS NOT TRUE THEN
+      RAISE EXCEPTION 'TEST18_FAILED: existing zero-balance profile did not recover Welcome Bonus: %',
+        v_recovery_profile;
+    END IF;
+
+    IF (SELECT count(*) FROM public.welcome_bonus_grants WHERE user_id=v_recovery_uid) <> 1
+       OR (SELECT count(*) FROM private.welcome_bonus_entitlements WHERE beneficiary_auth_uid=v_recovery_uid) <> 1
+       OR (SELECT count(*) FROM public.coin_ledger
+           WHERE user_id=v_recovery_uid AND transaction_type='WELCOME_REWARD') <> 1 THEN
+      RAISE EXCEPTION 'TEST18_FAILED: recovery created invalid financial records';
+    END IF;
+
+    IF (SELECT risk_level
+        FROM private.device_identities
+        WHERE first_auth_uid=v_recovery_uid
+          AND current_auth_uid=v_recovery_uid) <> 'LOW' THEN
+      RAISE EXCEPTION 'TEST18_FAILED: LOW risk identity was downgraded by recovery';
+    END IF;
+  END;
+
   -- Test 14: burst attempts for one device are capped at 5 attempts / 15 minutes.
   v_uid := (SELECT id FROM tmp_sitebin_test_users ORDER BY id LIMIT 1);
   PERFORM set_config(
