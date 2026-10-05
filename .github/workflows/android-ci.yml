@@ -188,3 +188,5 @@ jobs:
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/sitebin-release.jks
         run: rm -f "$KEYSTORE_PATH"
+
+# Production release workflow is intentionally gated by an explicit release commit or manual dispatch.
