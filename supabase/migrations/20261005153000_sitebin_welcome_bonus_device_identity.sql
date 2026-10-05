@@ -270,6 +270,7 @@ DECLARE
     v_risk_score integer := 50;
     v_risk_level text := 'MEDIUM';
     v_attempts integer := 0;
+    v_window_started_at timestamptz;
     v_rate_limited boolean := false;
     v_bonus_amount bigint := 300;
     v_inserted_entitlement_id uuid;
@@ -412,12 +413,12 @@ BEGIN
         ON CONFLICT (signal_hmac) DO NOTHING;
 
         SELECT attempt_count, window_started_at
-        INTO v_attempts, v_user_existing_grant.granted_at
+        INTO v_attempts, v_window_started_at
         FROM private.welcome_bonus_attempt_buckets
         WHERE signal_hmac = v_android_hmac
         FOR UPDATE;
 
-        IF clock_timestamp() - v_user_existing_grant.granted_at >= interval '15 minutes' THEN
+        IF clock_timestamp() - v_window_started_at >= interval '15 minutes' THEN
             UPDATE private.welcome_bonus_attempt_buckets
             SET window_started_at = clock_timestamp(),
                 attempt_count = 1
@@ -436,8 +437,7 @@ BEGIN
     -- If an existing device identity was found, serialize its entitlement
     -- decision under a row lock.
     IF v_device_id IS NOT NULL THEN
-        SELECT *
-        INTO v_device_id
+        PERFORM 1
         FROM private.device_identities
         WHERE id = v_device_id
         FOR UPDATE;
@@ -452,8 +452,7 @@ BEGIN
               WHEN risk_level = 'LOW' AND v_risk_level = 'LOW' THEN 'LOW'
               ELSE 'MEDIUM'
             END,
-            app_set_scope = COALESCE(v_app_set_scope, app_set_scope),
-            app_version = COALESCE(app_version, NULL)
+            app_set_scope = COALESCE(v_app_set_scope, app_set_scope)
         WHERE id = v_device_id;
     ELSIF v_android_hmac IS NOT NULL OR v_app_set_hmac IS NOT NULL OR v_install_fp IS NOT NULL THEN
         BEGIN
@@ -512,8 +511,7 @@ BEGIN
         END IF;
 
         IF v_device_id IS NOT NULL THEN
-            SELECT *
-            INTO v_device_id
+            PERFORM 1
             FROM private.device_identities
             WHERE id = v_device_id
             FOR UPDATE;
@@ -687,11 +685,6 @@ BEGIN
                   clock_timestamp()
                 );
 
-                UPDATE private.device_identities
-                SET risk_score = 0,
-                    risk_level = 'LOW',
-                    last_seen_at = clock_timestamp()
-                WHERE id = v_device_id;
             END IF;
         END IF;
 
