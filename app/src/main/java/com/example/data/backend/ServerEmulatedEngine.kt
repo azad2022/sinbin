@@ -32,7 +32,7 @@ import kotlin.concurrent.withLock
  * - Strict Idempotency and exact CONTENT_READY state transition on view completion
  */
 class ServerEmulatedEngine(
-    private val nowProvider: () -> Long = { System.currentTimeMillis() }
+    private val nowProvider: () -> Long = { nowProvider() }
 ) : ServerAuthoritativeEngine {
 
     private val lock = ReentrantLock()
@@ -477,7 +477,7 @@ class ServerEmulatedEngine(
             totalBudget = totalCost,
             spentBudget = 0,
             status = CampaignStatus.ACTIVE,
-            createdAt = System.currentTimeMillis()
+            createdAt = nowProvider()
         )
         campaigns[newCampaign.id] = newCampaign
 
@@ -498,7 +498,7 @@ class ServerEmulatedEngine(
     }
 
     override suspend fun requestViewSession(userId: String): Result<ViewSession?> = lock.withLock {
-        val now = System.currentTimeMillis()
+        val now = nowProvider()
 
         // 1. Check for active unfinished session created in last 3 minutes
         val activeSession = viewSessions.values.find {
@@ -612,7 +612,7 @@ class ServerEmulatedEngine(
 
         if (record.status == "INITIALIZED") {
             record.status = "CONTENT_READY"
-            record.contentReadyAt = System.currentTimeMillis()
+            record.contentReadyAt = nowProvider()
             return Result.success(true)
         }
 
@@ -694,7 +694,7 @@ class ServerEmulatedEngine(
         val contentReadyTime = record.contentReadyAt
             ?: return Result.failure(IllegalStateException("INVALID_SESSION_STATE: Content ready signal was never received"))
 
-        val now = System.currentTimeMillis()
+        val now = nowProvider()
         val elapsedMs = now - contentReadyTime
         val requiredMs = (record.requiredDurationSeconds * 1000L) - 1000L // 1 sec tolerance for network roundtrip
 
