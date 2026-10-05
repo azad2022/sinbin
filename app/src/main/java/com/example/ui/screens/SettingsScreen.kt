@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
@@ -65,6 +66,7 @@ fun SettingsScreen(
     autoViewEnabled: Boolean,
     isUpdatingAutoView: Boolean,
     onToggleAutoView: (Boolean) -> Unit,
+    onOpenHelp: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showTermsDialog by remember { mutableStateOf(false) }
@@ -275,6 +277,30 @@ fun SettingsScreen(
                         onCheckedChange = onToggleAutoView
                     )
                 }
+            }
+        }
+
+        // Section: Help
+        item {
+            Text(
+                text = "راهنما",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                SettingsClickableRow(
+                    icon = Icons.Default.MenuBook,
+                    title = "راهنمای نرم‌افزار",
+                    subtitle = "راهنمای کامل سکه‌ها، بازدید، سفارش، کلمه کلیدی و امکانات برنامه",
+                    onClick = onOpenHelp
+                )
             }
         }
 
