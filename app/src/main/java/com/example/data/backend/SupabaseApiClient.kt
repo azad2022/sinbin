@@ -399,6 +399,7 @@ class SupabaseApiClient(
                         costPerView = item.optLong("cost_per_view"),
                         totalBudget = item.optLong("total_budget"),
                         spentBudget = item.optLong("spent_budget"),
+                        resolverStatus = item.optString("resolver_status", "NOT_REQUIRED"),
                         status = status
                     )
                 )
@@ -442,6 +443,7 @@ class SupabaseApiClient(
                     costPerView = res.optLong("cost_per_view"),
                     totalBudget = res.optLong("total_budget"),
                     spentBudget = res.optLong("spent_budget", 0),
+                    resolverStatus = res.optString("resolver_status", "NOT_REQUIRED"),
                     status = status
                 )
             )
@@ -468,6 +470,63 @@ class SupabaseApiClient(
                     startedAt = res.optLong("started_at", System.currentTimeMillis())
                 )
             )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun resolveCampaignTarget(campaignId: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val token = getValidUserToken()
+            val body = JSONObject().apply {
+                put("campaign_id", campaignId)
+            }.toString().toRequestBody(jsonMediaType)
+
+            val request = Request.Builder()
+                .url("${supabaseUrl}/functions/v1/resolve-campaign-target")
+                .addHeader("apikey", supabasePublishableKey)
+                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Content-Type", "application/json")
+                .post(body)
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            val raw = response.body?.string() ?: ""
+
+            if ((response.code == 401 || response.code == 403) && !currentRefreshToken.isNullOrBlank()) {
+                val refreshed = refreshSession(currentRefreshToken!!)
+                if (refreshed != null) {
+                    val retryRequest = Request.Builder()
+                        .url("${supabaseUrl}/functions/v1/resolve-campaign-target")
+                        .addHeader("apikey", supabasePublishableKey)
+                        .addHeader("Authorization", "Bearer $refreshed")
+                        .addHeader("Content-Type", "application/json")
+                        .post(body)
+                        .build()
+                    val retry = httpClient.newCall(retryRequest).execute()
+                    val retryRaw = retry.body?.string() ?: ""
+                    if (!retry.isSuccessful) {
+                        val errorJson = runCatching { JSONObject(retryRaw) }.getOrNull()
+                        val code = errorJson?.optString("code", "RESOLVER_FAILED") ?: "RESOLVER_FAILED"
+                        val message = errorJson?.optString("message", "Keyword target resolution failed")
+                            ?: "Keyword target resolution failed"
+                        throw IOException("${code}: $message")
+                    }
+                    return@withContext Result.success(
+                        JSONObject(retryRaw).getString("resolved_target_url")
+                    )
+                }
+            }
+
+            if (!response.isSuccessful) {
+                val errorJson = runCatching { JSONObject(raw) }.getOrNull()
+                val code = errorJson?.optString("code", "RESOLVER_FAILED") ?: "RESOLVER_FAILED"
+                val message = errorJson?.optString("message", "Keyword target resolution failed")
+                    ?: "Keyword target resolution failed"
+                throw IOException("${code}: $message")
+            }
+
+            Result.success(JSONObject(raw).getString("resolved_target_url"))
         } catch (e: Exception) {
             Result.failure(e)
         }
