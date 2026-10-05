@@ -606,7 +606,13 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 val preflightResult = getFreshPreflightForSubmit(url)
                 if (preflightResult.isFailure) {
                     val error = preflightResult.exceptionOrNull()
-                    showMessage(error?.message ?: "بررسی نهایی وب‌سایت ناموفق بود.")
+                    when (error) {
+                        is RateLimitException -> showMessage(
+                            "تعداد بررسی‌های آدرس بیش از حد مجاز است. لطفاً " + error.retryAfterSeconds + " ثانیه دیگر دوباره تلاش کنید."
+                        )
+                        null -> showMessage("بررسی نهایی وب‌سایت ناموفق بود.")
+                        else -> showMessage(preflightUserMessage(error))
+                    }
                     return@launch
                 }
 
