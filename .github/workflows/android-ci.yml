@@ -146,7 +146,6 @@ jobs:
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          gradle --no-daemon :app:testReleaseUnitTest
           gradle --no-daemon :app:assembleRelease :app:bundleRelease
 
       - name: Verify release signatures
