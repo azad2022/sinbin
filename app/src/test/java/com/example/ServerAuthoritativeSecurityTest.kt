@@ -426,6 +426,82 @@ class ServerAuthoritativeSecurityTest {
         assertTrue(newSession!!.id != session.id)
     }
 
+    @Test
+    fun testView_randomizedDistributionAvoidsAdvertiserMonopoly() = runBlocking {
+        var now = 1_000_000L
+        val distributionEngine = ServerEmulatedEngine { now }
+
+        val advertisers = listOf(
+            distributionEngine.initAccount("inst_dist_adv_1", handle = "dist_adv_1").getOrThrow(),
+            distributionEngine.initAccount("inst_dist_adv_2", handle = "dist_adv_2").getOrThrow(),
+            distributionEngine.initAccount("inst_dist_adv_3", handle = "dist_adv_3").getOrThrow(),
+            distributionEngine.initAccount("inst_dist_adv_4", handle = "dist_adv_4").getOrThrow()
+        )
+
+        listOf(
+            "https://distribution-one.example.com",
+            "https://distribution-two.example.com",
+            "https://distribution-three.example.com",
+            "https://distribution-four.example.com"
+        ).forEachIndexed { index, url ->
+            distributionEngine.createCampaign(
+                url = url,
+                normalizedUrl = url,
+                domain = "distribution-$\{index + 1}.example.com",
+                durationSeconds = 5,
+                targetViews = 20,
+                callerUserId = advertisers[index].userId
+            ).getOrThrow()
+        }
+
+        val viewer = distributionEngine.initAccount(
+            "inst_dist_viewer",
+            handle = "dist_viewer"
+        ).getOrThrow()
+
+        val firstSession = distributionEngine.requestViewSession(viewer.userId).getOrThrow()!!
+        val firstCampaign = distributionEngine.fetchCampaigns(viewer.userId).getOrThrow()
+            .first { it.id == firstSession.campaignId }
+        val firstOwner = firstCampaign.ownerId
+
+        distributionEngine.signalContentReady(firstSession.id, callerUserId = viewer.userId)
+        now += 4_000L
+        assertTrue(
+            distributionEngine.completeViewSession(
+                firstSession.id,
+                "distribution_complete_1",
+                callerUserId = viewer.userId
+            ).isSuccess
+        )
+
+        val selectedCampaignIds = linkedSetOf<String>()
+        repeat(20) {
+            val session = distributionEngine.requestViewSession(viewer.userId).getOrThrow()!!
+            selectedCampaignIds += session.campaignId
+
+            val campaign = distributionEngine.fetchCampaigns(viewer.userId).getOrThrow()
+                .first { it.id == session.campaignId }
+
+            assertTrue(
+                "Recently completed advertiser was selected again too soon",
+                campaign.ownerId != firstOwner
+            )
+
+            assertTrue(
+                distributionEngine.cancelViewSession(
+                    session.id,
+                    callerUserId = viewer.userId
+                ).getOrThrow()
+            )
+            now += 1_000L
+        }
+
+        assertTrue(
+            "Randomized viewer distribution selected only one campaign across 20 requests",
+            selectedCampaignIds.size >= 2
+        )
+    }
+
     // =========================================================================
     // 4. Concurrency Race Condition Tests
     // =========================================================================
