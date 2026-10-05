@@ -89,6 +89,7 @@ fun CreateCampaignScreen(
     val url by viewModel.urlInput.collectAsState()
     val keyword by viewModel.keywordInput.collectAsState()
     val urlError by viewModel.urlError.collectAsState()
+    val websiteSpeedState by viewModel.websiteSpeedState.collectAsState()
     val selectedDuration by viewModel.selectedDuration.collectAsState()
     val targetViews by viewModel.targetViewsInput.collectAsState()
     val isSubmitting by viewModel.isSubmittingCampaign.collectAsState()
@@ -170,6 +171,11 @@ fun CreateCampaignScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+
+                    WebsiteSpeedStatus(
+                        state = websiteSpeedState,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -207,7 +213,7 @@ fun CreateCampaignScreen(
                     OutlinedTextField(
                         value = keyword,
                         onValueChange = viewModel::onKeywordChanged,
-                        placeholder = { Text("مثلاً سولانا") },
+                        placeholder = { Text("مثلاً خرید کیف ورزشی") },
                         isError = keyword.length > 25 || keyword.any(Char::isISOControl),
                         singleLine = true,
                         leadingIcon = {
@@ -632,6 +638,152 @@ private fun DurationCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Composable
+private fun WebsiteSpeedStatus(
+    state: com.example.ui.WebsiteSpeedCheckState,
+    modifier: Modifier = Modifier
+) {
+    if (state is com.example.ui.WebsiteSpeedCheckState.Idle) return
+
+    val background = when (state) {
+        com.example.ui.WebsiteSpeedCheckState.Checking ->
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        is com.example.ui.WebsiteSpeedCheckState.Completed -> when (state.level) {
+            com.example.core.network.SiteSpeedLevel.GOOD ->
+                SiteBinSuccess.copy(alpha = 0.09f)
+            com.example.core.network.SiteSpeedLevel.ACCEPTABLE ->
+                SiteBinGold.copy(alpha = 0.10f)
+            com.example.core.network.SiteSpeedLevel.SLOW ->
+                MaterialTheme.colorScheme.error.copy(alpha = 0.08f)
+        }
+        is com.example.ui.WebsiteSpeedCheckState.TimedOut ->
+            MaterialTheme.colorScheme.error.copy(alpha = 0.08f)
+        is com.example.ui.WebsiteSpeedCheckState.Failed ->
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        com.example.ui.WebsiteSpeedCheckState.Idle -> Color.Transparent
+    }
+
+    val border = when (state) {
+        com.example.ui.WebsiteSpeedCheckState.Checking ->
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)
+        is com.example.ui.WebsiteSpeedCheckState.Completed -> when (state.level) {
+            com.example.core.network.SiteSpeedLevel.GOOD ->
+                SiteBinSuccess.copy(alpha = 0.20f)
+            com.example.core.network.SiteSpeedLevel.ACCEPTABLE ->
+                SiteBinGold.copy(alpha = 0.22f)
+            com.example.core.network.SiteSpeedLevel.SLOW ->
+                MaterialTheme.colorScheme.error.copy(alpha = 0.22f)
+        }
+        is com.example.ui.WebsiteSpeedCheckState.TimedOut ->
+            MaterialTheme.colorScheme.error.copy(alpha = 0.22f)
+        is com.example.ui.WebsiteSpeedCheckState.Failed ->
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)
+        com.example.ui.WebsiteSpeedCheckState.Idle -> Color.Transparent
+    }
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = background,
+        border = BorderStroke(1.dp, border)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 11.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            when (state) {
+                com.example.ui.WebsiteSpeedCheckState.Checking -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 1.8.dp,
+                        color = SiteBinBlue
+                    )
+                    Text(
+                        text = "در حال بررسی سرعت پاسخ سایت…",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                is com.example.ui.WebsiteSpeedCheckState.Completed -> {
+                    val isGood = state.level == com.example.core.network.SiteSpeedLevel.GOOD
+                    val isAcceptable = state.level == com.example.core.network.SiteSpeedLevel.ACCEPTABLE
+                    val iconTint = when {
+                        isGood -> SiteBinSuccess
+                        isAcceptable -> SiteBinGoldDark
+                        else -> MaterialTheme.colorScheme.error
+                    }
+                    val message = when (state.level) {
+                        com.example.core.network.SiteSpeedLevel.GOOD ->
+                            "سرعت پاسخ سایت مناسب است"
+                        com.example.core.network.SiteSpeedLevel.ACCEPTABLE ->
+                            "پاسخ سایت کمی کند است"
+                        com.example.core.network.SiteSpeedLevel.SLOW ->
+                            "هشدار: پاسخ سایت کند است"
+                    }
+
+                    Icon(
+                        imageVector = if (isGood) Icons.Default.Check else Icons.Default.Info,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Text(
+                        text = message + " • " + formatSpeedDuration(state.elapsedMs),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (state.level == com.example.core.network.SiteSpeedLevel.SLOW) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
+                    )
+                }
+
+                is com.example.ui.WebsiteSpeedCheckState.TimedOut -> {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Text(
+                        text = "هشدار: سایت در زمان مناسب پاسخ نداد. بهتر است سرعت سایت بررسی شود.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                is com.example.ui.WebsiteSpeedCheckState.Failed -> {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                com.example.ui.WebsiteSpeedCheckState.Idle -> Unit
+            }
+        }
+    }
+}
+
+private fun formatSpeedDuration(elapsedMs: Long): String {
+    return when {
+        elapsedMs < 1_000L -> elapsedMs.toString() + "ms"
+        else -> String.format(Locale.US, "%.1fs", elapsedMs / 1_000.0)
     }
 }
 
