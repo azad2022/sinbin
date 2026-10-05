@@ -37,11 +37,15 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   ]);
 }
 
+function isIpv4Literal(host: string): boolean {
+  const parts = host.split(".");
+  return parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part));
+}
+
 function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split(".").map(Number);
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
-  const [a, b, c, d] = parts;
-  const value = (((a * 256 + b) * 256 + c) * 256 + d) >>> 0;
+  const [a, b, c] = parts;
   return (
     a === 0 ||
     a === 10 ||
@@ -49,13 +53,13 @@ function isPrivateIpv4(ip: string): boolean {
     (a === 100 && b >= 64 && b <= 127) ||
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 0) ||
+    (a === 192 && b === 0 && c === 0) ||
+    (a === 192 && b === 0 && c === 2) ||
     (a === 192 && b === 168) ||
     (a === 198 && b >= 18 && b <= 19) ||
-    (a === 198 && b === 51) ||
-    (a === 203 && b === 0) ||
-    a >= 224 ||
-    value === 0xffffffff
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113) ||
+    a >= 224
   );
 }
 
@@ -119,7 +123,9 @@ function isPublicAddress(address: string): boolean {
 async function assertPublicHost(host: string): Promise<void> {
   if (host.includes(":")) throw new Error("UNSAFE_TARGET: IPv6 literal destinations are not allowed");
   if (BLOCKED_HOSTS.has(host)) throw new Error("UNSAFE_TARGET: Internal destinations are not allowed");
-  if (isPrivateIpv4(host)) throw new Error("UNSAFE_TARGET: Private or reserved IPv4 destinations are not allowed");
+  if (isIpv4Literal(host) && isPrivateIpv4(host)) {
+    throw new Error("UNSAFE_TARGET: Private or reserved IPv4 destinations are not allowed");
+  }
 
   const results = await Promise.allSettled([
     withTimeout(Deno.resolveDns(host, "A"), DNS_TIMEOUT_MS),
