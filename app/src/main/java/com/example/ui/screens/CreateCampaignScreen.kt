@@ -55,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +66,8 @@ import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.ui.SiteBinViewModel
 import com.example.ui.theme.SiteBinBlue
+import com.example.ui.theme.SiteBinBlueDark
+import com.example.ui.theme.SiteBinTeal
 import com.example.ui.theme.SiteBinGold
 import com.example.ui.theme.SiteBinSuccess
 import java.text.NumberFormat
@@ -305,58 +308,17 @@ fun CreateCampaignScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    // Preset options: compact, equal-width buttons with an animated eye icon.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         listOf(100, 250, 500, 1000).forEach { count ->
                             val isSelected = targetViews == count
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isSelected) {
-                                    SiteBinBlue.copy(alpha = 0.18f)
-                                } else {
-                                    MaterialTheme.colorScheme.surface
-                                },
-                                border = BorderStroke(
-                                    1.2.dp,
-                                    if (isSelected) SiteBinBlue
-                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(52.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        viewModel.targetViewsInput.value = count
-                                    },
-                                content = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = formatter.format(count),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontWeight = FontWeight.Black,
-                                            color = if (isSelected) {
-                                                SiteBinBlue
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurface
-                                            }
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        AnimatedEyeIcon(
-                                            tint = if (isSelected) {
-                                                SiteBinBlue
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurfaceVariant
-                                            }
-                                        )
-                                    }
-                                }
+                            PresetViewsCard(
+                                count = count,
+                                isSelected = isSelected,
+                                onClick = { viewModel.targetViewsInput.value = count },
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
@@ -417,85 +379,148 @@ fun CreateCampaignScreen(
         // Section 4: Dynamic Cost Summary Card
         item {
             Card(
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, SiteBinGold.copy(alpha = 0.4f)),
-                colors = CardDefaults.cardColors(containerColor = SiteBinGold.copy(alpha = 0.08f)),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                border = BorderStroke(1.dp, SiteBinBlue.copy(alpha = 0.18f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "پیش‌فاکتور و خلاصه هزینه سفارش",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = SiteBinGold
-                    )
-
-                    SummaryRow(label = "مدت زمان هر مشاهده:", value = "${currentOption.seconds} ثانیه")
-                    SummaryRow(label = "تعداد بازدید درخواستی:", value = "${formatter.format(targetViews)} بازدید")
-                    SummaryRow(
-                        label = "نوع بازدید:",
-                        value = if (keywordCampaign) "کلمه کلیدی" else "بازدید مستقیم"
-                    )
-                    SummaryRow(
-                        label = "هزینه هر بازدید:",
-                        value = "$costPerViewPreview سکه"
-                    )
-                    if (keywordCampaign) {
-                        SummaryRow(
-                            label = "هزینه بازدید مستقیم:",
-                            value = "${currentOption.advertiserCost} سکه"
-                        )
-                        SummaryRow(
-                            label = "هزینه ویژه کلمه کلیدی:",
-                            value = "${currentOption.keywordAdvertiserCost} سکه"
-                        )
-                    }
-                    SummaryRow(label = "موجودی فعلی شما:", value = "🪙 ${formatter.format(account.availableCoins)} سکه")
-
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(1.dp)
-                            .background(SiteBinGold.copy(alpha = 0.2f))
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .background(
+                                brush = Brush.linearGradient(
+                                    listOf(
+                                        SiteBinBlue,
+                                        SiteBinBlueDark.copy(alpha = 0.88f),
+                                        SiteBinGold.copy(alpha = 0.78f)
+                                    ),
+                                    start = 0f,
+                                    end = 900f
+                                )
+                            )
+                            .padding(horizontal = 18.dp, vertical = 16.dp)
                     ) {
-                        Text(
-                            text = "هزینه کل قابل کسر:",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "🪙 ${formatter.format(totalCost)} سکه",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Black,
-                            color = if (canAfford) SiteBinGold else MaterialTheme.colorScheme.error
-                        )
-                    }
-
-                    if (!canAfford) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Icon(
-                                Icons.Default.Info,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(16.dp)
+                            Text(
+                                text = "پیش‌فاکتور سفارش",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
                             Text(
-                                text = "موجودی شما کافی نیست. از بخش «بازدید کسب کن» سکه رایگان جمع‌آوری کنید.",
+                                text = "خلاصه‌ی نهایی قبل از کسر سکه",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
+                                color = Color.White.copy(alpha = 0.86f)
                             )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        SummaryRow(label = "مدت زمان هر مشاهده", value = "${currentOption.seconds} ثانیه")
+                        SummaryRow(label = "تعداد بازدید درخواستی", value = "${formatter.format(targetViews)} بازدید")
+                        SummaryRow(
+                            label = "نوع بازدید",
+                            value = if (keywordCampaign) "کلمه کلیدی" else "بازدید مستقیم"
+                        )
+                        SummaryRow(
+                            label = "هزینه هر بازدید",
+                            value = "$costPerViewPreview سکه"
+                        )
+
+                        if (keywordCampaign) {
+                            SummaryRow(
+                                label = "هزینه بازدید مستقیم",
+                                value = "${currentOption.advertiserCost} سکه"
+                            )
+                            SummaryRow(
+                                label = "هزینه ویژه کلمه کلیدی",
+                                value = "${currentOption.keywordAdvertiserCost} سکه"
+                            )
+                        }
+
+                        SummaryRow(
+                            label = "موجودی فعلی شما",
+                            value = "🪙 ${formatter.format(account.availableCoins)} سکه"
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (canAfford) {
+                                SiteBinGold.copy(alpha = 0.10f)
+                            } else {
+                                MaterialTheme.colorScheme.error.copy(alpha = 0.08f)
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                if (canAfford) SiteBinGold.copy(alpha = 0.26f)
+                                else MaterialTheme.colorScheme.error.copy(alpha = 0.24f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 13.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = "هزینه کل",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "مبلغ قابل کسر از موجودی",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Text(
+                                    text = "🪙 ${formatter.format(totalCost)}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (canAfford) SiteBinGoldDark else MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+
+                        if (!canAfford) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "موجودی شما کافی نیست. از بخش «بازدید کسب کن» سکه رایگان جمع‌آوری کنید.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
                     }
                 }
@@ -607,6 +632,99 @@ private fun DurationCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+private fun PresetViewsCard(
+    count: Int,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "preset_card_$count")
+    val pulseScale by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (isSelected) 1.025f else 1.012f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = if (isSelected) 950 else 1250,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "preset_card_scale_$count"
+    )
+    val borderAlpha by transition.animateFloat(
+        initialValue = if (isSelected) 0.72f else 0.22f,
+        targetValue = if (isSelected) 1f else 0.42f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = if (isSelected) 900 else 1350,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "preset_card_border_$count"
+    )
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Transparent,
+        border = BorderStroke(
+            1.25.dp,
+            if (isSelected) {
+                SiteBinBlue.copy(alpha = borderAlpha)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = borderAlpha)
+            }
+        ),
+        modifier = modifier
+            .scale(pulseScale)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    brush = Brush.linearGradient(
+                        if (isSelected) {
+                            listOf(
+                                SiteBinBlue.copy(alpha = 0.98f),
+                                SiteBinBlueDark.copy(alpha = 0.92f),
+                                SiteBinTeal.copy(alpha = 0.90f)
+                            )
+                        } else {
+                            listOf(
+                                MaterialTheme.colorScheme.surface,
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.96f),
+                                SiteBinBlue.copy(alpha = 0.08f)
+                            )
+                        },
+                        start = 0f,
+                        end = 520f
+                    )
+                )
+                .padding(vertical = 9.dp, horizontal = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                )
+                AnimatedEyeIcon(
+                    tint = if (isSelected) Color.White else SiteBinBlue,
+                    modifier = Modifier.size(21.dp)
+                )
+            }
         }
     }
 }
