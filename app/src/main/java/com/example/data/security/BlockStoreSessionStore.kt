@@ -74,12 +74,12 @@ class BlockStoreSessionStore(
                 TIMEOUT_SECONDS,
                 TimeUnit.SECONDS
             )
-        }.getOrDefault(false)
+        }.getOrElse { return@runCatching false }
 
         Tasks.await(
             client.storeBytes(
                 StoreBytesData.Builder()
-                    .setKeys(listOf(KEY))
+                    .setKey(KEY)
                     .setBytes(encode(token, userId))
                     .setShouldBackupToCloud(backup)
                     .build()
