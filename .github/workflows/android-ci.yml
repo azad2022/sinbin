@@ -190,3 +190,4 @@ jobs:
 
 # Production release workflow is intentionally gated by an explicit release commit or manual dispatch.
 # Release trigger marker: final production artifact verification.
+# Signing schemes: V1 + V2 + V3.
