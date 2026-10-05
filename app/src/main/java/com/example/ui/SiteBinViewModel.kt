@@ -476,10 +476,14 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                     keyword = keyword
                 )
 
-                result.onSuccess {
+                result.onSuccess { campaign ->
                     urlInput.value = ""
                     keywordInput.value = ""
-                    showMessage("سفارش شما با موفقیت ثبت و فعال شد!")
+                    if (campaign.keyword != null && campaign.resolverStatus != "READY") {
+                        showMessage("سفارش ثبت شد؛ در حال آماده‌سازی صفحه مرتبط با کلمه کلیدی است.")
+                    } else {
+                        showMessage("سفارش شما با موفقیت ثبت و فعال شد!")
+                    }
                     onSuccess()
                 }.onFailure { error ->
                     showMessage(error.message ?: "خطا در ثبت سفارش")
