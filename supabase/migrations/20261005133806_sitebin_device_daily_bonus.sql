@@ -239,7 +239,7 @@ BEGIN
     );
   END IF;
 
-  SELECT id, amount, granted_at
+  SELECT id, user_id, amount, granted_at
   INTO v_grant
   FROM public.daily_bonus_grants
   WHERE user_id IN (v_first_auth_uid, v_current_auth_uid)
