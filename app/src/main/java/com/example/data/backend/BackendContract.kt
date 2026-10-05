@@ -77,6 +77,10 @@ interface ServerAuthoritativeEngine {
      */
     suspend fun requestViewSession(userId: String): Result<ViewSession?>
 
+    /** Resolves a keyword campaign to a relevant page on the advertiser's own origin. */
+    suspend fun resolveCampaignTarget(campaignId: String): Result<String> =
+        Result.failure(UnsupportedOperationException("Keyword target resolver is unavailable."))
+
     /**
      * Signals the server that page content is genuinely rendered in WebView,
      * starting the authoritative server timer.
