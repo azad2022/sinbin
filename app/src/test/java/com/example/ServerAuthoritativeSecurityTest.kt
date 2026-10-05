@@ -447,7 +447,7 @@ class ServerAuthoritativeSecurityTest {
             distributionEngine.createCampaign(
                 url = url,
                 normalizedUrl = url,
-                domain = "distribution-$\{index + 1}.example.com",
+                domain = "distribution-${index + 1}.example.com",
                 durationSeconds = 5,
                 targetViews = 20,
                 callerUserId = advertisers[index].userId
