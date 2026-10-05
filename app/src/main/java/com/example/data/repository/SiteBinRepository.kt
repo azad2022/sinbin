@@ -283,7 +283,17 @@ class SiteBinRepository(
             }
 
             // A transient resolver failure leaves the campaign safely PENDING.
-            // It is excluded from the Viewer queue until a later resolver retry succeeds.
+            // Retry in the background; Viewer inventory still excludes it until READY.
+            scope.launch {
+                repeat(3) { attempt ->
+                    kotlinx.coroutines.delay(5_000L * (attempt + 1))
+                    if (engine.resolveCampaignTarget(created.id).isSuccess) {
+                        runCatching { refreshServerState() }
+                        return@launch
+                    }
+                }
+                runCatching { refreshServerState() }
+            }
             runCatching { refreshServerState() }
             return Result.success(created.copy(resolverStatus = "PENDING"))
         }
