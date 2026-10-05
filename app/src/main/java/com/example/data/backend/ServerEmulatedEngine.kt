@@ -163,6 +163,15 @@ class ServerEmulatedEngine(
             ?: return Result.failure(IllegalStateException("UNAUTHORIZED: Authentication token required"))
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
+        val deviceKey = listOf(
+            evidence.androidId?.takeIf { it.isNotBlank() }?.let { "android:$it" },
+            evidence.appSetId?.takeIf { it.isNotBlank() }?.let { "appset:$it" },
+            evidence.installationKeyFingerprint?.takeIf { it.isNotBlank() }?.let { "install:$it" },
+            evidence.installId.takeIf { it.isNotBlank() }?.let { "legacy:$it" }
+        ).firstOrNull() ?: return Result.failure(
+            IllegalStateException("DEVICE_EVIDENCE_REQUIRED: Daily bonus requires device evidence")
+        )
+        val grantKey = "${deviceKey}_${today}"
         if (welcomeGrantDates[userId] == today) {
             return Result.success(
                 DailyBonusResult(
@@ -174,15 +183,6 @@ class ServerEmulatedEngine(
             )
         }
 
-        val deviceKey = listOf(
-            evidence.androidId?.takeIf { it.isNotBlank() }?.let { "android:$it" },
-            evidence.appSetId?.takeIf { it.isNotBlank() }?.let { "appset:$it" },
-            evidence.installationKeyFingerprint?.takeIf { it.isNotBlank() }?.let { "install:$it" },
-            evidence.installId.takeIf { it.isNotBlank() }?.let { "legacy:$it" }
-        ).firstOrNull() ?: return Result.failure(
-            IllegalStateException("DEVICE_EVIDENCE_REQUIRED: Daily bonus requires device evidence")
-        )
-        val grantKey = "${deviceKey}_${today}"
         if (!dailyBonusDeviceClaims.add(grantKey)) {
             return Result.success(
                 DailyBonusResult(
