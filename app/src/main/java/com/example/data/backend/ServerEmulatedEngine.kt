@@ -93,6 +93,9 @@ class ServerEmulatedEngine(
         var idempotencyKey: String? = null
     )
 
+    override suspend fun initAccount(evidence: DeviceEvidence, handle: String?): Result<UserAccount> =
+        initAccount(evidence.installId, handle)
+
     override suspend fun initAccount(installId: String, handle: String?): Result<UserAccount> = lock.withLock {
         val cleanInstall = installId.trim().ifEmpty { null }
             ?: return Result.failure(IllegalArgumentException("INVALID_INSTALL_ID: Installation identifier is required for account initialization"))
@@ -119,7 +122,8 @@ class ServerEmulatedEngine(
         }
 
         // Create new account and grant welcome bonus atomically ONCE
-        val welcomeAmount = 150L
+        // Test double only: keep the production welcome amount aligned with PostgreSQL (300).
+        val welcomeAmount = 300L
         val isFirstTime = !welcomeBonusGrants.containsKey(userId)
 
         val grantedCoins = if (isFirstTime) welcomeAmount else 0L
