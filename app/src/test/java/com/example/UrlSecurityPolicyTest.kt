@@ -17,6 +17,19 @@ class UrlSecurityPolicyTest {
     }
 
     @Test
+    fun testPreflightGateWaitsForACompleteWebsiteHostname() {
+        assertTrue(!UrlSecurityPolicy.isReadyForPreflight("htt"))
+        assertTrue(!UrlSecurityPolicy.isReadyForPreflight("https"))
+        assertTrue(!UrlSecurityPolicy.isReadyForPreflight("https://"))
+        assertTrue(!UrlSecurityPolicy.isReadyForPreflight("https://example"))
+        assertTrue(!UrlSecurityPolicy.isReadyForPreflight("https://example."))
+
+        assertTrue(UrlSecurityPolicy.isReadyForPreflight("https://example.com"))
+        assertTrue(UrlSecurityPolicy.isReadyForPreflight("https://example.ir/path"))
+        assertTrue(UrlSecurityPolicy.isReadyForPreflight("https://sub.example.org/path?q=1"))
+    }
+
+    @Test
     fun testTelegramSchemesAndDomainsAreBlocked() {
         val tgScheme = UrlSecurityPolicy.evaluateUrl("tg://resolve?domain=test")
         assertTrue(tgScheme is PolicyResult.Blocked)
