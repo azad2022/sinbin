@@ -95,6 +95,7 @@ DECLARE
   v_match_count integer := 0;
   v_device_id uuid;
   v_first_auth_uid uuid;
+  v_current_auth_uid uuid;
   v_profile public.profiles%ROWTYPE;
   v_entitlement RECORD;
   v_grant RECORD;
@@ -204,8 +205,8 @@ BEGIN
     );
   END IF;
 
-  SELECT first_auth_uid
-  INTO v_first_auth_uid
+  SELECT first_auth_uid, current_auth_uid
+  INTO v_first_auth_uid, v_current_auth_uid
   FROM private.device_identities
   WHERE id = v_device_id
   FOR UPDATE;
@@ -235,6 +236,43 @@ BEGIN
       'amount', 0,
       'grant_date', v_today,
       'reason', 'ACCOUNT_CONTINUITY_REQUIRED'
+    );
+  END IF;
+
+  SELECT id, amount, granted_at
+  INTO v_grant
+  FROM public.daily_bonus_grants
+  WHERE user_id IN (v_first_auth_uid, v_current_auth_uid)
+    AND grant_date = v_today
+  ORDER BY granted_at ASC, id ASC
+  LIMIT 1
+  FOR UPDATE;
+
+  IF v_grant.id IS NOT NULL THEN
+    INSERT INTO private.daily_bonus_device_claims(
+      device_identity_id,
+      grant_date,
+      beneficiary_auth_uid,
+      amount,
+      daily_bonus_grant_id,
+      granted_at
+    )
+    VALUES(
+      v_device_id,
+      v_today,
+      v_grant.user_id,
+      v_grant.amount,
+      v_grant.id,
+      v_grant.granted_at
+    )
+    ON CONFLICT (device_identity_id, grant_date) DO NOTHING;
+
+    RETURN pg_catalog.json_build_object(
+      'granted', false,
+      'amount', 0,
+      'grant_date', v_today,
+      'reason', 'ALREADY_CLAIMED',
+      'grant_id', v_grant.id
     );
   END IF;
 
