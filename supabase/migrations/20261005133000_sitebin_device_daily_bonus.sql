@@ -176,7 +176,7 @@ BEGIN
     );
   END IF;
 
-  SELECT count(DISTINCT di.id), min(di.id)
+  SELECT count(DISTINCT di.id), min(di.id::text)::uuid
   INTO v_match_count, v_device_id
   FROM private.device_identities di
   WHERE (v_android_hmac IS NOT NULL AND di.android_id_hmac = v_android_hmac)
