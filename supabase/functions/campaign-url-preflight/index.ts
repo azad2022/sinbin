@@ -358,22 +358,27 @@ async function rateLimitOrThrow(
   const { error } = await userClient.rpc("consume_campaign_url_preflight_rate_limit");
   if (!error) return;
 
-  const details = typeof error.details === "string" ? error.details : "";
+  const errorFields = [
+    typeof error.message === "string" ? error.message : "",
+    typeof error.details === "string" ? error.details : "",
+    typeof error.hint === "string" ? error.hint : "",
+    typeof error.code === "string" ? error.code : String(error.code ?? ""),
+  ];
+  const rawErrorText = errorFields.filter(Boolean).join(" ");
   let retryAfter = 0;
-  try {
-    const parsed = JSON.parse(details);
-    retryAfter = Number(parsed?.retry_after_seconds ?? 0);
-  } catch {
-    const match = details.match(/retry_after_seconds["':\s]+(\d+)/i);
-    retryAfter = Number(match?.[1] ?? 0);
-  }
+  const retryAfterMatch = rawErrorText.match(/retry_after_seconds[^0-9]*(\\d+)/i);
+  if (retryAfterMatch) retryAfter = Number(retryAfterMatch[1]);
 
-  if (String(error.code) === "PGRST" || error.message.includes("SITEBIN_RATE_LIMITED")) {
+  const isRateLimited =
+    rawErrorText.includes("SITEBIN_RATE_LIMITED") ||
+    rawErrorText.includes("Too Many Requests") ||
+    (String(error.code) === "PGRST" && rawErrorText.includes("429"));
+
+  if (isRateLimited) {
     throw Object.assign(new Error("RATE_LIMITED: تعداد بررسی‌های آدرس بیش از حد مجاز است."), {
       retryAfterSeconds: Math.max(1, retryAfter),
     });
   }
-
   throw new Error("SERVER_RATE_LIMIT_FAILED: بررسی محدودیت درخواست ممکن نشد.");
 }
 
