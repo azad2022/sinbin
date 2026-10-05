@@ -37,7 +37,8 @@ enum class AppScreen {
     CREATE_CAMPAIGN,
     CAMPAIGNS,
     WALLET,
-    SETTINGS
+    SETTINGS,
+    HELP
 }
 
 sealed class ViewerState {
