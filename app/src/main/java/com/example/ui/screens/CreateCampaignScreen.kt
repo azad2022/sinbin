@@ -108,7 +108,10 @@ fun CreateCampaignScreen(
     val costPerViewPreview = currentOption.advertiserCostForKeyword(cleanKeyword)
     val totalCost = costPerViewPreview * targetViews
     val canAfford = account.availableCoins >= totalCost
-    val isFormValid = url.isNotBlank() && urlError == null && canAfford && !isSubmitting
+    // A campaign must not be submitted while the authoritative preflight is still pending.
+    // This prevents duplicate expensive preflight requests when the user taps the CTA early.
+    val preflightReady = websitePreflightState is WebsitePreflightState.Completed
+    val isFormValid = url.isNotBlank() && urlError == null && canAfford && preflightReady && !isSubmitting
 
     LazyColumn(
         modifier = modifier
