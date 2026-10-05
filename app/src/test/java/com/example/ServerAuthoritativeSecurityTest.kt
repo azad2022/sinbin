@@ -570,8 +570,10 @@ class ServerAuthoritativeSecurityTest {
         assertEquals(1, failures)
 
         val refetched = engine.fetchAccount(user.userId).getOrThrow()
-        assertEquals(10L, refetched.availableCoins) // 150 - 140
-        assertEquals(140L, refetched.reservedCoins)
+        // With the 300-coin welcome balance, either campaign may win the race.
+        // The invariant is that exactly one reservation exists and no coins are overspent.
+        assertEquals(300L, refetched.availableCoins + refetched.reservedCoins)
+        assertTrue(refetched.reservedCoins == 280L || refetched.reservedCoins == 140L)
         assertTrue(refetched.availableCoins >= 0) // No overspending
     }
 }
