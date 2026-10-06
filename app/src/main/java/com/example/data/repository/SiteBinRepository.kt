@@ -7,6 +7,7 @@ import com.example.core.security.UrlSecurityPolicy
 import com.example.data.backend.BackendManager
 import com.example.data.security.AndroidDeviceEvidenceProvider
 import com.example.data.backend.ServerAuthoritativeEngine
+import com.example.data.backend.RealtimeCapableEngine
 import com.example.data.model.AbuseReport
 import com.example.data.model.AutoViewActivationResult
 import com.example.data.model.AutoViewStatus
@@ -22,7 +23,9 @@ import com.example.data.backend.WebsitePreflightResult
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -89,10 +92,18 @@ class SiteBinRepository(
     private val _reports = MutableStateFlow<List<AbuseReport>>(emptyList())
     val reports: StateFlow<List<AbuseReport>> = _reports.asStateFlow()
 
+    private val realtimeEngine = engine as? RealtimeCapableEngine
+    private val _realtimeEvents = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    val realtimeEvents: SharedFlow<String> = _realtimeEvents
+
     val durationOptions: List<DurationOption>
         get() = engine.durationOptions
 
     init {
+        realtimeEngine?.setRealtimeEventListener { table ->
+            _realtimeEvents.tryEmit(table)
+        }
+
         // Asynchronously initialize server-side identity & fetch server state
         scope.launch {
             initializeServerState()
@@ -235,6 +246,18 @@ class SiteBinRepository(
             _transactions.value = tx
         }
     }
+    suspend fun refreshCampaigns(): Result<Unit> {
+        val currentUserId = _account.value.userId
+        return engine.fetchCampaigns(currentUserId)
+            .onSuccess { _campaigns.value = it }
+            .map { Unit }
+    }
+
+    fun setRealtimeActive(active: Boolean) {
+        realtimeEngine?.setRealtimeActive(active)
+    }
+
+    fun isRealtimeConnected(): Boolean = realtimeEngine?.isRealtimeConnected() == true
     /**
      * Creates a new campaign on the server with strict server-side budget reservation.
      */
