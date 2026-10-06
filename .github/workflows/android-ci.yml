@@ -13,6 +13,8 @@ permissions:
 jobs:
   android:
     runs-on: ubuntu-latest
+    env:
+      DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -31,8 +33,6 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-36.1" "build-tools;36.0.0"
 
       - name: Restore stable debug signing key from secure secret
-        env:
-          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         if: env.DEBUG_KEYSTORE_BASE64 != ''
         shell: bash
         run: |
@@ -46,8 +46,6 @@ jobs:
       - name: Restore stable debug signing key from cache
         id: debug-signing-cache
         if: env.DEBUG_KEYSTORE_BASE64 == ''
-        env:
-          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         uses: actions/cache/restore@v5
         with:
           path: ~/.android/debug.keystore
@@ -56,8 +54,6 @@ jobs:
       - name: Require stable debug signing key
         if: env.DEBUG_KEYSTORE_BASE64 == '' && steps.debug-signing-cache.outputs.cache-hit != 'true'
         shell: bash
-        env:
-          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           echo "Stable Debug signing key is unavailable. Refusing to generate or rotate a signing identity."
