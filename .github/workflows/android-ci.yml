@@ -59,7 +59,7 @@ jobs:
           keystore="$HOME/.android/debug.keystore"
           output="$(keytool -list -v -keystore "$keystore" -storepass android -alias androiddebugkey 2>/dev/null)"
           printf '%s\n' "$output"
-          actual_sha256="$(printf '%s\n' "$output" | awk -F': ' '/^Entry type:/{entry=1} /^Certificate fingerprints:/{cert=1} cert && /^SHA256:/{gsub(":", "", $2); print toupper($2); exit}')"
+          actual_sha256="$(printf '%s\n' "$output" | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           test "$actual_sha256" = "$expected_sha256" || {
             echo "Unexpected Debug certificate fingerprint: $actual_sha256"
             echo "Expected: $expected_sha256"
