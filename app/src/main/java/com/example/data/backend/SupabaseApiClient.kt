@@ -58,6 +58,29 @@ class RateLimitException(
  * 4. Single Source of Truth for Pricing: Dynamically fetches duration_pricing matrix from Supabase database.
  * 5. Strict Server-Authoritative Execution: All mutations execute via PostgreSQL SECURITY DEFINER RPCs.
  */
+/**
+ * Builds the exact PostgREST RPC payload for public.create_campaign.
+ * All seven named parameters are always serialized, including nullable ones,
+ * so a null keyword cannot change the resolved PostgreSQL function signature.
+ */
+internal fun buildCreateCampaignRpcBody(
+    url: String,
+    normalizedUrl: String,
+    domain: String,
+    durationSeconds: Int,
+    targetViews: Int,
+    keyword: String?,
+    preflightToken: String?
+): JSONObject = JSONObject().apply {
+    put("p_url", url)
+    put("p_normalized_url", normalizedUrl)
+    put("p_domain", domain)
+    put("p_duration_seconds", durationSeconds)
+    put("p_target_views", targetViews)
+    put("p_keyword", keyword?.trim()?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+    put("p_preflight_token", preflightToken?.trim()?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+}
+
 /** Authenticated SiteBin Supabase transport. */
 class SupabaseApiClient(
     private val supabaseUrl: String,
@@ -1042,29 +1065,6 @@ class SupabaseApiClient(
 
     override fun setRealtimeEventListener(listener: ((String) -> Unit)?) {
         realtimeListener = listener
-    }
-
-    /**
-     * Builds the exact PostgREST RPC payload for public.create_campaign.
-     * All seven named parameters are always serialized, including nullable ones,
-     * so a null keyword cannot change the resolved PostgreSQL function signature.
-     */
-    internal fun buildCreateCampaignRpcBody(
-        url: String,
-        normalizedUrl: String,
-        domain: String,
-        durationSeconds: Int,
-        targetViews: Int,
-        keyword: String?,
-        preflightToken: String?
-    ): JSONObject = JSONObject().apply {
-        put("p_url", url)
-        put("p_normalized_url", normalizedUrl)
-        put("p_domain", domain)
-        put("p_duration_seconds", durationSeconds)
-        put("p_target_views", targetViews)
-        put("p_keyword", keyword?.trim()?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
-        put("p_preflight_token", preflightToken?.trim()?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
     }
 
     private fun callRpc(functionName: String, body: JSONObject): JSONObject {
