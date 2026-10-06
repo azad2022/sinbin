@@ -27,12 +27,12 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -159,30 +159,6 @@ fun SettingsScreen(
                             .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                     )
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Default.Shield, contentDescription = null, tint = SiteBinSuccess, modifier = Modifier.size(18.dp))
-                            Text(
-                                text = "امتیاز سلامت حساب:",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = "${account.trustScore.toInt()}% (عالی)",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = SiteBinSuccess
-                        )
-                    }
-
                     if (account.userHandle.isNotBlank()) {
                         Box(
                             modifier = Modifier
@@ -213,16 +189,17 @@ fun SettingsScreen(
                                     maxLines = 1
                                 )
                             }
-                            Button(
+                            IconButton(
                                 onClick = {
                                     clipboardManager.setText(AnnotatedString(account.userHandle))
                                 },
-                                modifier = Modifier.height(44.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp)
+                                modifier = Modifier.size(44.dp)
                             ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "کپی شناسه", modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("کپی")
+                                Icon(
+                                    Icons.Default.ContentCopy,
+                                    contentDescription = "کپی شناسه",
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
                         Text(

@@ -4,8 +4,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -642,11 +645,30 @@ private fun ActionHeroCard(
                         )
                     }
 
+                    val iconScale by rememberInfiniteTransition(label = "action_hero_icon")
+                        .animateFloat(
+                            initialValue = 0.96f,
+                            targetValue = 1.04f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(
+                                    durationMillis = 900,
+                                    easing = FastOutSlowInEasing
+                                ),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "action_hero_icon_scale"
+                        )
+
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
                         tint = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier
+                            .size(28.dp)
+                            .graphicsLayer {
+                                scaleX = iconScale
+                                scaleY = iconScale
+                            }
                     )
                 }
 

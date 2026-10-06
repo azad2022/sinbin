@@ -92,20 +92,6 @@ fun WalletScreen(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "کیف پول و تراکنش‌ها",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "دفتر کل حسابرسی شفاف سکه‌ها (Double-Entry Ledger)",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
         // Main Coin Balance Card
         item {
             Card(
