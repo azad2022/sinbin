@@ -36,7 +36,7 @@ class CampaignRpcContractTest {
 
     @Test
     fun createCampaign_payloadSerializesBlankOptionalValuesAsNull() {
-        val body = SupabaseApiClient.buildCreateCampaignRpcBody(
+        val body = buildCreateCampaignRpcBody(
             url = "https://example.com",
             normalizedUrl = "https://example.com",
             domain = "example.com",
