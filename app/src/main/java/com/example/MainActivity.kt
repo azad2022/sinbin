@@ -392,19 +392,15 @@ private fun StartupScreen(
         modifier = Modifier.fillMaxSize(),
         color = androidx.compose.material3.MaterialTheme.colorScheme.background
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 28.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            if (!isRetry) {
-                StartupLoadingBar(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp)
-                )
-            } else {
+        if (!isRetry) {
+            StartupVideo()
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 28.dp),
+                contentAlignment = Alignment.Center
+            ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -444,135 +440,34 @@ private fun StartupScreen(
 }
 
 @Composable
-private fun StartupLoadingBar(
-    modifier: Modifier = Modifier
-) {
-    var progress = androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0.06f) }
-
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        val startedAt = android.os.SystemClock.elapsedRealtime()
-        while (true) {
-            val elapsedSeconds =
-                (android.os.SystemClock.elapsedRealtime() - startedAt) / 1000f
-            // Time-based visual progress: it advances while initialization is in flight,
-            // but intentionally never claims 100% before the real server state becomes Ready.
-            val eased = (1.0 - kotlin.math.exp((-elapsedSeconds / 3.2f).toDouble())).toFloat()
-            progress.floatValue = (0.06f + eased * 0.90f).coerceAtMost(0.96f)
-            kotlinx.coroutines.delay(32L)
-        }
-    }
-
-    val stripeTransition = rememberInfiniteTransition(label = "startup_loader_stripes")
-    val stripeOffset by stripeTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 40f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "startup_loader_stripe_offset"
-    )
-
-    Canvas(
-        modifier = modifier
-            .clipToBounds()
-    ) {
-        val trackHeight = 14.dp.toPx()
-        val radius = trackHeight / 2f
-        val top = (size.height - trackHeight) / 2f
-        val left = 2.dp.toPx()
-        val right = size.width - 2.dp.toPx()
-        val trackWidth = max(0f, right - left)
-        val fillRight = left + trackWidth * progress.floatValue.coerceIn(0f, 1f)
-
-        drawRoundRect(
-            color = Color(0xFF07182E),
-            topLeft = Offset(left, top),
-            size = androidx.compose.ui.geometry.Size(trackWidth, trackHeight),
-            cornerRadius = CornerRadius(radius, radius)
-        )
-
-        val fillPath = Path().apply {
-            addRoundRect(
-                RoundRect(
-                    rect = Rect(
-                        left = left,
-                        top = top,
-                        right = fillRight,
-                        bottom = top + trackHeight
-                    ),
-                    cornerRadius = CornerRadius(radius, radius)
+private fun StartupVideo() {
+    val context = LocalContext.current
+    val videoView = remember(context) {
+        android.widget.VideoView(context).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            setMediaController(null)
+            setVideoURI(
+                android.net.Uri.parse(
+                    "android.resource://${context.packageName}/${R.raw.sitebin}"
                 )
             )
-        }
-
-        clipPath(fillPath) {
-            drawRoundRect(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF27E6FF),
-                        Color(0xFF4DA3FF),
-                        Color(0xFF7A5CFF),
-                        Color(0xFFB44CFF)
-                    ),
-                    start = Offset(left, top),
-                    end = Offset(right, top + trackHeight)
-                ),
-                topLeft = Offset(left, top),
-                size = androidx.compose.ui.geometry.Size(
-                    max(0f, fillRight - left),
-                    trackHeight
-                ),
-                cornerRadius = CornerRadius(radius, radius)
-            )
-
-            val stripeWidth = 8.dp.toPx()
-            val stripeStep = 28.dp.toPx()
-            var x = left - trackHeight * 2f - stripeStep + stripeOffset
-
-            while (x < fillRight + trackHeight * 2f) {
-                drawLine(
-                    color = Color.White.copy(alpha = 0.13f),
-                    start = Offset(x, top + trackHeight * 1.65f),
-                    end = Offset(x + trackHeight * 1.65f, top - trackHeight * 0.65f),
-                    strokeWidth = stripeWidth,
-                    cap = StrokeCap.Butt
-                )
-                x += stripeStep
+            setOnPreparedListener { mediaPlayer ->
+                mediaPlayer.isLooping = true
+                start()
             }
         }
-
-        val indicatorX = fillRight
-        val indicatorY = top - 17.dp.toPx()
-
-        drawCircle(
-            color = Color(0xFF43C8FF).copy(alpha = 0.13f),
-            radius = 15.dp.toPx(),
-            center = Offset(indicatorX, indicatorY)
-        )
-        drawCircle(
-            color = Color(0xFF43C8FF).copy(alpha = 0.22f),
-            radius = 9.dp.toPx(),
-            center = Offset(indicatorX, indicatorY)
-        )
-        drawLine(
-            color = Color(0xFF49D6FF).copy(alpha = 0.75f),
-            start = Offset(indicatorX, indicatorY + 7.dp.toPx()),
-            end = Offset(indicatorX, top - 1.dp.toPx()),
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round
-        )
-        drawCircle(
-            color = Color(0xFF7BE7FF),
-            radius = 4.5.dp.toPx(),
-            center = Offset(indicatorX, indicatorY)
-        )
-        drawCircle(
-            color = Color.White.copy(alpha = 0.85f),
-            radius = 1.45.dp.toPx(),
-            center = Offset(indicatorX - 1.dp.toPx(), indicatorY - 1.3.dp.toPx())
-        )
     }
+
+    DisposableEffect(videoView) {
+        onDispose {
+            videoView.stopPlayback()
+        }
+    }
+
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { videoView },
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
 @Composable
