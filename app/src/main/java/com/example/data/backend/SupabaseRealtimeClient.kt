@@ -77,7 +77,16 @@ class SupabaseRealtimeClient(
                 return
             }
 
-            if (joined && socket != null) {
+            val userChanged = this.userId != null && this.userId != userId
+            if (userChanged) {
+                joined = false
+                reconnectJob?.cancel()
+                reconnectJob = null
+                heartbeatJob?.cancel()
+                heartbeatJob = null
+                socket?.close(1000, "identity changed")
+                socket = null
+            } else if (joined && socket != null) {
                 sendAccessToken(accessToken)
                 return
             }
