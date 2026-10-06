@@ -100,6 +100,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Release builds refuse to run when the application ID or production
+        // signing certificate does not match the official SiteBin binary.
+        if (!com.example.core.security.AppIdentityGuard.isTrustedInstallation(this)) {
+            finishAndRemoveTask()
+            return
+        }
+
         enableEdgeToEdge()
 
         setContent {
