@@ -11,17 +11,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -59,22 +52,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlin.math.max
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -439,34 +422,114 @@ private fun StartupScreen(
     }
 }
 
-@Composable
-private fun StartupVideo() {
-    val context = LocalContext.current
-    val videoView = remember(context) {
-        android.widget.VideoView(context).apply {
-            setBackgroundColor(android.graphics.Color.BLACK)
-            setMediaController(null)
-            setVideoURI(
+private const val STARTUP_VIDEO_BACKGROUND = 0xFF010F35.toInt()
+
+private class StartupVideoView(
+    context: Context
+) : android.widget.FrameLayout(context), android.view.TextureView.SurfaceTextureListener {
+
+    private val textureView = android.view.TextureView(context).apply {
+        surfaceTextureListener = this@StartupVideoView
+        isOpaque = true
+        keepScreenOn = true
+    }
+
+    private var mediaPlayer: android.media.MediaPlayer? = null
+    private var surface: android.view.Surface? = null
+
+    init {
+        setBackgroundColor(STARTUP_VIDEO_BACKGROUND)
+        addView(
+            textureView,
+            android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+    }
+
+    private fun preparePlayback(surfaceTexture: android.graphics.SurfaceTexture) {
+        releasePlayer()
+
+        surface = android.view.Surface(surfaceTexture)
+        val player = android.media.MediaPlayer()
+
+        try {
+            player.setDataSource(
+                context,
                 android.net.Uri.parse(
                     "android.resource://${context.packageName}/${R.raw.sitebin}"
                 )
             )
-            setOnPreparedListener { mediaPlayer ->
-                mediaPlayer.isLooping = true
-                start()
+            player.setSurface(surface)
+            player.isLooping = true
+            player.setOnPreparedListener { it.start() }
+            player.setOnErrorListener { _, _, _ ->
+                releasePlayer()
+                true
             }
+            player.prepareAsync()
+            mediaPlayer = player
+        } catch (_: Exception) {
+            player.release()
+            surface?.release()
+            surface = null
         }
     }
 
+    override fun onSurfaceTextureAvailable(
+        surface: android.graphics.SurfaceTexture,
+        width: Int,
+        height: Int
+    ) {
+        preparePlayback(surface)
+    }
+
+    override fun onSurfaceTextureSizeChanged(
+        surface: android.graphics.SurfaceTexture,
+        width: Int,
+        height: Int
+    ) = Unit
+
+    override fun onSurfaceTextureDestroyed(surface: android.graphics.SurfaceTexture): Boolean {
+        releasePlayer()
+        return true
+    }
+
+    override fun onSurfaceTextureUpdated(surface: android.graphics.SurfaceTexture) = Unit
+
+    private fun releasePlayer() {
+        mediaPlayer?.runCatching {
+            stop()
+            reset()
+            release()
+        }
+        mediaPlayer = null
+        surface?.release()
+        surface = null
+    }
+
+    fun dispose() {
+        textureView.surfaceTextureListener = null
+        releasePlayer()
+    }
+}
+
+@Composable
+private fun StartupVideo() {
+    val context = LocalContext.current
+    val videoView = remember(context) { StartupVideoView(context) }
+
     DisposableEffect(videoView) {
         onDispose {
-            videoView.stopPlayback()
+            videoView.dispose()
         }
     }
 
     androidx.compose.ui.viewinterop.AndroidView(
         factory = { videoView },
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
     )
 }
 
