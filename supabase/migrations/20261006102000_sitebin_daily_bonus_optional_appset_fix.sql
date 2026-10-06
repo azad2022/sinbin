@@ -337,7 +337,6 @@ BEGIN
     'granted_at', extract(epoch from v_grant.granted_at) * 1000
   );
 END;
-$function$
-
+$function$;
 
 COMMIT;
