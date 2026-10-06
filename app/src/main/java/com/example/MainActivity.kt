@@ -430,7 +430,7 @@ private class StartupVideoView(
 
     private val textureView = android.view.TextureView(context).apply {
         surfaceTextureListener = this@StartupVideoView
-        isOpaque = true
+        isOpaque = false
         keepScreenOn = true
     }
 
