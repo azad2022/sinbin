@@ -61,6 +61,8 @@ class SupabaseRealtimeClient(
 
     fun setActive(active: Boolean, userId: String?, accessToken: String?) {
         synchronized(this) {
+            val previousUserId = this.userId
+            val userChanged = previousUserId != null && previousUserId != userId
             requested = active
             this.userId = userId
             this.accessToken = accessToken
@@ -77,7 +79,6 @@ class SupabaseRealtimeClient(
                 return
             }
 
-            val userChanged = this.userId != null && this.userId != userId
             if (userChanged) {
                 joined = false
                 reconnectJob?.cancel()
@@ -208,7 +209,6 @@ class SupabaseRealtimeClient(
                     .put("schema", "public")
                     .put("table", "coin_ledger")
                     .put("filter", "user_id=eq.$uid")
-                    .put("select", JSONArray().put("id"))
             )
             .put(
                 JSONObject()
@@ -216,7 +216,6 @@ class SupabaseRealtimeClient(
                     .put("schema", "public")
                     .put("table", "campaigns")
                     .put("filter", "owner_id=eq.$uid")
-                    .put("select", JSONArray().put("id"))
             )
 
         val config = JSONObject()
