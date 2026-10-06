@@ -925,11 +925,20 @@ class SupabaseApiClient(
         val uid = user?.optString("id")
 
         if (token != null) {
+            val previousUserId = currentUserId
             currentUserToken = token
             currentRefreshToken = refresh ?: currentRefreshToken
             currentUserId = uid ?: currentUserId
             tokenExpiresAt = System.currentTimeMillis() + (expiresIn * 1000L)
             saveSession()
+
+            if (realtimeActive) {
+                if (!currentUserId.isNullOrBlank() && currentUserId != previousUserId) {
+                    realtimeClient.setActive(true, currentUserId, currentUserToken)
+                } else {
+                    realtimeClient.updateAccessToken(currentUserToken)
+                }
+            }
         }
     }
 
