@@ -37,23 +37,14 @@ jobs:
           path: ~/.android/debug.keystore
           key: sitebin-debug-signing-v1
 
-      - name: Bootstrap stable debug signing key
+      - name: Require stable debug signing key
         if: steps.debug-signing-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.android"
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkeypair               -v               -keystore "$HOME/.android/debug.keystore"               -storepass android               -alias androiddebugkey               -keypass android               -keyalg RSA               -keysize 2048               -validity 10000               -dname "CN=Android Debug,O=Android,C=US"
-          fi
-          chmod 600 "$HOME/.android/debug.keystore"
-
-      - name: Save stable debug signing key
-        if: steps.debug-signing-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ~/.android/debug.keystore
-          key: sitebin-debug-signing-v1
+          echo "Stable debug signing key cache is missing. Refusing to rotate the signing identity."
+          echo "Restore or reseed sitebin-debug-signing-v1 before building Debug APKs."
+          exit 1
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
