@@ -106,11 +106,37 @@ jobs:
           test "$code" = "401"
           echo "Campaign preflight unauthenticated request correctly rejected"
 
+      - name: Verify startup video source and legacy loader removal
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_video_sha256="22F17F1EE8B588B3A2A27F9ECC4FC17A8ED2852BBF6515B197EE7C6FE31C1DD8"
+          actual_video_sha256="$(sha256sum app/src/main/res/raw/sitebin.mp4 | awk '{print toupper($1)}')"
+          test "$actual_video_sha256" = "$expected_video_sha256"
+          ! grep -R --line-number --fixed-strings "StartupLoadingBar" app/src/main/java
+          grep -R --line-number --fixed-strings "R.raw.sitebin" app/src/main/java/com/example/MainActivity.kt
+          grep -R --line-number --fixed-strings "windowSplashScreenAnimatedIcon" app/src/main/res/values-v31/themes.xml
+          echo "Startup source, video identity and legacy loader removal verified"
+
       - name: Unit tests
         run: gradle --no-daemon testDebugUnitTest
 
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
+
+      - name: Verify bundled startup video bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/debug/app-debug.apk"
+          expected_video_sha256="22F17F1EE8B588B3A2A27F9ECC4FC17A8ED2852BBF6515B197EE7C6FE31C1DD8"
+          rm -rf /tmp/sitebin-apk-check
+          mkdir -p /tmp/sitebin-apk-check
+          unzip -p "$apk" res/raw/sitebin.mp4 > /tmp/sitebin-apk-check/sitebin.mp4
+          actual_video_sha256="$(sha256sum /tmp/sitebin-apk-check/sitebin.mp4 | awk '{print toupper($1)}')"
+          test "$actual_video_sha256" = "$expected_video_sha256"
+          cmp -s app/src/main/res/raw/sitebin.mp4 /tmp/sitebin-apk-check/sitebin.mp4
+          echo "Bundled startup video bytes verified unchanged"
 
       - name: Normalize debug APK filename
         run: |
