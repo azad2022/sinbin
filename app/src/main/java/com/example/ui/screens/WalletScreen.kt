@@ -28,12 +28,9 @@ import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Savings
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -60,7 +57,6 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.model.CoinTransaction
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
-import com.example.ui.AppScreen
 import com.example.ui.theme.SiteBinBlue
 import com.example.ui.theme.SiteBinGold
 import com.example.ui.theme.SiteBinGoldLight
