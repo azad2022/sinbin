@@ -30,20 +30,38 @@ jobs:
         run: |
           sdkmanager "platform-tools" "platforms;android-36.1" "build-tools;36.0.0"
 
-      - name: Restore stable debug signing key
+      - name: Restore stable debug signing key from secure secret
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        if: env.DEBUG_KEYSTORE_BASE64 != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          umask 077
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          test -s "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+
+      - name: Restore stable debug signing key from cache
         id: debug-signing-cache
+        if: env.DEBUG_KEYSTORE_BASE64 == ''
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         uses: actions/cache/restore@v5
         with:
           path: ~/.android/debug.keystore
           key: sitebin-debug-signing-v1
 
       - name: Require stable debug signing key
-        if: steps.debug-signing-cache.outputs.cache-hit != 'true'
+        if: env.DEBUG_KEYSTORE_BASE64 == '' && steps.debug-signing-cache.outputs.cache-hit != 'true'
         shell: bash
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          echo "Stable debug signing key cache is missing. Refusing to rotate the signing identity."
-          echo "Restore or reseed sitebin-debug-signing-v1 before building Debug APKs."
+          echo "Stable Debug signing key is unavailable. Refusing to generate or rotate a signing identity."
+          echo "Configure DEBUG_KEYSTORE_BASE64 or restore the existing sitebin-debug-signing-v1 cache."
           exit 1
 
       - name: Set up Gradle
