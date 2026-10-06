@@ -55,7 +55,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected_sha256="$B63BC4E1B46704CB4966AB3F0ED36FF9B7D999E967E61D3E6B69DACCA4C1669C"
+          expected_sha256="B63BC4E1B46704CB4966AB3F0ED36FF9B7D999E967E61D3E6B69DACCA4C1669C"
           keystore="$HOME/.android/debug.keystore"
           output="$(keytool -list -v -keystore "$keystore" -storepass android -alias androiddebugkey 2>/dev/null)"
           printf '%s\n' "$output"
