@@ -178,8 +178,15 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                     isAppInForeground
                 ) {
                     refreshFinancialStateForIncomingTransfers()
+                    repository.refreshAutoViewStatus()
                     if (_currentScreen.value != AppScreen.VIEWER) {
                         repository.refreshCampaigns()
+                    }
+
+                    val now = System.currentTimeMillis()
+                    if (now - lastDailyBonusAttemptAt >= 60_000L) {
+                        lastDailyBonusAttemptAt = now
+                        repository.claimDailyBonus()
                     }
                 }
             }
@@ -378,6 +385,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             // Foreground entry is a hard reconciliation point. This removes stale UI
             // even when the process was backgrounded or the realtime socket was offline.
             refreshFinancialStateForIncomingTransfers()
+            repository.refreshAutoViewStatus()
             if (_currentScreen.value != AppScreen.VIEWER) {
                 repository.refreshCampaigns()
             }
