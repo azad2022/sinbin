@@ -436,6 +436,8 @@ private class StartupVideoView(
 
     private var mediaPlayer: android.media.MediaPlayer? = null
     private var surface: android.view.Surface? = null
+    private var videoWidth = 0
+    private var videoHeight = 0
 
     init {
         setBackgroundColor(STARTUP_VIDEO_BACKGROUND)
@@ -463,7 +465,15 @@ private class StartupVideoView(
             )
             player.setSurface(surface)
             player.isLooping = true
-            player.setOnPreparedListener { it.start() }
+            player.setOnVideoSizeChangedListener { _, width, height ->
+                videoWidth = width
+                videoHeight = height
+                updateVideoTransform()
+            }
+            player.setOnPreparedListener {
+                updateVideoTransform()
+                it.start()
+            }
             player.setOnErrorListener { _, _, _ ->
                 releasePlayer()
                 true
@@ -475,6 +485,32 @@ private class StartupVideoView(
             surface?.release()
             surface = null
         }
+    }
+
+    private fun updateVideoTransform() {
+        if (videoWidth <= 0 || videoHeight <= 0 || textureView.width <= 0 || textureView.height <= 0) {
+            return
+        }
+
+        // Preserve the source aspect ratio exactly. The player surface is fit inside
+        // the available viewport; no crop or distortion is applied to the MP4 itself.
+        val scale = minOf(
+            textureView.width.toFloat() / videoWidth.toFloat(),
+            textureView.height.toFloat() / videoHeight.toFloat()
+        )
+        val dx = (textureView.width - videoWidth * scale) / 2f
+        val dy = (textureView.height - videoHeight * scale) / 2f
+
+        val matrix = android.graphics.Matrix().apply {
+            setScale(scale, scale)
+            postTranslate(dx, dy)
+        }
+        textureView.setTransform(matrix)
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        updateVideoTransform()
     }
 
     override fun onSurfaceTextureAvailable(
@@ -489,7 +525,9 @@ private class StartupVideoView(
         surface: android.graphics.SurfaceTexture,
         width: Int,
         height: Int
-    ) = Unit
+    ) {
+        updateVideoTransform()
+    }
 
     override fun onSurfaceTextureDestroyed(surface: android.graphics.SurfaceTexture): Boolean {
         releasePlayer()
@@ -499,14 +537,12 @@ private class StartupVideoView(
     override fun onSurfaceTextureUpdated(surface: android.graphics.SurfaceTexture) = Unit
 
     private fun releasePlayer() {
-        mediaPlayer?.runCatching {
-            stop()
-            reset()
-            release()
-        }
+        mediaPlayer?.release()
         mediaPlayer = null
         surface?.release()
         surface = null
+        videoWidth = 0
+        videoHeight = 0
     }
 
     fun dispose() {
