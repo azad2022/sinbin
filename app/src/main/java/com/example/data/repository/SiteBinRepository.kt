@@ -51,6 +51,10 @@ class SiteBinRepository(
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val prefs = context.getSharedPreferences("sitebin_prefs", Context.MODE_PRIVATE)
+    // This storage is excluded from Android backup. Its presence is the local
+    // installation marker: it survives app updates but disappears on uninstall.
+    private val installMarkerPrefs =
+        context.getSharedPreferences("sitebin_supabase_session", Context.MODE_PRIVATE)
     private val deviceEvidenceProvider = AndroidDeviceEvidenceProvider(context)
 
     init {
@@ -112,9 +116,15 @@ class SiteBinRepository(
 
     private fun getOrGenerateInstallId(): String {
         var installId = prefs.getString("app_install_id", null)
-        if (installId == null) {
+        val markerPresent = installMarkerPrefs.getBoolean("sitebin_install_marker_v1", false)
+
+        // A missing marker means this is a fresh application data set. The
+        // install-id may have been restored from an older Android backup, so
+        // never trust it across an uninstall/reinstall boundary.
+        if (!markerPresent || installId.isNullOrBlank()) {
             installId = "inst_" + UUID.randomUUID().toString()
             prefs.edit().putString("app_install_id", installId).apply()
+            installMarkerPrefs.edit().putBoolean("sitebin_install_marker_v1", true).apply()
         }
         return installId
     }
