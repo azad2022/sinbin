@@ -12,7 +12,6 @@ DECLARE
   v_existing_300 uuid;
   v_profile json;
   v_bonus_count integer := 0;
-  v_zero_count integer := 0;
   v_entitlement_count bigint;
   v_grant_count bigint;
   v_ledger_sum bigint;
@@ -155,6 +154,8 @@ BEGIN
 
   -- Tests 4,5,6,10,12: uninstall/reinstall + new Auth user + new install ID,
   -- changed installation key, fake/local identifier changes, all same device.
+  -- The canonical account must be rebound to the new Auth UID with its existing
+  -- financial state; reinstall must never expose a fresh zero-coin account.
   FOR v_uid IN
     SELECT id FROM tmp_sitebin_test_users ORDER BY id OFFSET 1 LIMIT 10
   LOOP
@@ -173,16 +174,12 @@ BEGIN
       md5(v_uid::text)||md5('changed-device-secret-'||v_uid::text)
     ) INTO v_profile;
 
-    IF (v_profile->>'available_coins')::bigint <> 0
-       OR (v_profile->>'welcome_bonus_claimed')::boolean IS NOT FALSE THEN
-      RAISE EXCEPTION 'TEST_REINSTALL_FAILED for %: %',v_uid,v_profile;
+    IF (v_profile->>'available_coins')::bigint <> 300
+       OR (v_profile->>'welcome_bonus_claimed')::boolean IS NOT TRUE
+       OR (v_profile->>'lifetime_earned')::bigint < 300 THEN
+      RAISE EXCEPTION 'TEST_REINSTALL_FAILED: canonical account was not preserved for %: %',v_uid,v_profile;
     END IF;
-    v_zero_count := v_zero_count + 1;
   END LOOP;
-
-  IF v_zero_count <> 10 THEN
-    RAISE EXCEPTION 'TEST_REINSTALL_FAILED: expected 10 zero-bonus users, got %',v_zero_count;
-  END IF;
 
   SELECT count(*) INTO v_entitlement_count
   FROM private.welcome_bonus_entitlements e
@@ -257,7 +254,8 @@ BEGIN
 
   -- Legacy reinstall regression: existing account gets a new install_id but the
   -- first strong evidence is attached to its already-claimed identity. A new Auth
-  -- user with the same device evidence must still receive zero welcome coins.
+  -- user with the same device evidence must inherit the canonical account state,
+  -- not receive a second bonus and not fall back to zero coins.
   v_existing_300 := (
     SELECT user_id
     FROM public.welcome_bonus_grants
@@ -304,8 +302,9 @@ BEGIN
     repeat('6',64)
   ) INTO v_profile;
 
-  IF (v_profile->>'available_coins')::bigint <> 0 THEN
-    RAISE EXCEPTION 'LEGACY_REINSTALL_FAILED: attacker received % coins',v_profile->>'available_coins';
+  IF (v_profile->>'available_coins')::bigint <> 300
+     OR (v_profile->>'welcome_bonus_claimed')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'LEGACY_REINSTALL_FAILED: canonical account was not preserved: %',v_profile;
   END IF;
 
   -- Tests 16/17: historical 150-coin and 300-coin users must not be reminted.
