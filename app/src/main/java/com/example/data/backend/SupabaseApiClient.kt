@@ -353,7 +353,8 @@ class SupabaseApiClient(
                         amount = item.optLong("amount"),
                         type = type,
                         description = item.optString("description"),
-                        referenceId = item.optString("reference_id", "").ifEmpty { null }
+                        referenceId = item.optString("reference_id", "").ifEmpty { null },
+                        timestamp = parseTimestamp(item.optString("created_at"))
                     )
                 )
             }
