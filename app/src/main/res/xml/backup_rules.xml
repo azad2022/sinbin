@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <!-- Authentication/session material is encrypted with an Android Keystore key and must not be restored without that key. -->
+    <!-- Authentication/session material and installation identity must not be restored after uninstall. -->
     <exclude domain="sharedpref" path="sitebin_supabase_session.xml" />
+    <exclude domain="sharedpref" path="sitebin_prefs.xml" />
 </full-backup-content>
