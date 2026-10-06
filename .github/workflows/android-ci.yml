@@ -164,15 +164,53 @@ jobs:
           test -f "$apk"
           test "${#bundles[@]}" -gt 0
 
-          echo "Verifying $apk"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk"
-          cert_output="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" 2>&1)"
-          printf '%s\n' "$cert_output"
-          printf '%s\n' "$cert_output" | grep -Fqi "SHA-256 digest: 6F:25:9D:3C:45:57:BA:4B:4E:4C:94:89:F3:8B:CD:85:E7:EC:9F:46:41:C8:73:46:F9:57:8B:D0:F4:FF:29:00"
 
-          package_output="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$package_output" | grep -Fq "package: name='sitebin.azerakhsh.ir'"
-          echo "Release APK package identity verified"
+          python3 - "$apk" <<'PY'
+          import re
+          import subprocess
+          import sys
+
+          apk = sys.argv[1]
+          expected_package = "sitebin.azerakhsh.ir"
+          expected_sha256 = "6F259D3C4557BA4B4E4C9489F38BCD85E7EC9F4641C87346F9578BD0F4FF2900"
+
+          cert = subprocess.run(
+              [
+                  "$ANDROID_HOME/build-tools/36.0.0/apksigner",
+                  "verify",
+                  "--print-certs",
+                  apk,
+              ],
+              capture_output=True,
+              text=True,
+              check=True,
+          )
+          cert_output = cert.stdout + cert.stderr
+          match = re.search(r"SHA-256 digest: ([0-9A-Fa-f:]+)", cert_output)
+          assert match, "APK certificate SHA-256 digest was not found"
+          actual_sha256 = match.group(1).replace(":", "").upper()
+          assert actual_sha256 == expected_sha256, (
+              f"unexpected release certificate: {actual_sha256}"
+          )
+
+          package_output = subprocess.run(
+              [
+                  "$ANDROID_HOME/build-tools/36.0.0/aapt",
+                  "dump",
+                  "badging",
+                  apk,
+              ],
+              capture_output=True,
+              text=True,
+              check=True,
+          ).stdout
+          assert f"package: name='{expected_package}'" in package_output, (
+              "unexpected Android package name"
+          )
+
+          print("Release APK signature and package identity verified")
+          PY
 
           for aab in "${bundles[@]}"; do
             echo "Verifying $aab"
