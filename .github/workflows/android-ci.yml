@@ -167,17 +167,19 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk"
 
           python3 - "$apk" <<'PY'
+          import os
           import re
           import subprocess
           import sys
 
+          android_home = os.environ["ANDROID_HOME"]
           apk = sys.argv[1]
           expected_package = "sitebin.azerakhsh.ir"
           expected_sha256 = "6F259D3C4557BA4B4E4C9489F38BCD85E7EC9F4641C87346F9578BD0F4FF2900"
 
           cert = subprocess.run(
               [
-                  "$ANDROID_HOME/build-tools/36.0.0/apksigner",
+                  os.path.join(android_home, "build-tools", "36.0.0", "apksigner"),
                   "verify",
                   "--print-certs",
                   apk,
@@ -196,7 +198,7 @@ jobs:
 
           package_output = subprocess.run(
               [
-                  "$ANDROID_HOME/build-tools/36.0.0/aapt",
+                  os.path.join(android_home, "build-tools", "36.0.0", "aapt"),
                   "dump",
                   "badging",
                   apk,
