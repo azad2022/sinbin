@@ -63,7 +63,7 @@ class SupabaseApiClient(
     private val supabaseUrl: String,
     private val supabasePublishableKey: String,
     private val context: Context? = null
-) : ServerAuthoritativeEngine {
+) : ServerAuthoritativeEngine, RealtimeCapableEngine {
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -111,6 +111,22 @@ class SupabaseApiClient(
 
     @Volatile
     private var tokenExpiresAt: Long = 0L
+
+    @Volatile
+    private var realtimeActive: Boolean = false
+
+    @Volatile
+    private var realtimeConnected: Boolean = false
+
+    @Volatile
+    private var realtimeListener: ((String) -> Unit)? = null
+
+    private val realtimeClient = SupabaseRealtimeClient(
+        supabaseUrl = supabaseUrl,
+        publishableKey = supabasePublishableKey,
+        onTableChanged = { table -> realtimeListener?.invoke(table) },
+        onConnectionChanged = { connected -> realtimeConnected = connected }
+    )
 
     init {
         // Load persisted session on startup. Sensitive values are encrypted with Android Keystore.
