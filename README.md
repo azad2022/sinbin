@@ -15,7 +15,7 @@ These values are part of the permanent SiteBin identity and must not change with
 | Android applicationId | `sitebin.azerakhsh.ir` |
 | Standard APK filename | `sitebin.azerakhsh.apk` |
 | Production Release certificate SHA-256 | `6F:25:9D:3C:45:57:BA:4B:4E:4C:94:89:F3:8B:CD:85:E7:EC:9F:46:41:C8:73:46:F9:57:8B:D0:F4:FF:29:00` |
-| Current CI Debug certificate SHA-256 | `AB:27:EE:09:3B:25:E1:0E:E5:70:15:37:DA:6E:CE:47:0C:45:6D:88:1C:35:89:AD:CE:61:01:FB:5B:F4:0F:C5` |
+| Current CI Debug certificate SHA-256 | `B6:3B:C4:E1:B4:67:04:CB:49:66:AB:3F:0E:D3:6F:F9:B7:D9:99:E9:67:E6:1D:3E:6B:69:DA:CC:A4:C1:66:9C` |
 
 The Release fingerprint is public certificate metadata, not a secret. The Release private key, keystore, store password, and key password are secrets and must never be committed to the repository or written to logs.
 
@@ -726,9 +726,17 @@ Required Debug APK:
 
 The current CI Debug certificate is:
 
-`AB27EE093B25E10EE5701537DA6ECE470C456D881C3589ADCE6101FB5BF40FC5`
+`B63BC4E1B46704CB4966AB3F0ED36FF9B7D999E967E61D3E6B69DACCA4C1669C`
 
-The CI must fail rather than silently generate a replacement Debug identity.
+The required GitHub repository secret is:
+
+`DEBUG_KEYSTORE_BASE64`
+
+CI materializes the secret as `~/.android/debug.keystore`, verifies the keystore certificate fingerprint before building, then verifies the actual APK certificate and package after `assembleDebug`.
+
+There is no cache fallback. Missing or invalid signing material is a hard failure rather than permission to generate a new Debug identity.
+
+The Debug keystore itself must never be committed to Git. The repository `.gitignore` excludes `*.jks`, `*.keystore`, and related signing material.
 
 ### Release
 
@@ -798,11 +806,21 @@ Never change the expected Release fingerprint.
 
 Debug is allowed to use a different certificate from Release.
 
-However, all CI Debug APKs used in continuity testing must use the same stable Debug key.
+All CI Debug APKs used for continuity testing must use the same durable Debug keystore.
 
-A cache miss is not permission to rotate the key. CI fails closed.
+The current Debug certificate is:
 
-For long-lived operational robustness, a durable secure CI secret for the Debug keystore is preferable to relying on an ephemeral cache alone. Any such migration must preserve the currently-established Debug certificate unless the continuity policy is intentionally migrated.
+`B63BC4E1B46704CB4966AB3F0ED36FF9B7D999E967E61D3E6B69DACCA4C1669C`
+
+The corresponding keystore is stored outside Git history and supplied to GitHub Actions only through the repository secret:
+
+`DEBUG_KEYSTORE_BASE64`
+
+The Debug keystore is required for every CI Debug build. CI must fail closed when the secret is absent, malformed, or produces a different certificate. GitHub Actions Cache is not a source of truth and must not be used as a signing-key fallback.
+
+A Debug certificate rotation is a Level 4 identity migration. It requires an explicit migration decision, a new recorded fingerprint, CI guard update, fresh Debug APK verification, and uninstall/reinstall testing. Existing Debug APKs signed with the retired Debug key cannot be treated as the same install/update identity.
+
+**Current Debug signing migration (2026-10-06):** the previous CI Debug certificate `AB27EE093B25E10EE5701537DA6ECE470C456D881C3589ADCE6101FB5BF40FC5` was retired by explicit project decision. The replacement certificate is `B63BC4E1B46704CB4966AB3F0ED36FF9B7D999E967E61D3E6B69DACCA4C1669C`. The production Release certificate and applicationId were not changed. Any local device still holding an APK signed with the retired Debug key must uninstall that Debug build before installing the replacement Debug APK.
 
 ### Rule D — APK filename
 
@@ -1216,7 +1234,9 @@ When debugging production/test behavior, collect evidence in this order:
 2. CI run and commit SHA.
 3. Package name from artifact.
 4. Certificate fingerprint from artifact.
-5. Supabase migration history.
+5. For Debug builds, compare the artifact fingerprint to the current CI Debug fingerprint recorded in Section 1.
+6. For Release builds, compare the artifact fingerprint to the official Release fingerprint.
+7. Supabase migration history.
 6. Live DB records.
 7. PostgreSQL logs.
 8. Application logs.
