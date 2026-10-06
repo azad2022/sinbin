@@ -1,6 +1,6 @@
 package com.example
 
-import com.example.data.backend.SupabaseApiClient
+import com.example.data.backend.buildCreateCampaignRpcBody
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -10,7 +10,7 @@ class CampaignRpcContractTest {
 
     @Test
     fun createCampaign_payloadAlwaysContainsAllSevenNamedArguments() {
-        val body = SupabaseApiClient.buildCreateCampaignRpcBody(
+        val body = buildCreateCampaignRpcBody(
             url = "https://example.com",
             normalizedUrl = "https://example.com",
             domain = "example.com",
