@@ -32,8 +32,16 @@ jobs:
         run: |
           sdkmanager "platform-tools" "platforms;android-36.1" "build-tools;36.0.0"
 
-      - name: Restore stable debug signing key from secure secret
-        if: env.DEBUG_KEYSTORE_BASE64 != ''
+      - name: Require stable Debug signing secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEBUG_KEYSTORE_BASE64" || {
+            echo "DEBUG_KEYSTORE_BASE64 is required. Refusing to generate or recover a Debug signing key from cache."
+            exit 1
+          }
+
+      - name: Restore stable Debug signing key from secure secret
         shell: bash
         run: |
           set -euo pipefail
@@ -43,22 +51,21 @@ jobs:
           test -s "$HOME/.android/debug.keystore"
           chmod 600 "$HOME/.android/debug.keystore"
 
-      - name: Restore stable debug signing key from cache
-        id: debug-signing-cache
-        if: env.DEBUG_KEYSTORE_BASE64 == ''
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.android/debug.keystore
-          key: sitebin-debug-signing-v1
-
-      - name: Require stable debug signing key
-        if: env.DEBUG_KEYSTORE_BASE64 == '' && steps.debug-signing-cache.outputs.cache-hit != 'true'
+      - name: Verify stable Debug keystore identity
         shell: bash
         run: |
           set -euo pipefail
-          echo "Stable Debug signing key is unavailable. Refusing to generate or rotate a signing identity."
-          echo "Configure DEBUG_KEYSTORE_BASE64 or restore the existing sitebin-debug-signing-v1 cache."
-          exit 1
+          expected_sha256="$B63BC4E1B46704CB4966AB3F0ED36FF9B7D999E967E61D3E6B69DACCA4C1669C"
+          keystore="$HOME/.android/debug.keystore"
+          output="$(keytool -list -v -keystore "$keystore" -storepass android -alias androiddebugkey 2>/dev/null)"
+          printf '%s\n' "$output"
+          actual_sha256="$(printf '%s\n' "$output" | awk -F': ' '/^Entry type:/{entry=1} /^Certificate fingerprints:/{cert=1} cert && /^SHA256:/{gsub(":", "", $2); print toupper($2); exit}')"
+          test "$actual_sha256" = "$expected_sha256" || {
+            echo "Unexpected Debug certificate fingerprint: $actual_sha256"
+            echo "Expected: $expected_sha256"
+            exit 1
+          }
+          echo "Stable Debug keystore identity verified"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -115,7 +122,7 @@ jobs:
           set -euo pipefail
           apk="app/build/outputs/apk/debug/sitebin.azerakhsh.apk"
           expected_package="sitebin.azerakhsh.ir"
-          expected_sha256="AB27EE093B25E10EE5701537DA6ECE470C456D881C3589ADCE6101FB5BF40FC5"
+          expected_sha256="B63BC4E1B46704CB4966AB3F0ED36FF9B7D999E967E61D3E6B69DACCA4C1669C"
 
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
 
