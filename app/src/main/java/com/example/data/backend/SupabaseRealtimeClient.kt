@@ -8,6 +8,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -57,6 +58,7 @@ class SupabaseRealtimeClient(
     private var reconnectJob: Job? = null
     private var heartbeatJob: Job? = null
     private var reconnectDelayMs = 5_000L
+    private var connecting = false
 
     fun setActive(active: Boolean, userId: String?, accessToken: String?) {
         synchronized(this) {
@@ -114,7 +116,8 @@ class SupabaseRealtimeClient(
         val token = accessToken
         synchronized(this) {
             if (!requested || uid.isNullOrBlank() || token.isNullOrBlank()) return
-            if (socket != null) return
+            if (socket != null || connecting) return
+            connecting = true
             reconnectJob?.cancel()
             reconnectJob = null
         }
@@ -135,6 +138,7 @@ class SupabaseRealtimeClient(
             if (requested && socket == null) {
                 socket = newSocket
             } else {
+                connecting = false
                 newSocket.close(1000, "superseded")
             }
         }
@@ -143,10 +147,19 @@ class SupabaseRealtimeClient(
     private val listener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             synchronized(this@SupabaseRealtimeClient) {
-                if (!requested || socket !== webSocket) {
+                if (!requested) {
+                    connecting = false
                     webSocket.close(1000, "inactive")
                     return
                 }
+                if (socket == null) {
+                    socket = webSocket
+                } else if (socket !== webSocket) {
+                    connecting = false
+                    webSocket.close(1000, "superseded")
+                    return
+                }
+                connecting = false
                 reconnectDelayMs = 5_000L
                 joined = false
             }
@@ -317,6 +330,7 @@ class SupabaseRealtimeClient(
         synchronized(this) {
             if (socket !== webSocket) return
             socket = null
+            connecting = false
             joined = false
             heartbeatJob?.cancel()
             heartbeatJob = null
