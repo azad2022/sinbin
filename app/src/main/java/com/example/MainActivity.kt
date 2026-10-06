@@ -331,8 +331,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                 isTransferringCoins = viewModel.isTransferringCoins.collectAsState().value,
                                 onTransferCoins = { recipient, amount, onSuccess ->
                                     viewModel.transferCoins(recipient, amount, onSuccess)
-                                },
-                                onNavigate = { screen -> viewModel.navigateTo(screen) }
+                                }
                             )
                         }
 
