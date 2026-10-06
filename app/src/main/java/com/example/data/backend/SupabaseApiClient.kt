@@ -210,6 +210,9 @@ class SupabaseApiClient(
             val account = parseUserAccount(responseJson, evidence.installId)
             currentUserId = account.userId
             saveSession()
+            if (realtimeActive) {
+                realtimeClient.setActive(true, currentUserId, currentUserToken)
+            }
             Result.success(account)
         } catch (e: Exception) {
             Result.failure(e)
@@ -1007,6 +1010,28 @@ class SupabaseApiClient(
         } else {
             p.edit().putString("enc_$key", encryptSecret(value)).remove(key).apply()
         }
+    }
+
+    override fun setRealtimeActive(active: Boolean) {
+        realtimeActive = active
+        if (!active) {
+            realtimeClient.setActive(false, null, null)
+            realtimeConnected = false
+            return
+        }
+
+        val token = currentUserToken
+        val uid = currentUserId
+        if (!uid.isNullOrBlank() && !token.isNullOrBlank()) {
+            realtimeClient.setActive(true, uid, token)
+        }
+    }
+
+    override fun isRealtimeConnected(): Boolean =
+        realtimeConnected && realtimeClient.isConnected()
+
+    override fun setRealtimeEventListener(listener: ((String) -> Unit)?) {
+        realtimeListener = listener
     }
 
     private fun callRpc(functionName: String, body: JSONObject): JSONObject {
