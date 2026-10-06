@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import android.content.Context
+import com.example.core.security.AppIdentityGuard
 import com.example.core.security.PolicyResult
 import com.example.core.security.UrlSecurityPolicy
 import com.example.data.backend.BackendManager
@@ -48,6 +49,12 @@ class SiteBinRepository(
     private val scope = CoroutineScope(Dispatchers.IO)
     private val prefs = context.getSharedPreferences("sitebin_prefs", Context.MODE_PRIVATE)
     private val deviceEvidenceProvider = AndroidDeviceEvidenceProvider(context)
+
+    init {
+        check(AppIdentityGuard.isTrustedInstallation(context)) {
+            "SiteBin release integrity check failed."
+        }
+    }
 
     private val _serverState = MutableStateFlow<ServerInitializationState>(ServerInitializationState.Initializing)
     val serverState: StateFlow<ServerInitializationState> = _serverState.asStateFlow()
