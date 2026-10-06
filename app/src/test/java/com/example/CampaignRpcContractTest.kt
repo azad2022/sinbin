@@ -19,17 +19,17 @@ class CampaignRpcContractTest {
             preflightToken = "preflight-token-123456789012345678901234567890"
         )
 
-        assertTrue(body.has("p_url"))
-        assertTrue(body.has("p_normalized_url"))
-        assertTrue(body.has("p_domain"))
-        assertTrue(body.has("p_duration_seconds"))
-        assertTrue(body.has("p_target_views"))
-        assertTrue(body.has("p_keyword"))
-        assertTrue(body.has("p_preflight_token"))
+        assertTrue(body.containsKey("p_url"))
+        assertTrue(body.containsKey("p_normalized_url"))
+        assertTrue(body.containsKey("p_domain"))
+        assertTrue(body.containsKey("p_duration_seconds"))
+        assertTrue(body.containsKey("p_target_views"))
+        assertTrue(body.containsKey("p_keyword"))
+        assertTrue(body.containsKey("p_preflight_token"))
         assertEquals(null, body["p_keyword"])
         assertEquals(
             "preflight-token-123456789012345678901234567890",
-            body.getString("p_preflight_token")
+            body["p_preflight_token"]
         )
     }
 
