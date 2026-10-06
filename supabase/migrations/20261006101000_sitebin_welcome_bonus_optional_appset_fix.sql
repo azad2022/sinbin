@@ -1,6 +1,7 @@
 -- SiteBin Welcome Bonus regression fix.
--- App Set ID is optional/secondary evidence. Malformed or unavailable App Set
--- data must not suppress a valid Android ID + installation-key welcome claim.
+-- App Set ID is optional/secondary evidence. Malformed, unavailable, or
+-- unknown-scope App Set data must not suppress valid Android ID +
+-- installation-key evidence.
 
 BEGIN;
 
@@ -82,9 +83,8 @@ BEGIN
         IF v_app_set_id IS NULL
            OR v_app_set_id !~
               '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' THEN
-            -- App Set ID is optional/secondary evidence. A malformed or
-            -- unavailable value must not invalidate otherwise-valid Android ID
-            -- and installation-key evidence.
+            -- App Set ID is optional/secondary evidence. Any malformed value
+            -- is discarded without poisoning otherwise-valid device evidence.
             v_app_set_id := NULL;
         END IF;
     END IF;
@@ -97,6 +97,7 @@ BEGIN
     END IF;
 
     IF v_app_set_id IS NOT NULL AND v_app_set_scope IS NULL THEN
+        -- A missing/unknown App Set scope is also optional and non-fatal.
         v_app_set_id := NULL;
     END IF;
 
