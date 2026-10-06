@@ -37,7 +37,6 @@ class SupabaseRealtimeClient(
     private val sequence = AtomicLong(0L)
     private val websocketClient = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
-        .pingInterval(20, TimeUnit.SECONDS)
         .build()
 
     @Volatile
