@@ -51,6 +51,20 @@ data class WebsitePreflightResult(
  * Android Client must never mutate financial balance, coin ledger, or campaign progress directly.
  * All mutations are executed strictly by the authoritative backend (Supabase PostgreSQL / RPC).
  */
+interface RealtimeCapableEngine {
+    /**
+     * Enables/disables the foreground realtime transport. The transport remains
+     * server-authoritative; realtime events only trigger fresh reads from PostgREST.
+     */
+    fun setRealtimeActive(active: Boolean)
+
+    /** Exposes realtime connection health for the polling fallback. */
+    fun isRealtimeConnected(): Boolean
+
+    /** Receives table-level change hints from Supabase Realtime. */
+    fun setRealtimeEventListener(listener: ((String) -> Unit)?)
+}
+
 interface ServerAuthoritativeEngine {
 
     /** Server-authoritative duration pricing matrix */
