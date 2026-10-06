@@ -273,7 +273,7 @@ BEGIN
     true
   );
 
-  SELECT public.init_user_account('install_no_evidence_'||v_tag,NULL,NULL,NULL,NULL,NULL)
+  SELECT public.init_user_account('install_no_evidence_'||v_tag,'test_no_evidence_'||replace(v_uid::text,'-',''),NULL,NULL,NULL,NULL)
   INTO v_profile;
 
   IF (v_profile->>'available_coins')::bigint <> 0 THEN
