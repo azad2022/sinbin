@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -164,19 +165,41 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             }
 
             repository.transactions.value
-                    .filter { it.type == TransactionType.COIN_TRANSFER_RECEIVED }
-                    .forEach { seenIncomingTransferIds.add(it.id) }
+                .filter { it.type == TransactionType.COIN_TRANSFER_RECEIVED }
+                .forEach { seenIncomingTransferIds.add(it.id) }
             notificationBaselineReady = true
 
+            // Realtime is the primary low-latency path. Polling is only a safety
+            // reconciliation path: 60s when the socket is healthy, 15s if it is not.
             while (true) {
-                delay(60_000)
+                delay(if (repository.isRealtimeConnected()) 60_000L else 15_000L)
                 if (
                     repository.serverState.value is ServerInitializationState.Ready &&
-                    _currentScreen.value != AppScreen.VIEWER
+                    isAppInForeground
                 ) {
                     refreshFinancialStateForIncomingTransfers()
+                    if (_currentScreen.value != AppScreen.VIEWER) {
+                        repository.refreshCampaigns()
+                    }
                 }
             }
+        }
+
+        // A database change is only a hint. The UI never trusts the event payload as
+        // authoritative financial state; it always re-reads from PostgREST/RPC-backed data.
+        viewModelScope.launch {
+            repository.realtimeEvents
+                .debounce(250L)
+                .collect { table ->
+                    if (!isAppInForeground || repository.serverState.value !is ServerInitializationState.Ready) {
+                        return@collect
+                    }
+
+                    refreshFinancialStateForIncomingTransfers()
+                    if (table == "campaigns" && _currentScreen.value != AppScreen.VIEWER) {
+                        repository.refreshCampaigns()
+                    }
+                }
         }
     }
 
@@ -347,14 +370,23 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     fun onForegroundChanged(inForeground: Boolean) {
         isAppInForeground = inForeground
+        repository.setRealtimeActive(inForeground)
+
         if (!inForeground || repository.serverState.value !is ServerInitializationState.Ready) return
 
-        val now = System.currentTimeMillis()
-        if (now - lastDailyBonusAttemptAt < 60_000L) return
-        lastDailyBonusAttemptAt = now
-
         viewModelScope.launch {
-            repository.claimDailyBonus()
+            // Foreground entry is a hard reconciliation point. This removes stale UI
+            // even when the process was backgrounded or the realtime socket was offline.
+            refreshFinancialStateForIncomingTransfers()
+            if (_currentScreen.value != AppScreen.VIEWER) {
+                repository.refreshCampaigns()
+            }
+
+            val now = System.currentTimeMillis()
+            if (now - lastDailyBonusAttemptAt >= 60_000L) {
+                lastDailyBonusAttemptAt = now
+                repository.claimDailyBonus()
+            }
         }
     }
 
