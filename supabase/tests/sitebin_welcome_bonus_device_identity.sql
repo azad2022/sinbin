@@ -188,6 +188,14 @@ BEGIN
     RAISE EXCEPTION 'TEST1C_FAILED: entitlement=%, grant=%',v_entitlement_count,v_grant_count;
   END IF;
 
+  -- Restore the canonical first test user before continuing the original test sequence.
+  v_uid := (SELECT id FROM tmp_sitebin_test_users ORDER BY id LIMIT 1);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
+    true
+  );
+
   -- Test 2 / 7: duplicate/replay on same Auth user and changed install ID is harmless.
   SELECT public.init_user_account(
     'install_replay_' || v_tag,
