@@ -126,6 +126,68 @@ BEGIN
       v_entitlement_count,v_grant_count,v_ledger_sum;
   END IF;
 
+  -- Test 1C: repair an already-created zero/partial-balance profile.
+  -- This is the exact regression seen in production: the profile exists, valid
+  -- primary evidence is available, no welcome grant exists yet, and init_user_account
+  -- must repair the account to 300 instead of leaving it at its prior balance.
+  v_uid := (SELECT id FROM tmp_sitebin_test_users ORDER BY id OFFSET 11 LIMIT 1);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
+    true
+  );
+
+  INSERT INTO public.profiles(
+    id,user_handle,app_install_id,available_coins,reserved_coins,lifetime_earned,
+    lifetime_spent,trust_score,completed_views_count,received_views_count,
+    welcome_bonus_claimed,created_at,updated_at
+  )
+  VALUES(
+    v_uid,'user_zero_profile_regression','old_partial_install',16,0,16,0,100,1,0,
+    false,clock_timestamp(),clock_timestamp()
+  );
+
+  INSERT INTO private.device_identities(
+    android_id_hmac,installation_key_fingerprint,first_seen_at,last_seen_at,
+    first_auth_uid,current_auth_uid,risk_score,risk_level,integrity_status,platform_metadata
+  )
+  VALUES(
+    private.device_identifier_hmac(
+      'android_id',
+      substr(md5('repair_zero_' || v_tag),1,16)
+    ),
+    md5('repair_fp_a_' || v_tag) || md5('repair_fp_b_' || v_tag),
+    clock_timestamp(),clock_timestamp(),v_uid,v_uid,50,'MEDIUM','NOT_CHECKED',
+    jsonb_build_object('source','zero_profile_repair_regression')
+  );
+
+  SELECT public.init_user_account(
+    'new_recovery_install_' || v_tag,
+    NULL,
+    substr(md5('repair_zero_' || v_tag),1,16),
+    'not-a-uuid',
+    'DEVELOPER',
+    md5('repair_fp_a_' || v_tag) || md5('repair_fp_b_' || v_tag)
+  ) INTO v_profile;
+
+  IF (v_profile->>'available_coins')::bigint <> 316
+     OR (v_profile->>'lifetime_earned')::bigint <> 316
+     OR (v_profile->>'welcome_bonus_claimed')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'TEST1C_FAILED: existing zero/partial profile was not repaired: %',v_profile;
+  END IF;
+
+  SELECT count(*) INTO v_entitlement_count
+  FROM private.welcome_bonus_entitlements
+  WHERE beneficiary_auth_uid=v_uid;
+
+  SELECT count(*) INTO v_grant_count
+  FROM public.welcome_bonus_grants
+  WHERE user_id=v_uid;
+
+  IF v_entitlement_count <> 1 OR v_grant_count <> 1 THEN
+    RAISE EXCEPTION 'TEST1C_FAILED: entitlement=%, grant=%',v_entitlement_count,v_grant_count;
+  END IF;
+
   -- Test 2 / 7: duplicate/replay on same Auth user and changed install ID is harmless.
   SELECT public.init_user_account(
     'install_replay_' || v_tag,
@@ -185,8 +247,8 @@ BEGIN
   FROM private.welcome_bonus_entitlements e
   JOIN tmp_sitebin_test_users u ON u.id=e.beneficiary_auth_uid;
 
-  IF v_entitlement_count <> 2 THEN
-    RAISE EXCEPTION 'TEST5_FAILED: expected exactly two entitlements for two test devices, got %',v_entitlement_count;
+  IF v_entitlement_count <> 3 THEN
+    RAISE EXCEPTION 'TEST5_FAILED: expected exactly three entitlements for three test devices, got %',v_entitlement_count;
   END IF;
 
   -- Test 11: insufficient device evidence fails closed without blocking the app.
