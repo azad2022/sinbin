@@ -1,7 +1,6 @@
 package com.example
 
 import com.example.data.backend.buildCreateCampaignRpcBody
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,7 +26,7 @@ class CampaignRpcContractTest {
         assertTrue(body.has("p_target_views"))
         assertTrue(body.has("p_keyword"))
         assertTrue(body.has("p_preflight_token"))
-        assertTrue(body.isNull("p_keyword"))
+        assertEquals(null, body["p_keyword"])
         assertEquals(
             "preflight-token-123456789012345678901234567890",
             body.getString("p_preflight_token")
@@ -46,9 +45,7 @@ class CampaignRpcContractTest {
             preflightToken = "   "
         )
 
-        assertTrue(body.isNull("p_keyword"))
-        assertTrue(body.isNull("p_preflight_token"))
-        assertEquals(JSONObject.NULL, body.opt("p_keyword"))
-        assertEquals(JSONObject.NULL, body.opt("p_preflight_token"))
+        assertEquals(null, body["p_keyword"])
+        assertEquals(null, body["p_preflight_token"])
     }
 }
