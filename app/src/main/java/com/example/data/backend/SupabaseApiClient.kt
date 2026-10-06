@@ -577,15 +577,15 @@ class SupabaseApiClient(
         preflightToken: String?
     ): Result<Campaign> = withContext(Dispatchers.IO) {
         try {
-            val body = JSONObject().apply {
-                put("p_url", url)
-                put("p_normalized_url", normalizedUrl)
-                put("p_domain", domain)
-                put("p_duration_seconds", durationSeconds)
-                put("p_target_views", targetViews)
-                keyword?.trim()?.takeIf { it.isNotBlank() }?.let { put("p_keyword", it) }
-                preflightToken?.trim()?.takeIf { it.isNotBlank() }?.let { put("p_preflight_token", it) }
-            }
+            val body = buildCreateCampaignRpcBody(
+                url = url,
+                normalizedUrl = normalizedUrl,
+                domain = domain,
+                durationSeconds = durationSeconds,
+                targetViews = targetViews,
+                keyword = keyword,
+                preflightToken = preflightToken
+            )
             val res = callRpc("create_campaign", body)
             val status = runCatching { CampaignStatus.valueOf(res.optString("status", "ACTIVE")) }.getOrDefault(CampaignStatus.ACTIVE)
             Result.success(
@@ -1042,6 +1042,29 @@ class SupabaseApiClient(
 
     override fun setRealtimeEventListener(listener: ((String) -> Unit)?) {
         realtimeListener = listener
+    }
+
+    /**
+     * Builds the exact PostgREST RPC payload for public.create_campaign.
+     * All seven named parameters are always serialized, including nullable ones,
+     * so a null keyword cannot change the resolved PostgreSQL function signature.
+     */
+    internal fun buildCreateCampaignRpcBody(
+        url: String,
+        normalizedUrl: String,
+        domain: String,
+        durationSeconds: Int,
+        targetViews: Int,
+        keyword: String?,
+        preflightToken: String?
+    ): JSONObject = JSONObject().apply {
+        put("p_url", url)
+        put("p_normalized_url", normalizedUrl)
+        put("p_domain", domain)
+        put("p_duration_seconds", durationSeconds)
+        put("p_target_views", targetViews)
+        put("p_keyword", keyword?.trim()?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+        put("p_preflight_token", preflightToken?.trim()?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
     }
 
     private fun callRpc(functionName: String, body: JSONObject): JSONObject {
