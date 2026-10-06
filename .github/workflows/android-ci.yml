@@ -166,7 +166,7 @@ jobs:
 
           echo "Verifying $apk"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk"
-          cert_output="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk")"
+          cert_output="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" 2>&1)"
           printf '%s\n' "$cert_output"
           printf '%s\n' "$cert_output" | grep -Fqi "SHA-256 digest: 6F:25:9D:3C:45:57:BA:4B:4E:4C:94:89:F3:8B:CD:85:E7:EC:9F:46:41:C8:73:46:F9:57:8B:D0:F4:FF:29:00"
 
