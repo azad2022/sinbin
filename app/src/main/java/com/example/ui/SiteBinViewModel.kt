@@ -202,7 +202,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                         return@collect
                     }
 
-                    refreshFinancialStateForIncomingTransfers()
+                    if (table == "profiles" || table == "coin_ledger") {
+                        refreshFinancialStateForIncomingTransfers()
+                    }
                     if (table == "campaigns" && _currentScreen.value != AppScreen.VIEWER) {
                         repository.refreshCampaigns()
                     }
