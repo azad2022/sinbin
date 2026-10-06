@@ -193,7 +193,6 @@ class SupabaseRealtimeClient(
                     .put("schema", "public")
                     .put("table", "profiles")
                     .put("filter", "id=eq.$uid")
-                    .put("select", JSONArray().put("id"))
             )
             .put(
                 JSONObject()
