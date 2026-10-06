@@ -2,6 +2,7 @@ package com.example.data.backend
 
 import android.content.Context
 import com.example.BuildConfig
+import com.example.core.security.AppIdentityGuard
 
 /**
  * Backend Manager providing the active ServerAuthoritativeEngine instance.
@@ -43,6 +44,12 @@ object BackendManager {
     private var _cachedEngine: ServerAuthoritativeEngine? = null
 
     fun getEngine(context: Context? = null): ServerAuthoritativeEngine {
+        if (!BuildConfig.DEBUG && context != null &&
+            !AppIdentityGuard.isTrustedInstallation(context)
+        ) {
+            throw SecurityException("SiteBin release integrity check failed.")
+        }
+
         val existing = _cachedEngine
         if (existing != null) return existing
 
