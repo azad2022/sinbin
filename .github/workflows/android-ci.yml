@@ -50,6 +50,8 @@ jobs:
           printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
           test -s "$HOME/.android/debug.keystore"
           chmod 600 "$HOME/.android/debug.keystore"
+          echo "DEBUG_KEYSTORE_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
+          echo "DEBUG_SIGNING_REQUIRED=true" >> "$GITHUB_ENV"
 
       - name: Verify stable Debug keystore identity
         shell: bash
@@ -171,6 +173,11 @@ jobs:
           if-no-files-found: error
           path: |
             app/build/outputs/apk/debug/sitebin.azerakhsh.apk
+
+      - name: Remove temporary Debug keystore
+        if: always()
+        shell: bash
+        run: rm -f "$HOME/.android/debug.keystore"
 
   release:
     if: >
