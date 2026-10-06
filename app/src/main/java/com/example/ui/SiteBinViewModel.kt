@@ -141,20 +141,8 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 showMessage("بازدید خودکار برای ۷ روز فعال شد و ۱۰۰ سکه کسر شد.")
             }.onFailure { error ->
                 _autoViewEnabled.value = false
-                showMessage(autoViewActivationUserMessage(error))
+                showMessage(error.message ?: "فعال‌سازی بازدید خودکار ناموفق بود.")
             }
-        }
-    }
-
-    private fun autoViewActivationUserMessage(error: Throwable): String {
-        val message = error.message.orEmpty()
-        return when {
-            message.contains("INSUFFICIENT_BALANCE", ignoreCase = true) ||
-                message.contains("insufficient balance", ignoreCase = true) ||
-                message.contains("less than 100", ignoreCase = true) ->
-                "موجودی سکه شما کافی نیست. برای فعال‌سازی بازدید خودکار حداقل ۱۰۰ سکه نیاز دارید."
-            else ->
-                message.ifBlank { "فعال‌سازی بازدید خودکار ناموفق بود." }
         }
     }
 
