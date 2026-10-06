@@ -71,15 +71,15 @@ internal fun buildCreateCampaignRpcBody(
     targetViews: Int,
     keyword: String?,
     preflightToken: String?
-): JSONObject = JSONObject().apply {
-    put("p_url", url)
-    put("p_normalized_url", normalizedUrl)
-    put("p_domain", domain)
-    put("p_duration_seconds", durationSeconds)
-    put("p_target_views", targetViews)
-    put("p_keyword", keyword?.trim()?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
-    put("p_preflight_token", preflightToken?.trim()?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
-}
+): Map<String, String?> = linkedMapOf(
+    "p_url" to url,
+    "p_normalized_url" to normalizedUrl,
+    "p_domain" to domain,
+    "p_duration_seconds" to durationSeconds.toString(),
+    "p_target_views" to targetViews.toString(),
+    "p_keyword" to keyword?.trim()?.takeIf { it.isNotBlank() },
+    "p_preflight_token" to preflightToken?.trim()?.takeIf { it.isNotBlank() }
+)
 
 /** Authenticated SiteBin Supabase transport. */
 class SupabaseApiClient(
@@ -600,15 +600,19 @@ class SupabaseApiClient(
         preflightToken: String?
     ): Result<Campaign> = withContext(Dispatchers.IO) {
         try {
-            val body = buildCreateCampaignRpcBody(
-                url = url,
-                normalizedUrl = normalizedUrl,
-                domain = domain,
-                durationSeconds = durationSeconds,
-                targetViews = targetViews,
-                keyword = keyword,
-                preflightToken = preflightToken
-            )
+            val body = JSONObject().apply {
+                buildCreateCampaignRpcBody(
+                    url = url,
+                    normalizedUrl = normalizedUrl,
+                    domain = domain,
+                    durationSeconds = durationSeconds,
+                    targetViews = targetViews,
+                    keyword = keyword,
+                    preflightToken = preflightToken
+                ).forEach { (name, value) ->
+                    put(name, value ?: JSONObject.NULL)
+                }
+            }
             val res = callRpc("create_campaign", body)
             val status = runCatching { CampaignStatus.valueOf(res.optString("status", "ACTIVE")) }.getOrDefault(CampaignStatus.ACTIVE)
             Result.success(
