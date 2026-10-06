@@ -55,26 +55,10 @@ BEGIN
     clock_timestamp()
   );
 
-  INSERT INTO public.profiles(
-    id, user_handle, app_install_id, available_coins, reserved_coins,
-    lifetime_earned, lifetime_spent, trust_score, completed_views_count,
-    received_views_count, welcome_bonus_claimed, created_at, updated_at
-  )
-  VALUES(
-    v_new_uid,
-    'user_continuity_new_' || substr(replace(v_new_uid::text,'-',''),1,8),
-    'inst_continuity_new_' || substr(replace(v_new_uid::text,'-',''),1,8),
-    0,
-    0,
-    0,
-    0,
-    100,
-    0,
-    0,
-    false,
-    clock_timestamp(),
-    clock_timestamp()
-  );
+  -- Do not create a target profile. In the real reinstall path the pre-request
+  -- rate limiter may already have created a bucket for the new Auth UID, but
+  -- init_user_account must still create the canonical profile by rebinding the
+  -- old account.
 
   INSERT INTO private.device_identities(
     id, first_seen_at, last_seen_at,
