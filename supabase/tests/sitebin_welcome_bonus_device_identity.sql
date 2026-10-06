@@ -185,8 +185,8 @@ BEGIN
   FROM private.welcome_bonus_entitlements e
   JOIN tmp_sitebin_test_users u ON u.id=e.beneficiary_auth_uid;
 
-  IF v_entitlement_count <> 1 THEN
-    RAISE EXCEPTION 'TEST5_FAILED: more than one entitlement for same device';
+  IF v_entitlement_count <> 2 THEN
+    RAISE EXCEPTION 'TEST5_FAILED: expected exactly two entitlements for two test devices, got %',v_entitlement_count;
   END IF;
 
   -- Test 11: insufficient device evidence fails closed without blocking the app.
