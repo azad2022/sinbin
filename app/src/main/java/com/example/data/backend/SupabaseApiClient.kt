@@ -58,6 +58,7 @@ class RateLimitException(
  * 4. Single Source of Truth for Pricing: Dynamically fetches duration_pricing matrix from Supabase database.
  * 5. Strict Server-Authoritative Execution: All mutations execute via PostgreSQL SECURITY DEFINER RPCs.
  */
+/** Authenticated SiteBin Supabase transport. */
 class SupabaseApiClient(
     private val supabaseUrl: String,
     private val supabasePublishableKey: String,
