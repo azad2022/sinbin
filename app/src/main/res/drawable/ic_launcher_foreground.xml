@@ -1,70 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    
-    <!-- Browser Window Card -->
-    <path
-        android:fillColor="#1E293B"
-        android:pathData="M26,30 h56 a6,6 0 0,1 6,6 v42 a6,6 0 0,1 -6,6 h-56 a6,6 0 0,1 -6,-6 v-42 a6,6 0 0,1 6,-6 z" />
-    
-    <!-- Browser Top Bar -->
-    <path
-        android:fillColor="#334155"
-        android:pathData="M26,30 h56 a6,6 0 0,1 6,6 v8 h-68 v-8 a6,6 0 0,1 6,-6 z" />
-        
-    <!-- Window Control Dots -->
-    <path android:fillColor="#EF4444" android:pathData="M31,37 a2,2 0 1,0 0.01,0 Z" />
-    <path android:fillColor="#F59E0B" android:pathData="M37,37 a2,2 0 1,0 0.01,0 Z" />
-    <path android:fillColor="#10B981" android:pathData="M43,37 a2,2 0 1,0 0.01,0 Z" />
 
-    <!-- Browser URL Bar Pill -->
+    <!-- Centered 'Site' wordmark. The i stem is followed by a dedicated eye glyph in place of its dot. -->
     <path
-        android:fillColor="#1E293B"
-        android:pathData="M50,35 h28 a2,2 0 0,1 2,2 v0 a2,2 0 0,1 -2,2 h-28 a2,2 0 0,1 -2,-2 v0 a2,2 0 0,1 2,-2 z" />
+        android:fillColor="#A8FF3E"
+        android:pathData="M38.408,47.467V51.954C30.672,48.495 23.559,53.220 30.953,54.737L33.282,55.206Q36.818,55.916 38.309,57.364Q39.800,58.813 39.800,61.482C39.800,68.365 31.704,70.023 23.257,66.892V62.277C31.185,66.491 39.576,61.474 31.308,59.650L29.193,59.182Q26.012,58.500 24.542,57.009Q23.072,55.518 23.072,52.991C23.072,46.845 30.000,45.229 38.408,47.467Z" />
 
-    <!-- Eye / SiteBin Vision Lens Symbol in Center -->
     <path
-        android:fillColor="#38BDF8"
-        android:pathData="M54,50 C44,50 37,58 37,58 C37,58 44,66 54,66 C64,66 71,58 71,58 C71,58 64,50 54,50 Z" />
-    
-    <!-- Pupil Circle -->
-    <path
-        android:fillColor="#0F172A"
-        android:pathData="M54,58 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
+        android:fillColor="#A8FF3E"
+        android:pathData="M44.869,51.713h5.084v16.287h-5.084z" />
 
-    <!-- Pupil Sparkle -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M55.5,56.5 m-1.5,0 a1.5,1.5 0 1,0 3,0 a1.5,1.5 0 1,0 -3,0" />
+        android:fillColor="#A8FF3E"
+        android:pathData="M60.887,47.580V52.096h5.240v3.635h-5.240v6.745Q60.887,63.584 61.327,63.974Q61.767,64.365 63.074,64.365h2.613v3.635h-4.360Q58.317,68.000 57.060,66.743Q55.803,65.487 55.803,62.476V55.731h-2.527v-3.635h2.527V47.580Z" />
 
-    <!-- Golden Coin Badge on bottom-right -->
     <path
-        android:pathData="M70,68 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:angle="45"
-                android:endX="80"
-                android:endY="78"
-                android:startX="60"
-                android:startY="58"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#FDE047" />
-                <item android:offset="1.0" android:color="#D97706" />
-            </gradient>
-        </aapt:attr>
-    </path>
-    <!-- Inner Coin Rim -->
-    <path
-        android:strokeColor="#FEF08A"
-        android:strokeWidth="1"
-        android:fillColor="#00000000"
-        android:pathData="M70,68 m-7.5,0 a7.5,7.5 0 1,0 15,0 a7.5,7.5 0 1,0 -15,0" />
-    <!-- Coin Star/S -->
-    <path
-        android:fillColor="#78350F"
-        android:pathData="M69,63 h2 v10 h-2 z M67,65 h6 v2 h-6 z M67,69 h6 v2 h-6 z" />
+        android:fillColor="#A8FF3E"
+        android:pathData="M85.609,60.005V61.454H73.724Q74.169,65.765 79.558,65.998Q82.208,65.951 84.857,63.115V67.034Q76.696,70.119 68.541,67.551Q68.541,60.062 68.541,60.062Q68.541,50.152 85.609,49.437Q85.609,60.005 85.609,60.005ZM80.384,58.316Q80.384,54.292 74.363,54.310Q73.780,58.316 73.781,58.316Z" />
 
+    <!-- Eye used as the i dot. -->
+    <path
+        android:fillColor="#A8FF3E"
+        android:pathData="M42.161,48.546C45.101,45.446 49.721,45.446 52.661,48.546C49.721,51.646 45.101,51.646 42.161,48.546Z" />
+
+    <path
+        android:fillColor="#061A33"
+        android:pathData="M45.811,48.546a1.600,1.600 0 1,0 3.200,0a1.600,1.600 0 1,0 -3.200,0Z" />
 </vector>
