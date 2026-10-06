@@ -755,49 +755,73 @@ $publication$;
 
 DO $repair$
 DECLARE
-    v_old_uid uuid := 'bac61f42-e81e-44d9-9241-b4c462d3943b';
-    v_new_uid uuid := '06b6514d-3a51-4f05-83ea-27461137dc0c';
-    v_device_id uuid := '5816c56a-7e8e-40db-8981-bb96b044309d';
+    v_old_uid uuid;
+    v_new_uid uuid;
+    v_device_id uuid;
+    v_new_install_id text;
     v_new_is_empty boolean;
 BEGIN
+    -- One-time repair for the objectively observable corruption produced by
+    -- the previous client: a device identity whose current auth UID is a
+    -- newly-created, empty zero-coin profile.
     SELECT
-      p.available_coins = 0
-      AND p.reserved_coins = 0
-      AND p.lifetime_earned = 0
-      AND p.lifetime_spent = 0
-      AND p.welcome_bonus_claimed = false
-      AND NOT EXISTS (SELECT 1 FROM public.coin_ledger WHERE user_id = v_new_uid)
-      AND NOT EXISTS (SELECT 1 FROM public.campaigns WHERE owner_id = v_new_uid)
-      AND NOT EXISTS (SELECT 1 FROM public.coin_transfers WHERE sender_id = v_new_uid OR recipient_id = v_new_uid)
-      AND NOT EXISTS (SELECT 1 FROM public.daily_bonus_grants WHERE user_id = v_new_uid)
-      AND NOT EXISTS (SELECT 1 FROM public.view_sessions WHERE viewer_id = v_new_uid)
-      AND NOT EXISTS (SELECT 1 FROM public.welcome_bonus_grants WHERE user_id = v_new_uid)
-      AND NOT EXISTS (SELECT 1 FROM public.auto_view_entitlements WHERE user_id = v_new_uid)
-      AND NOT EXISTS (SELECT 1 FROM public.auto_view_purchases WHERE user_id = v_new_uid)
-      AND NOT EXISTS (SELECT 1 FROM private.campaign_preflight_tokens WHERE user_id = v_new_uid)
-      AND NOT EXISTS (SELECT 1 FROM private.daily_bonus_device_claims WHERE beneficiary_auth_uid = v_new_uid)
-      AND NOT EXISTS (SELECT 1 FROM private.welcome_bonus_entitlements WHERE beneficiary_auth_uid = v_new_uid)
-    INTO v_new_is_empty
-    FROM public.profiles p
-    WHERE p.id = v_new_uid;
+        di.first_auth_uid,
+        di.current_auth_uid,
+        di.id,
+        current_profile.app_install_id
+    INTO v_old_uid, v_new_uid, v_device_id, v_new_install_id
+    FROM private.device_identities di
+    JOIN public.profiles old_profile
+      ON old_profile.id = di.first_auth_uid
+    JOIN public.profiles current_profile
+      ON current_profile.id = di.current_auth_uid
+    WHERE di.first_auth_uid IS NOT NULL
+      AND di.current_auth_uid IS NOT NULL
+      AND di.first_auth_uid <> di.current_auth_uid
+      AND current_profile.available_coins = 0
+      AND current_profile.reserved_coins = 0
+      AND current_profile.lifetime_earned = 0
+      AND current_profile.lifetime_spent = 0
+      AND current_profile.welcome_bonus_claimed = false
+      AND current_profile.created_at > old_profile.created_at
+      AND di.android_id_hmac IS NOT NULL
+      AND di.installation_key_fingerprint IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM public.coin_ledger WHERE user_id = di.current_auth_uid)
+      AND NOT EXISTS (SELECT 1 FROM public.campaigns WHERE owner_id = di.current_auth_uid)
+      AND NOT EXISTS (SELECT 1 FROM public.coin_transfers WHERE sender_id = di.current_auth_uid OR recipient_id = di.current_auth_uid)
+      AND NOT EXISTS (SELECT 1 FROM public.daily_bonus_grants WHERE user_id = di.current_auth_uid)
+      AND NOT EXISTS (SELECT 1 FROM public.view_sessions WHERE viewer_id = di.current_auth_uid)
+      AND NOT EXISTS (SELECT 1 FROM public.welcome_bonus_grants WHERE user_id = di.current_auth_uid)
+      AND NOT EXISTS (SELECT 1 FROM public.auto_view_entitlements WHERE user_id = di.current_auth_uid)
+      AND NOT EXISTS (SELECT 1 FROM public.auto_view_purchases WHERE user_id = di.current_auth_uid)
+      AND NOT EXISTS (SELECT 1 FROM private.campaign_preflight_tokens WHERE user_id = di.current_auth_uid)
+      AND NOT EXISTS (SELECT 1 FROM private.daily_bonus_device_claims WHERE beneficiary_auth_uid = di.current_auth_uid)
+      AND NOT EXISTS (SELECT 1 FROM private.welcome_bonus_entitlements WHERE beneficiary_auth_uid = di.current_auth_uid)
+    ORDER BY di.last_seen_at DESC, current_profile.created_at DESC
+    LIMIT 1;
 
-    IF v_new_is_empty THEN
+    IF v_device_id IS NOT NULL THEN
         DELETE FROM private.rate_limit_buckets WHERE user_id = v_new_uid;
         DELETE FROM public.profiles WHERE id = v_new_uid;
-        PERFORM private.rebind_user_account(v_old_uid, v_new_uid, 'inst_846a6527-76f2-4851-8b72-5d1f51d0929d');
+
+        PERFORM private.rebind_user_account(
+            v_old_uid,
+            v_new_uid,
+            v_new_install_id
+        );
+
         UPDATE private.device_identities
         SET current_auth_uid = v_new_uid,
             last_seen_at = clock_timestamp()
         WHERE id = v_device_id;
-    END IF;
 
-    IF EXISTS (SELECT 1 FROM public.profiles WHERE id = v_new_uid) THEN
         PERFORM private.grant_welcome_bonus_if_eligible(
-            v_new_uid, v_device_id,
-            'inst_846a6527-76f2-4851-8b72-5d1f51d0929d', 300
+            v_new_uid,
+            v_device_id,
+            v_new_install_id,
+            300
         );
     END IF;
 END;
 $repair$;
-
 COMMIT;
