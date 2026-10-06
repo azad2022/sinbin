@@ -87,6 +87,46 @@ BEGIN
       v_entitlement_count,v_grant_count,v_ledger_sum;
   END IF;
 
+  -- Test 1B: malformed optional App Set ID must not suppress the first 300-coin grant
+  -- when the primary Android ID and installation-key evidence are valid.
+  v_uid := (SELECT id FROM tmp_sitebin_test_users ORDER BY id OFFSET 12 LIMIT 1);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
+    true
+  );
+
+  SELECT public.init_user_account(
+    'install_optional_appset_' || v_tag,
+    NULL,
+    substr(md5('optional_appset_' || v_tag), 1, 16),
+    'not-a-uuid',
+    'DEVELOPER',
+    md5(v_tag) || md5('optional_appset')
+  ) INTO v_profile;
+
+  IF (v_profile->>'available_coins')::bigint <> 300
+     OR (v_profile->>'welcome_bonus_claimed')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'TEST1B_FAILED: malformed optional App Set ID suppressed welcome bonus: %',v_profile;
+  END IF;
+
+  SELECT count(*) INTO v_entitlement_count
+  FROM private.welcome_bonus_entitlements
+  WHERE beneficiary_auth_uid=v_uid;
+
+  SELECT count(*) INTO v_grant_count
+  FROM public.welcome_bonus_grants
+  WHERE user_id=v_uid;
+
+  SELECT coalesce(sum(amount),0) INTO v_ledger_sum
+  FROM public.coin_ledger
+  WHERE user_id=v_uid;
+
+  IF v_entitlement_count <> 1 OR v_grant_count <> 1 OR v_ledger_sum <> 300 THEN
+    RAISE EXCEPTION 'TEST1B_FAILED: entitlement=%, grant=%, ledger_sum=%',
+      v_entitlement_count,v_grant_count,v_ledger_sum;
+  END IF;
+
   -- Test 2 / 7: duplicate/replay on same Auth user and changed install ID is harmless.
   SELECT public.init_user_account(
     'install_replay_' || v_tag,
