@@ -22,6 +22,18 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  val debugKeystorePath = providers.environmentVariable("DEBUG_KEYSTORE_PATH").orNull
+  val debugSigningRequired = providers.environmentVariable("DEBUG_SIGNING_REQUIRED").orNull == "true"
+  val debugTasksRequested = gradle.startParameter.taskNames.any { task ->
+    task.contains("debug", ignoreCase = true)
+  }
+  val hasDebugSigning = !debugKeystorePath.isNullOrBlank() &&
+      file(debugKeystorePath!!).isFile
+
+  if (debugSigningRequired && debugTasksRequested && !hasDebugSigning) {
+    error("Stable Debug keystore was not found at DEBUG_KEYSTORE_PATH.")
+  }
+
   val releaseKeystorePath = providers.environmentVariable("KEYSTORE_PATH").orNull
   val releaseStorePassword = providers.environmentVariable("STORE_PASSWORD").orNull
   val releaseKeyAlias = providers.environmentVariable("KEY_ALIAS").orNull
@@ -52,6 +64,17 @@ android {
   }
 
   signingConfigs {
+    create("sitebinDebug") {
+      if (hasDebugSigning) {
+        storeFile = file(debugKeystorePath!!)
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+        enableV1Signing = true
+        enableV2Signing = true
+      }
+    }
+
     create("release") {
       if (hasReleaseSigning) {
         storeFile = file(releaseKeystorePath!!)
@@ -72,7 +95,11 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
-    debug {}
+    debug {
+      if (debugSigningRequired) {
+        signingConfig = signingConfigs.getByName("sitebinDebug")
+      }
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
