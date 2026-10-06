@@ -167,7 +167,7 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose app/build/outputs/apk/release/sitebin.azerakh.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/release/sitebin.azerakh.apk
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/release/sitebin.azerakh.apk | grep -F "package: name='sitebin.azerakhsh.ir'"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/release/sitebin.azerakh.apk | grep -F "SHA-256 digest: 6F:25:9D:3C:45:57:BA:4B:4E:4C:94:89:F3:8B:CD:85:E7:EC:9F:46:41:C8:73:46:F9:57:8B:D0:F4:FF:29:00"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/release/sitebin.azerakh.apk | grep -Fi "SHA-256 digest: 6F:25:9D:3C:45:57:BA:4B:4E:4C:94:89:F3:8B:CD:85:E7:EC:9F:46:41:C8:73:46:F9:57:8B:D0:F4:FF:29:00"
           for aab in "${bundles[@]}"; do
             echo "Verifying $aab"
             jarsigner -verify -verbose -certs "$aab" >/tmp/sitebin-aab-signature.txt
