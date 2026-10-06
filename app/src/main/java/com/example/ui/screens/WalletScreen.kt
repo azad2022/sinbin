@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.RemoveRedEye
@@ -76,7 +78,6 @@ fun WalletScreen(
     transactions: List<CoinTransaction>,
     isTransferringCoins: Boolean = false,
     onTransferCoins: (String, Long, () -> Unit) -> Unit = { _, _, _ -> },
-    onNavigate: (AppScreen) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
@@ -220,38 +221,8 @@ fun WalletScreen(
 
         item {
             TransferCoinsCard(
-                availableCoins = account.availableCoins,
                 onClick = { showTransferDialog = true }
             )
-        }
-
-        // Quick Actions
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = { onNavigate(AppScreen.VIEWER) },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SiteBinBlue),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("کسب سکه")
-                }
-
-                OutlinedButton(
-                    onClick = { onNavigate(AppScreen.CREATE_CAMPAIGN) },
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.RocketLaunch, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("مصرف سکه")
-                }
-            }
         }
 
         // Ledger History Header
@@ -432,7 +403,6 @@ fun WalletScreen(
 
 @Composable
 private fun TransferCoinsCard(
-    availableCoins: Long,
     onClick: () -> Unit
 ) {
     Card(
@@ -441,52 +411,55 @@ private fun TransferCoinsCard(
             .clip(RoundedCornerShape(18.dp)),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = SiteBinGold.copy(alpha = 0.08f)
-        )
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(1.dp, SiteBinGold.copy(alpha = 0.18f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Surface(
                 shape = CircleShape,
-                color = SiteBinGold.copy(alpha = 0.14f),
-                modifier = Modifier.size(48.dp)
+                color = SiteBinGold.copy(alpha = 0.12f),
+                modifier = Modifier.size(44.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.Send,
                         contentDescription = null,
                         tint = SiteBinGold,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
-            Column(modifier = Modifier.weight(1f)) {
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 Text(
-                    "ارسال سکه",
+                    text = "ارسال سکه",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "انتقال سریع به یک کاربر دیگر",
+                    text = "انتقال سریع به یک کاربر دیگر",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text(
-                    "موجودی قابل انتقال: ${NumberFormat.getNumberInstance(Locale.US).format(availableCoins)} سکه",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SiteBinGold
-                )
             }
+
             Icon(
-                imageVector = Icons.Default.Send,
-                contentDescription = "انتقال سکه",
-                tint = SiteBinGold
+                imageVector = Icons.Default.ChevronLeft,
+                contentDescription = "ورود به انتقال سکه",
+                tint = SiteBinGold,
+                modifier = Modifier.size(22.dp)
             )
         }
     }
