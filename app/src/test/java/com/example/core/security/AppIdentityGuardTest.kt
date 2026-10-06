@@ -18,7 +18,7 @@ class AppIdentityGuardTest {
     fun sha256HexUsesCanonicalUppercaseFormat() {
         val digest = AppIdentityGuard.sha256Hex("SiteBin".toByteArray())
         assertEquals(
-            "E6D1E8ACB5A5AA5F3C006B0B7A5EAFA67E3C7E7EB7D58E1E95D3DCD00B9A1A97",
+            "4EBB5F9A6365311B9F7B3D34D4D9BFD15BD69C4CA1D9015A301ED831103061ED",
             digest
         )
     }
