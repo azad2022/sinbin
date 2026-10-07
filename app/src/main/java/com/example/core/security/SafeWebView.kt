@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.http.SslError
 import android.os.Build
+import android.os.CancellationSignal
 import android.os.SystemClock
 import com.example.BuildConfig
 import android.view.ViewGroup
@@ -36,6 +37,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 fun SafeWebView(
     url: String,
     contentKey: String = url,
+    speculativeUrl: String? = null,
     modifier: Modifier = Modifier,
     onPageStarted: () -> Unit = {},
     onPageContentReady: () -> Unit = {},
@@ -51,6 +53,8 @@ fun SafeWebView(
     var webViewRef: WebView? = remember { null }
     var currentPageStartedAt by remember { mutableStateOf(0L) }
     var contentReadyReported by remember { mutableStateOf(false) }
+    var activePrefetchSignal by remember { mutableStateOf<CancellationSignal?>(null) }
+    var lastPrefetchedUrl by remember { mutableStateOf<String?>(null) }
 
     val safeClient = remember {
         object : WebViewClient() {
@@ -190,6 +194,8 @@ fun SafeWebView(
                     webViewRef?.resumeTimers()
                 }
                 Lifecycle.Event.ON_DESTROY -> {
+                    activePrefetchSignal?.cancel()
+                    activePrefetchSignal = null
                     webViewRef?.stopLoading()
                     webViewRef?.loadUrl("about:blank")
                     webViewRef?.destroy()
@@ -201,6 +207,8 @@ fun SafeWebView(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            activePrefetchSignal?.cancel()
+            activePrefetchSignal = null
             webViewRef?.stopLoading()
             webViewRef?.loadUrl("about:blank")
             webViewRef?.destroy()
@@ -255,11 +263,35 @@ fun SafeWebView(
                 webChromeClient = safeChromeClient
 
                 targetLoadKey = contentKey
+
+                if (
+                    speculativeUrl != null &&
+                    speculativeUrl != url &&
+                    speculativeUrl != lastPrefetchedUrl
+                ) {
+                    activePrefetchSignal?.cancel()
+                    activePrefetchSignal = SpeculativeWebViewLoader.prefetch(this, speculativeUrl)
+                    lastPrefetchedUrl = speculativeUrl
+                }
+
                 loadUrl(url)
             }
         },
         update = { webView ->
             webViewRef = webView
+
+            // Level 3: prefetch only the next authoritative session URL. This never
+            // navigates the visible WebView and cannot signal content readiness.
+            if (
+                speculativeUrl != null &&
+                speculativeUrl != url &&
+                speculativeUrl != lastPrefetchedUrl
+            ) {
+                activePrefetchSignal?.cancel()
+                activePrefetchSignal = SpeculativeWebViewLoader.prefetch(webView, speculativeUrl)
+                lastPrefetchedUrl = speculativeUrl
+            }
+
             // Only load if the requested destination has genuinely changed
             if (targetLoadKey != contentKey) {
                 targetLoadKey = contentKey
@@ -268,6 +300,9 @@ fun SafeWebView(
             }
         },
         onReset = { webView ->
+            activePrefetchSignal?.cancel()
+            activePrefetchSignal = null
+            lastPrefetchedUrl = null
             webView.stopLoading()
             targetLoadKey = null
             webView.loadUrl("about:blank")
