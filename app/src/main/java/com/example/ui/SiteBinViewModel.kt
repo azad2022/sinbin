@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -114,6 +115,10 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     fun setAutoViewEnabled(enabled: Boolean) {
         if (!enabled) {
+            prepareNextSessionJob?.cancel()
+            prepareNextSessionJob = null
+            preparedNextSession = null
+            _speculativeNextUrl.value = null
             _autoViewEnabled.value = false
             prefs.edit().putBoolean("auto_view_enabled", false).apply()
             return
@@ -265,6 +270,13 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     private var lastDailyBonusAttemptAt = 0L
     private var viewerFlowGeneration = 0L
 
+    // Level 3: hold at most one authoritative next session while Auto View is active.
+    // The session is only eligible for reward after the real WebView load signals content ready.
+    private val _speculativeNextUrl = MutableStateFlow<String?>(null)
+    val speculativeNextUrl: StateFlow<String?> = _speculativeNextUrl.asStateFlow()
+    private var preparedNextSession: ViewSession? = null
+    private var prepareNextSessionJob: Job? = null
+
     // Local single-flight guard reduces duplicate taps/coroutines. This is only
     // a UX/reliability layer; the authoritative protection is server-side.
     private val inFlightActions = ConcurrentHashMap.newKeySet<String>()
@@ -276,6 +288,13 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun navigateTo(screen: AppScreen) {
+        if (screen != AppScreen.VIEWER) {
+            prepareNextSessionJob?.cancel()
+            prepareNextSessionJob = null
+            preparedNextSession = null
+            _speculativeNextUrl.value = null
+        }
+
         if (screen != AppScreen.VIEWER && _currentScreen.value == AppScreen.VIEWER) {
             viewerFlowGeneration += 1L
             cancelViewerTimer()
@@ -304,6 +323,11 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     fun startViewing(expectedViewerFlowGeneration: Long? = null) {
         if (expectedViewerFlowGeneration != null && _currentScreen.value != AppScreen.VIEWER) return
         if (isRequestingViewSession) return
+
+        prepareNextSessionJob?.cancel()
+        prepareNextSessionJob = null
+        preparedNextSession = null
+        _speculativeNextUrl.value = null
 
         val requestGeneration = viewerFlowGeneration
         viewModelScope.launch {
@@ -383,6 +407,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             val result = repository.completeViewSession(session)
             result.onSuccess { completion ->
                 _viewerState.value = ViewerState.Completed(session, completion.reward)
+                prepareNextSite(viewerFlowGeneration)
             }.onFailure { err ->
                 _viewerState.value = ViewerState.Error(err.message ?: "اعتبارسنجی بازدید توسط سرور ناموفق بود.")
             }
@@ -414,6 +439,37 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     fun onUrlBlockedInViewer(url: String, reason: String) {
         showMessage("مسدود شد: $reason")
+    }
+
+    private fun prepareNextSite(requestGeneration: Long) {
+        prepareNextSessionJob?.cancel()
+        prepareNextSessionJob = null
+        preparedNextSession = null
+        _speculativeNextUrl.value = null
+
+        if (!_autoViewEnabled.value || _currentScreen.value != AppScreen.VIEWER) return
+
+        prepareNextSessionJob = viewModelScope.launch {
+            val status = if (repository.autoViewStatus.value.active) {
+                repository.autoViewStatus.value
+            } else {
+                repository.getAutoViewStatus().getOrNull()
+            }
+
+            if (!isActive || status?.active != true) return@launch
+            if (requestGeneration != viewerFlowGeneration || _currentScreen.value != AppScreen.VIEWER) {
+                return@launch
+            }
+
+            val next = repository.getNextViewSession().getOrNull() ?: return@launch
+            if (!isActive || !_autoViewEnabled.value) return@launch
+            if (requestGeneration != viewerFlowGeneration || _currentScreen.value != AppScreen.VIEWER) {
+                return@launch
+            }
+
+            preparedNextSession = next
+            _speculativeNextUrl.value = next.targetUrl
+        }
     }
 
     fun skipCurrentSite() {
@@ -466,8 +522,27 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             }
 
             if (serverStatus?.active == true) {
+                val prepared = preparedNextSession
+                if (prepared != null) {
+                    preparedNextSession = null
+                    prepareNextSessionJob = null
+                    _viewerState.value = ViewerState.Loading(prepared)
+                    // Do not cancel an in-flight prefetch here. SafeWebView deliberately
+                    // keeps it alive so the actual loadUrl(prepared.targetUrl) can reuse it.
+                    _speculativeNextUrl.value = null
+                    return@launch
+                }
+
+                prepareNextSessionJob?.cancel()
+                prepareNextSessionJob = null
+                preparedNextSession = null
+                _speculativeNextUrl.value = null
                 startViewing(expectedViewerFlowGeneration = requestGeneration)
             } else {
+                prepareNextSessionJob?.cancel()
+                prepareNextSessionJob = null
+                preparedNextSession = null
+                _speculativeNextUrl.value = null
                 _autoViewEnabled.value = false
                 prefs.edit().putBoolean("auto_view_enabled", false).apply()
                 showMessage("دوره بازدید خودکار شما به پایان رسیده است.")

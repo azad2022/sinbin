@@ -74,6 +74,7 @@ internal const val VIEWER_PAGE_LOAD_TIMEOUT_MS = 6_000L
 fun ViewerScreen(
     viewerState: ViewerState,
     autoViewEnabled: Boolean = false,
+    speculativeNextUrl: String? = null,
     onContentReady: () -> Unit,
     onUrlBlocked: (String, String) -> Unit,
     onSkip: () -> Unit,
@@ -282,6 +283,7 @@ fun ViewerScreen(
                 SafeWebView(
                     url = currentSession.targetUrl,
                     contentKey = currentSession.id + ":" + reloadAttempt,
+                    speculativeUrl = speculativeNextUrl,
                     onPageStarted = {
                         isPageLoading = true
                         pageErrorMsg = null
