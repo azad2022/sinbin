@@ -335,9 +335,35 @@ jobs:
           for aab in "${bundles[@]}"; do
             echo "Verifying $aab"
             jarsigner -verify -verbose -certs "$aab" >/tmp/sitebin-aab-signature.txt 2>&1
-            aab_sha256="$(keytool -printcert -jarfile "$aab" | awk -F': ' '/^SHA256:/{gsub(":",$2); print toupper($2); exit}')"
-            test "$aab_sha256" = "6F259D3C4557BA4B4E4C9489F38BCD85E7EC9F4641C87346F9578BD0F4FF2900"
-            echo "Release AAB certificate verified"
+
+            python3 - "$aab" <<'PY'
+            import subprocess
+            import sys
+
+            aab = sys.argv[1]
+            expected_sha256 = "6F259D3C4557BA4B4E4C9489F38BCD85E7EC9F4641C87346F9578BD0F4FF2900"
+
+            cert = subprocess.run(
+                ["keytool", "-printcert", "-jarfile", aab],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            fingerprint = None
+            for line in (cert.stdout + cert.stderr).splitlines():
+                stripped = line.strip()
+                if stripped.startswith("SHA256:") or stripped.startswith("SHA-256:"):
+                    fingerprint = stripped.split(":", 1)[1].strip().replace(":", "").upper()
+                    break
+
+            assert fingerprint, "Release AAB SHA-256 certificate fingerprint was not found"
+            assert fingerprint == expected_sha256, (
+                f"unexpected release AAB certificate: {fingerprint}"
+            )
+
+            print("Release AAB certificate verified")
+            PY
           done
           echo "Release AAB signatures and certificate identity verified"
       - name: Generate release checksums
