@@ -355,7 +355,7 @@ private fun WeeklyLeaderboardCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("daily_leaderboard"),
+            .testTag("weekly_leaderboard"),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
