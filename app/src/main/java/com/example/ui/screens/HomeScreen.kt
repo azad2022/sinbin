@@ -246,11 +246,13 @@ private fun DailyBonusBanner(
     val title = when {
         grantedToday -> "${NumberFormat.getNumberInstance(Locale.US).format(bonus.amount)} سکه هدیه روزانه دریافت شد"
         bonus.reason == "WELCOME_DAY" -> "هدیه روزانه از فردا فعال می‌شود"
+        bonus.reason == "VISIT_REQUIRED" -> "اولین بازدید موفق امروز را کامل کنید"
         else -> "هدیه روزانه امروز قبلاً دریافت شده است"
     }
     val subtitle = when {
         grantedToday -> "این پاداش به‌صورت server-side ثبت شده و در کیف پول شما قرار گرفت."
         bonus.reason == "WELCOME_DAY" -> "در روز ثبت‌نام، فقط هدیه خوش‌آمدگویی تعلق می‌گیرد."
+        bonus.reason == "VISIT_REQUIRED" -> "پس از اولین بازدید موفق و تکمیل کامل آن، ۵۰ سکه هدیه روزانه به حساب شما اضافه می‌شود."
         else -> "برای دریافت مجدد، روز سرور باید تغییر کرده باشد."
     }
 
