@@ -451,7 +451,7 @@ class SiteBinRepository(
                     .onSuccess { _transactions.value = it }
                 engine.fetchCampaigns(currentUserId)
                     .onSuccess { _campaigns.value = it }
-                refreshDailyLeaderboard()
+                refreshWeeklyLeaderboard()
             }
         }
         return result
