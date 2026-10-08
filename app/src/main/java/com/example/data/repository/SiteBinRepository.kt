@@ -15,7 +15,7 @@ import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
 import com.example.data.model.DailyBonusResult
-import com.example.data.model.DailyLeaderboard
+import com.example.data.model.WeeklyLeaderboard
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewCompletionResult
@@ -93,8 +93,8 @@ class SiteBinRepository(
     val dailyBonus: StateFlow<DailyBonusResult?> = _dailyBonus.asStateFlow()
 
     private val _autoViewStatus = MutableStateFlow(AutoViewStatus(active = false))
-    private val _dailyLeaderboard = MutableStateFlow<DailyLeaderboard?>(null)
-    val dailyLeaderboard: StateFlow<DailyLeaderboard?> = _dailyLeaderboard.asStateFlow()
+    private val _weeklyLeaderboard = MutableStateFlow<WeeklyLeaderboard?>(null)
+    val weeklyLeaderboard: StateFlow<WeeklyLeaderboard?> = _dailyLeaderboard.asStateFlow()
 
 
     val autoViewStatus: StateFlow<AutoViewStatus> = _autoViewStatus.asStateFlow()
@@ -184,7 +184,7 @@ class SiteBinRepository(
         // exclusively by PostgreSQL.
         claimDailyBonus()
         refreshAutoViewStatus()
-        refreshDailyLeaderboard()
+        refreshWeeklyLeaderboard()
 
         engine.fetchTransactions(acc.userId)
             .onSuccess { _transactions.value = it }
@@ -257,7 +257,7 @@ class SiteBinRepository(
         return result
     }
 
-    suspend fun refreshDailyLeaderboard(): Result<Unit> {
+    suspend fun refreshWeeklyLeaderboard(): Result<Unit> {
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }.format(Date())
