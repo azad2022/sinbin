@@ -84,7 +84,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.dailyBonus.value)
 
     val weeklyLeaderboard: StateFlow<WeeklyLeaderboard?> = repository.weeklyLeaderboard
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.dailyLeaderboard.value)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.weeklyLeaderboard.value)
 
     val campaigns: StateFlow<List<Campaign>> = repository.campaigns
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
