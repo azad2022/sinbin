@@ -61,6 +61,7 @@ class SiteBinRepository(
     private val installMarkerPrefs =
         context.getSharedPreferences("sitebin_supabase_session", Context.MODE_PRIVATE)
     private val deviceEvidenceProvider = AndroidDeviceEvidenceProvider(context)
+    private var currentDeviceEvidence: DeviceEvidence? = null
 
     init {
         check(AppIdentityGuard.isTrustedInstallation(context)) {
@@ -163,6 +164,7 @@ class SiteBinRepository(
     suspend fun refreshServerState() {
         val installId = getOrGenerateInstallId()
         val deviceEvidence = deviceEvidenceProvider.collect(installId)
+        currentDeviceEvidence = deviceEvidence
 
         val pricingResult = engine.fetchDurationPricing()
         if (pricingResult.isFailure) {
@@ -242,7 +244,14 @@ class SiteBinRepository(
 
     suspend fun claimDailyBonus(): Result<DailyBonusResult> {
         val currentUserId = _account.value.userId
-        val result = engine.claimDailyBonus(callerUserId = currentUserId)
+        val evidence = currentDeviceEvidence
+            ?: deviceEvidenceProvider.collect(_account.value.appInstallId).also {
+                currentDeviceEvidence = it
+            }
+        val result = engine.claimDailyBonus(
+            callerUserId = currentUserId,
+            deviceEvidence = evidence
+        )
         result.onSuccess { bonus ->
             _dailyBonus.value = bonus
 
