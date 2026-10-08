@@ -1,1 +1,2 @@
 CI-only verification marker. This file is not bundled into the Android application.
+CI synchronization marker v2.
