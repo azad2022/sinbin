@@ -15,6 +15,7 @@ import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
 import com.example.data.model.DailyBonusResult
+import com.example.data.model.DailyLeaderboard
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewCompletionResult
@@ -31,6 +32,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 sealed interface ServerInitializationState {
     data object Initializing : ServerInitializationState
@@ -88,6 +93,10 @@ class SiteBinRepository(
     val dailyBonus: StateFlow<DailyBonusResult?> = _dailyBonus.asStateFlow()
 
     private val _autoViewStatus = MutableStateFlow(AutoViewStatus(active = false))
+    private val _dailyLeaderboard = MutableStateFlow<DailyLeaderboard?>(null)
+    val dailyLeaderboard: StateFlow<DailyLeaderboard?> = _dailyLeaderboard.asStateFlow()
+
+
     val autoViewStatus: StateFlow<AutoViewStatus> = _autoViewStatus.asStateFlow()
 
     private val _campaigns = MutableStateFlow<List<Campaign>>(emptyList())
@@ -175,6 +184,7 @@ class SiteBinRepository(
         // exclusively by PostgreSQL.
         claimDailyBonus()
         refreshAutoViewStatus()
+        refreshDailyLeaderboard()
 
         engine.fetchTransactions(acc.userId)
             .onSuccess { _transactions.value = it }
@@ -245,6 +255,38 @@ class SiteBinRepository(
             }
         }
         return result
+    }
+
+    suspend fun refreshDailyLeaderboard(): Result<Unit> {
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date())
+
+        val currentHandle = _account.value.userHandle.trim()
+        return engine.fetchDailyLeaderboard(today).onSuccess { allRows ->
+            val rows = allRows.sortedBy { it.rank }
+            val current = rows.firstOrNull {
+                it.userHandle.equals(currentHandle, ignoreCase = true)
+            }
+            val previous = if (current != null && current.rank > 1) {
+                rows.firstOrNull { it.rank == current.rank - 1 }
+            } else {
+                null
+            }
+            val gap = if (current != null && current.rank > 1 && previous != null) {
+                (previous.completedViews - current.completedViews + 1).coerceAtLeast(1)
+            } else {
+                null
+            }
+
+            _dailyLeaderboard.value = DailyLeaderboard(
+                leaderboardDate = today,
+                entries = rows.take(5),
+                currentUserRank = current?.rank,
+                currentUserViews = current?.completedViews ?: 0,
+                viewsToNextRank = gap
+            )
+        }.map { Unit }
     }
 
     suspend fun refreshFinancialState(): Result<Unit> {
@@ -399,6 +441,7 @@ class SiteBinRepository(
                     .onSuccess { _transactions.value = it }
                 engine.fetchCampaigns(currentUserId)
                     .onSuccess { _campaigns.value = it }
+                refreshDailyLeaderboard()
             }
         }
         return result
