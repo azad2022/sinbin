@@ -75,6 +75,20 @@ data class DailyBonusResult(
     val grantedAt: Long? = null
 )
 
+data class DailyLeaderboardEntry(
+    val rank: Int,
+    val userHandle: String,
+    val completedViews: Int
+)
+
+data class DailyLeaderboard(
+    val leaderboardDate: String,
+    val entries: List<DailyLeaderboardEntry>,
+    val currentUserRank: Int?,
+    val currentUserViews: Int,
+    val viewsToNextRank: Int?
+)
+
 data class UserAccount(
     val userId: String,
     val userHandle: String = "",

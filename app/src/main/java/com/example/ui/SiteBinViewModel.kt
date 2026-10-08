@@ -11,6 +11,7 @@ import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
 import com.example.data.model.DailyBonusResult
+import com.example.data.model.DailyLeaderboard
 import com.example.data.model.TransactionType
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
@@ -81,6 +82,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     val dailyBonus: StateFlow<DailyBonusResult?> = repository.dailyBonus
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.dailyBonus.value)
+
+    val dailyLeaderboard: StateFlow<DailyLeaderboard?> = repository.dailyLeaderboard
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.dailyLeaderboard.value)
 
     val campaigns: StateFlow<List<Campaign>> = repository.campaigns
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -191,6 +195,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 ) {
                     refreshFinancialStateForIncomingTransfers()
                     repository.refreshAutoViewStatus()
+                    repository.refreshDailyLeaderboard()
                     if (_currentScreen.value != AppScreen.VIEWER) {
                         repository.refreshCampaigns()
                     }
@@ -219,6 +224,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                     }
                     if (table == "campaigns" && _currentScreen.value != AppScreen.VIEWER) {
                         repository.refreshCampaigns()
+                    }
+                    if (table == "view_sessions") {
+                        repository.refreshDailyLeaderboard()
                     }
                 }
         }
@@ -291,6 +299,11 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         _currentScreen.value = screen
+        if (screen == AppScreen.HOME) {
+            viewModelScope.launch {
+                repository.refreshDailyLeaderboard()
+            }
+        }
     }
 
     fun showMessage(msg: String) {
@@ -396,10 +409,11 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         if (!inForeground || repository.serverState.value !is ServerInitializationState.Ready) return
 
         viewModelScope.launch {
-            // Foreground entry is a hard reconciliation point. This removes stale UI
-            // even when the process was backgrounded or the realtime socket was offline.
+            // Foreground entry is a hard reconciliation point for both financial state
+            // and the daily leaderboard. Both remain server-authoritative.
             refreshFinancialStateForIncomingTransfers()
             repository.refreshAutoViewStatus()
+            repository.refreshDailyLeaderboard()
             if (_currentScreen.value != AppScreen.VIEWER) {
                 repository.refreshCampaigns()
             }

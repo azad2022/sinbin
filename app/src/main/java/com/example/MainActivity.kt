@@ -116,6 +116,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     val campaigns by viewModel.campaigns.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
     val dailyBonus by viewModel.dailyBonus.collectAsState()
+    val dailyLeaderboard by viewModel.dailyLeaderboard.collectAsState()
     val viewerState by viewModel.viewerState.collectAsState()
     val autoViewEnabled by viewModel.autoViewEnabled.collectAsState()
     val isUpdatingAutoView by viewModel.isUpdatingAutoView.collectAsState()
@@ -259,6 +260,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                         .apply()
                                 },
                                 dailyBonus = dailyBonus,
+                                dailyLeaderboard = dailyLeaderboard,
                                 showDailyBonusCelebration = showDailyBonusCelebration,
                                 onDailyBonusCelebrationConsumed = {
                                     val date = dailyBonus?.grantDate

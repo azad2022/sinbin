@@ -7,6 +7,7 @@ import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
 import com.example.data.model.DailyBonusResult
+import com.example.data.model.DailyLeaderboardEntry
 import com.example.data.model.DurationOption
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
@@ -312,6 +313,38 @@ class ServerEmulatedEngine(
     override suspend fun fetchTransactions(userId: String): Result<List<CoinTransaction>> = lock.withLock {
         // Enforce user-scoped ledger visibility (matches PostgreSQL RLS)
         Result.success(userLedger[userId]?.toList() ?: emptyList())
+    }
+
+    override suspend fun fetchDailyLeaderboard(leaderboardDate: String): Result<List<DailyLeaderboardEntry>> = lock.withLock {
+        val cleanDate = leaderboardDate.trim()
+        if (!cleanDate.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$"))) {
+            return Result.failure(IllegalArgumentException("INVALID_DATE: Leaderboard date must be yyyy-MM-dd"))
+        }
+
+        val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+
+        val counts = viewSessions.values
+            .asSequence()
+            .filter { it.status == "COMPLETED" && it.completedAt != null }
+            .filter { formatter.format(Date(it.completedAt!!)) == cleanDate }
+            .groupingBy { it.viewerId }
+            .eachCount()
+
+        val ranked = counts.mapNotNull { (userId, count) ->
+            profiles[userId]?.userHandle?.trim()?.takeIf { it.isNotBlank() }?.let {
+                DailyLeaderboardEntry(rank = 0, userHandle = it, completedViews = count)
+            }
+        }.sortedWith(
+            compareByDescending<DailyLeaderboardEntry> { it.completedViews }
+                .thenBy { it.userHandle.lowercase(Locale.US) }
+                .thenBy { it.userHandle }
+        ).mapIndexed { index, entry ->
+            entry.copy(rank = index + 1)
+        }
+
+        Result.success(ranked)
     }
 
     override suspend fun transferCoins(

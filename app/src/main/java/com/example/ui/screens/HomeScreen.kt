@@ -44,6 +44,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -68,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Campaign
 import com.example.data.model.DailyBonusResult
+import com.example.data.model.DailyLeaderboard
 import com.example.data.model.UserAccount
 import com.example.ui.AppScreen
 import com.example.ui.theme.SiteBinBlue
@@ -103,6 +105,7 @@ fun HomeScreen(
     showWelcomeCelebration: Boolean = false,
     onWelcomeCelebrationConsumed: () -> Unit = {},
     dailyBonus: DailyBonusResult? = null,
+    dailyLeaderboard: DailyLeaderboard? = null,
     showDailyBonusCelebration: Boolean = false,
     onDailyBonusCelebrationConsumed: () -> Unit = {},
     onStartViewing: () -> Unit,
@@ -240,6 +243,13 @@ fun HomeScreen(
             }
 
             item {
+                DailyLeaderboardCard(
+                    leaderboard = dailyLeaderboard,
+                    currentUserHandle = account.userHandle
+                )
+            }
+
+            item {
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
@@ -330,6 +340,184 @@ private fun DailyBonusBanner(
                 contentDescription = "کیف پول",
                 tint = MaterialTheme.colorScheme.primary
             )
+        }
+    }
+}
+
+@Composable
+private fun DailyLeaderboardCard(
+    leaderboard: DailyLeaderboard?,
+    currentUserHandle: String
+) {
+    val formatter = NumberFormat.getNumberInstance(Locale.US)
+    val entries = leaderboard?.entries.orEmpty()
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("daily_leaderboard"),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "🏆 برترین بازدیدکنندگان امروز",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        text = "بر اساس تعداد بازدیدهای موفق ثبت‌شده در سرور",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = SiteBinGold.copy(alpha = 0.14f),
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(text = "🏆", fontSize = 20.sp)
+                    }
+                }
+            }
+
+            when {
+                leaderboard == null -> Text(
+                    text = "در حال دریافت جدول امروز…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
+                )
+                entries.isEmpty() -> Text(
+                    text = "هنوز بازدید موفقی برای امروز ثبت نشده است.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
+                )
+                else -> {
+                    entries.forEach { entry ->
+                        val isCurrentUser = entry.userHandle.equals(currentUserHandle, ignoreCase = true)
+                        val medal = when (entry.rank) {
+                            1 -> "🥇"
+                            2 -> "🥈"
+                            3 -> "🥉"
+                            else -> entry.rank.toString()
+                        }
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isCurrentUser) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.09f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier.width(34.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = medal,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "کاربر ${entry.userHandle}",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (isCurrentUser) FontWeight.Bold else FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    if (isCurrentUser) {
+                                        Text(
+                                            text = "رتبه شما",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = formatter.format(entry.completedViews),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                    Text(
+                                        text = "بازدید موفق",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider()
+
+            val rank = leaderboard?.currentUserRank
+            val views = leaderboard?.currentUserViews ?: 0
+            val gap = leaderboard?.viewsToNextRank
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = when {
+                            rank == null -> "رتبه شما هنوز ثبت نشده"
+                            else -> "رتبه شما: ${formatter.format(rank)}"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = when {
+                            rank == null -> "با اولین بازدید موفق وارد جدول می‌شوید.",
+                            rank == 1 -> "شما صدر جدول هستید.",
+                            gap != null -> "${formatter.format(gap)} بازدید تا رتبه ${formatter.format(rank - 1)}",
+                            else -> "فاصله تا رتبه بالاتر محاسبه نشد."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                ) {
+                    Text(
+                        text = "${formatter.format(views)} بازدید",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
         }
     }
 }

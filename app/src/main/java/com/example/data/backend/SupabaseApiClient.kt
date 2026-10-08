@@ -13,6 +13,7 @@ import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
 import com.example.data.model.DailyBonusResult
+import com.example.data.model.DailyLeaderboardEntry
 import com.example.data.model.DurationOption
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
@@ -382,6 +383,61 @@ class SupabaseApiClient(
                 )
             }
             Result.success(list)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun fetchDailyLeaderboard(leaderboardDate: String): Result<List<DailyLeaderboardEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val cleanDate = leaderboardDate.trim()
+            if (!cleanDate.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$"))) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("INVALID_DATE: Leaderboard date must be yyyy-MM-dd")
+                )
+            }
+
+            val token = getValidUserToken()
+            val url = supabaseUrl + "/rest/v1/daily_view_leaderboard_public" +
+                "?leaderboard_date=eq." + cleanDate +
+                "&select=rank,user_handle,completed_views" +
+                "&order=rank.asc"
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", supabasePublishableKey)
+                .addHeader("Authorization", "Bearer " + token)
+                .get()
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            val raw = response.body?.string() ?: ""
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(
+                    IOException("Failed to fetch daily leaderboard: HTTP " + response.code)
+                )
+            }
+
+            val array = JSONArray(raw)
+            val entries = mutableListOf<DailyLeaderboardEntry>()
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val rank = item.optInt("rank", 0)
+                val handle = item.optString("user_handle", "").trim()
+                val views = item.optInt("completed_views", 0)
+
+                if (rank > 0 && handle.isNotBlank() && views > 0) {
+                    entries.add(
+                        DailyLeaderboardEntry(
+                            rank = rank,
+                            userHandle = handle,
+                            completedViews = views
+                        )
+                    )
+                }
+            }
+
+            Result.success(entries.sortedBy { it.rank })
         } catch (e: Exception) {
             Result.failure(e)
         }
