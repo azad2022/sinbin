@@ -301,7 +301,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         _currentScreen.value = screen
         if (screen == AppScreen.HOME) {
             viewModelScope.launch {
-                repository.refreshDailyLeaderboard()
+                repository.refreshWeeklyLeaderboard()
             }
         }
     }
@@ -413,7 +413,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             // and the daily leaderboard. Both remain server-authoritative.
             refreshFinancialStateForIncomingTransfers()
             repository.refreshAutoViewStatus()
-            repository.refreshDailyLeaderboard()
+            repository.refreshWeeklyLeaderboard()
             if (_currentScreen.value != AppScreen.VIEWER) {
                 repository.refreshCampaigns()
             }
