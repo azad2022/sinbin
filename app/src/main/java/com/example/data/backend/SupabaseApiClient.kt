@@ -388,7 +388,7 @@ class SupabaseApiClient(
         }
     }
 
-    override suspend fun fetchWeeklyLeaderboard(weekStart: String): Result<List<DailyLeaderboardEntry>> = withContext(Dispatchers.IO) {
+    override suspend fun fetchWeeklyLeaderboard(weekStart: String): Result<List<WeeklyLeaderboardEntry>> = withContext(Dispatchers.IO) {
         try {
             val cleanWeekStart = weekStart.trim()
             if (!cleanWeekStart.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$"))) {
