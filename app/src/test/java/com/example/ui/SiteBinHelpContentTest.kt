@@ -35,6 +35,9 @@ class SiteBinHelpContentTest {
         assertTrue(leaderboardText.contains("UTC"))
         assertTrue(leaderboardText.contains("پنج نفر اول"))
         assertTrue(leaderboardText.contains("پاداش سکهٔ جداگانه"))
+        val coinsText = siteBinHelpSections.first { it.id == "coins" }.paragraphs.joinToString(" ")
+        assertTrue(coinsText.contains("حداقل یک بازدید"))
+        assertTrue(coinsText.contains("اولین بازدید موفق"))
     }
 
     @Test

@@ -396,6 +396,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             val result = repository.completeViewSession(session)
             result.onSuccess { completion ->
                 _viewerState.value = ViewerState.Completed(session, completion.reward)
+                // A completed view unlocks today's daily bonus server-side.
+                // Startup/foreground reconciliation remains as a network-recovery path.
+                repository.claimDailyBonus()
             }.onFailure { err ->
                 _viewerState.value = ViewerState.Error(err.message ?: "اعتبارسنجی بازدید توسط سرور ناموفق بود.")
             }

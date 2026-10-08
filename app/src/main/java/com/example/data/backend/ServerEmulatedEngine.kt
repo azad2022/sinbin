@@ -157,10 +157,13 @@ class ServerEmulatedEngine(
         Result.success(newAccount)
     }
 
-    override suspend fun claimDailyBonus(callerUserId: String?): Result<DailyBonusResult> = lock.withLock {
+    override suspend fun claimDailyBonus(
+        callerUserId: String?,
+        deviceEvidence: DeviceEvidence?
+    ): Result<DailyBonusResult> = lock.withLock {
         val userId = callerUserId?.trim()?.takeIf { it.isNotEmpty() }
             ?: return Result.failure(IllegalStateException("UNAUTHORIZED: Authentication token required"))
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowProvider()))
 
         if (welcomeGrantDates[userId] == today) {
             return Result.success(
@@ -173,6 +176,23 @@ class ServerEmulatedEngine(
             )
         }
 
+        val hasCompletedViewToday = viewSessions.values.any { session ->
+            session.viewerId == userId &&
+                session.status == "COMPLETED" &&
+                session.completedAt?.let { completedAt ->
+                    SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(completedAt)) == today
+                } == true
+        }
+        if (!hasCompletedViewToday) {
+            return Result.success(
+                DailyBonusResult(
+                    granted = false,
+                    amount = 0L,
+                    grantDate = today,
+                    reason = "VISIT_REQUIRED"
+                )
+            )
+        }
         val grantKey = "${userId}_${today}"
         if (!dailyBonusGrants.add(grantKey)) {
             return Result.success(

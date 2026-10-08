@@ -94,8 +94,11 @@ interface ServerAuthoritativeEngine {
     /** Fetch server coin transactions ledger */
     suspend fun fetchTransactions(userId: String): Result<List<CoinTransaction>>
 
-    /** Claims the server-authoritative daily login bonus for the current authenticated user. */
-    suspend fun claimDailyBonus(callerUserId: String? = null): Result<DailyBonusResult>
+    /** Claims the server-authoritative daily bonus after a valid completed view, using device evidence for continuity protection. */
+    suspend fun claimDailyBonus(
+        callerUserId: String? = null,
+        deviceEvidence: DeviceEvidence? = null
+    ): Result<DailyBonusResult>
 
     /** Fetches the server-authoritative daily successful-view leaderboard for a UTC date. */
     suspend fun fetchWeeklyLeaderboard(weekStart: String): Result<List<WeeklyLeaderboardEntry>>
