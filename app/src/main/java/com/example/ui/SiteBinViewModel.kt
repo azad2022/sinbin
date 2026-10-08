@@ -226,7 +226,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                         repository.refreshCampaigns()
                     }
                     if (table == "view_sessions") {
-                        repository.refreshDailyLeaderboard()
+                        repository.refreshWeeklyLeaderboard()
                     }
                 }
         }
