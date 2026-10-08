@@ -496,9 +496,9 @@ private fun DailyLeaderboardCard(
                     )
                     Text(
                         text = when {
-                            rank == null -> "با اولین بازدید موفق وارد جدول می‌شوید.",
-                            rank == 1 -> "شما صدر جدول هستید.",
-                            gap != null -> "${formatter.format(gap)} بازدید تا رتبه ${formatter.format(rank - 1)}",
+                            rank == null -> "با اولین بازدید موفق وارد جدول می‌شوید."
+                            rank == 1 -> "شما صدر جدول هستید."
+                            gap != null -> "${formatter.format(gap)} بازدید تا رتبه ${formatter.format(rank - 1)}"
                             else -> "فاصله تا رتبه بالاتر محاسبه نشد."
                         },
                         style = MaterialTheme.typography.bodySmall,
