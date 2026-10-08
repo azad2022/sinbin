@@ -7,6 +7,7 @@ import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
 import com.example.data.model.DurationOption
 import com.example.data.model.DailyBonusResult
+import com.example.data.model.DailyLeaderboardEntry
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewCompletionResult
 import com.example.data.model.ViewSession
@@ -96,6 +97,9 @@ interface ServerAuthoritativeEngine {
     /** Claims the server-authoritative daily login bonus for the current authenticated user. */
     suspend fun claimDailyBonus(callerUserId: String? = null): Result<DailyBonusResult>
 
+    /** Fetches the server-authoritative daily successful-view leaderboard for a UTC date. */
+    suspend fun fetchDailyLeaderboard(leaderboardDate: String): Result<List<DailyLeaderboardEntry>>
+    
     /** Returns the server-authoritative seven-day auto-view entitlement state. */
     suspend fun getAutoViewStatus(callerUserId: String? = null): Result<AutoViewStatus>
 
