@@ -19,6 +19,7 @@ class SiteBinHelpContentTest {
             "keyword",
             "pricing",
             "campaigns",
+            "leaderboard",
             "wallet_transfer",
             "auto_view",
             "settings_security",
@@ -28,6 +29,12 @@ class SiteBinHelpContentTest {
         assertEquals(required, ids)
         assertTrue(siteBinHelpSections.all { it.title.isNotBlank() && it.subtitle.isNotBlank() })
         assertFalse(siteBinHelpSections.any { it.paragraphs.any(String::isBlank) })
+        val leaderboard = siteBinHelpSections.first { it.id == "leaderboard" }
+        val leaderboardText = leaderboard.paragraphs.joinToString(" ")
+        assertTrue(leaderboardText.contains("دوشنبه"))
+        assertTrue(leaderboardText.contains("UTC"))
+        assertTrue(leaderboardText.contains("پنج نفر اول"))
+        assertTrue(leaderboardText.contains("پاداش سکهٔ جداگانه"))
     }
 
     @Test
