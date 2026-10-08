@@ -315,20 +315,45 @@ class ServerEmulatedEngine(
         Result.success(userLedger[userId]?.toList() ?: emptyList())
     }
 
-    override suspend fun fetchWeeklyLeaderboard(weekStart: String): Result<List<DailyLeaderboardEntry>> = lock.withLock {
+    override suspend fun fetchWeeklyLeaderboard(weekStart: String): Result<List<WeeklyLeaderboardEntry>> = lock.withLock {
         val cleanWeekStart = weekStart.trim()
         if (!cleanWeekStart.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$"))) {
-            return Result.failure(IllegalArgumentException("INVALID_DATE: Leaderboard week start must be yyyy-MM-dd"))
+            return Result.failure(IllegalArgumentException("INVALID_WEEK_START: Leaderboard week start must be yyyy-MM-dd"))
         }
 
         val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
             timeZone = java.util.TimeZone.getTimeZone("UTC")
         }
 
+        val calendar = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"), Locale.US).apply {
+            firstDayOfWeek = java.util.Calendar.MONDAY
+            minimalDaysInFirstWeek = 4
+        }
+        val weekStartMillis = runCatching {
+            calendar.time = formatter.parse(cleanWeekStart) ?: return@runCatching null
+            calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+            calendar.set(java.util.Calendar.MINUTE, 0)
+            calendar.set(java.util.Calendar.SECOND, 0)
+            calendar.set(java.util.Calendar.MILLISECOND, 0)
+            calendar.timeInMillis
+        }.getOrNull() ?: return Result.failure(IllegalArgumentException("INVALID_WEEK_START: Invalid week start"))
+
+        val calendarWeek = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"), Locale.US).apply {
+            firstDayOfWeek = java.util.Calendar.MONDAY
+            minimalDaysInFirstWeek = 4
+        }
         val counts = viewSessions.values
             .asSequence()
             .filter { it.status == "COMPLETED" && it.completedAt != null }
-            .filter { formatter.format(Date(it.completedAt!!)) == cleanWeekStart }
+            .filter { record ->
+                calendarWeek.timeInMillis = record.completedAt!!
+                calendarWeek.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                calendarWeek.set(java.util.Calendar.MINUTE, 0)
+                calendarWeek.set(java.util.Calendar.SECOND, 0)
+                calendarWeek.set(java.util.Calendar.MILLISECOND, 0)
+                calendarWeek.set(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.MONDAY)
+                calendarWeek.timeInMillis == weekStartMillis
+            }
             .groupingBy { it.viewerId }
             .eachCount()
 
