@@ -11,7 +11,7 @@ import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
 import com.example.data.model.DailyBonusResult
-import com.example.data.model.DailyLeaderboard
+import com.example.data.model.WeeklyLeaderboard
 import com.example.data.model.TransactionType
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
@@ -83,8 +83,8 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     val dailyBonus: StateFlow<DailyBonusResult?> = repository.dailyBonus
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.dailyBonus.value)
 
-    val dailyLeaderboard: StateFlow<DailyLeaderboard?> = repository.dailyLeaderboard
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.dailyLeaderboard.value)
+    val weeklyLeaderboard: StateFlow<WeeklyLeaderboard?> = repository.weeklyLeaderboard
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.weeklyLeaderboard.value)
 
     val campaigns: StateFlow<List<Campaign>> = repository.campaigns
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -195,7 +195,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 ) {
                     refreshFinancialStateForIncomingTransfers()
                     repository.refreshAutoViewStatus()
-                    repository.refreshDailyLeaderboard()
+                    repository.refreshWeeklyLeaderboard()
                     if (_currentScreen.value != AppScreen.VIEWER) {
                         repository.refreshCampaigns()
                     }
@@ -226,7 +226,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                         repository.refreshCampaigns()
                     }
                     if (table == "view_sessions") {
-                        repository.refreshDailyLeaderboard()
+                        repository.refreshWeeklyLeaderboard()
                     }
                 }
         }
@@ -301,7 +301,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         _currentScreen.value = screen
         if (screen == AppScreen.HOME) {
             viewModelScope.launch {
-                repository.refreshDailyLeaderboard()
+                repository.refreshWeeklyLeaderboard()
             }
         }
     }
@@ -413,7 +413,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             // and the daily leaderboard. Both remain server-authoritative.
             refreshFinancialStateForIncomingTransfers()
             repository.refreshAutoViewStatus()
-            repository.refreshDailyLeaderboard()
+            repository.refreshWeeklyLeaderboard()
             if (_currentScreen.value != AppScreen.VIEWER) {
                 repository.refreshCampaigns()
             }

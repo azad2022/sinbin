@@ -69,7 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Campaign
 import com.example.data.model.DailyBonusResult
-import com.example.data.model.DailyLeaderboard
+import com.example.data.model.WeeklyLeaderboard
 import com.example.data.model.UserAccount
 import com.example.ui.AppScreen
 import com.example.ui.theme.SiteBinBlue
@@ -105,7 +105,7 @@ fun HomeScreen(
     showWelcomeCelebration: Boolean = false,
     onWelcomeCelebrationConsumed: () -> Unit = {},
     dailyBonus: DailyBonusResult? = null,
-    dailyLeaderboard: DailyLeaderboard? = null,
+    weeklyLeaderboard: WeeklyLeaderboard? = null,
     showDailyBonusCelebration: Boolean = false,
     onDailyBonusCelebrationConsumed: () -> Unit = {},
     onStartViewing: () -> Unit,
@@ -243,8 +243,8 @@ fun HomeScreen(
             }
 
             item {
-                DailyLeaderboardCard(
-                    leaderboard = dailyLeaderboard,
+                WeeklyLeaderboardCard(
+                    leaderboard = weeklyLeaderboard,
                     currentUserHandle = account.userHandle
                 )
             }
@@ -345,8 +345,8 @@ private fun DailyBonusBanner(
 }
 
 @Composable
-private fun DailyLeaderboardCard(
-    leaderboard: DailyLeaderboard?,
+private fun WeeklyLeaderboardCard(
+    leaderboard: WeeklyLeaderboard?,
     currentUserHandle: String
 ) {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
@@ -355,7 +355,7 @@ private fun DailyLeaderboardCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("daily_leaderboard"),
+            .testTag("weekly_leaderboard"),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -371,7 +371,7 @@ private fun DailyLeaderboardCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "🏆 برترین بازدیدکنندگان امروز",
+                        text = "🏆 برترین بازدیدکنندگان این هفته",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Black
                     )
@@ -394,13 +394,13 @@ private fun DailyLeaderboardCard(
 
             when {
                 leaderboard == null -> Text(
-                    text = "در حال دریافت جدول امروز…",
+                    text = "در حال دریافت جدول این هفته…",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
                 )
                 entries.isEmpty() -> Text(
-                    text = "هنوز بازدید موفقی برای امروز ثبت نشده است.",
+                    text = "هنوز بازدید موفقی برای این هفته ثبت نشده است.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)

@@ -15,7 +15,7 @@ import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
 import com.example.data.model.DailyBonusResult
-import com.example.data.model.DailyLeaderboard
+import com.example.data.model.WeeklyLeaderboard
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewCompletionResult
@@ -93,8 +93,8 @@ class SiteBinRepository(
     val dailyBonus: StateFlow<DailyBonusResult?> = _dailyBonus.asStateFlow()
 
     private val _autoViewStatus = MutableStateFlow(AutoViewStatus(active = false))
-    private val _dailyLeaderboard = MutableStateFlow<DailyLeaderboard?>(null)
-    val dailyLeaderboard: StateFlow<DailyLeaderboard?> = _dailyLeaderboard.asStateFlow()
+    private val _weeklyLeaderboard = MutableStateFlow<WeeklyLeaderboard?>(null)
+    val weeklyLeaderboard: StateFlow<WeeklyLeaderboard?> = _weeklyLeaderboard.asStateFlow()
 
 
     val autoViewStatus: StateFlow<AutoViewStatus> = _autoViewStatus.asStateFlow()
@@ -184,7 +184,7 @@ class SiteBinRepository(
         // exclusively by PostgreSQL.
         claimDailyBonus()
         refreshAutoViewStatus()
-        refreshDailyLeaderboard()
+        refreshWeeklyLeaderboard()
 
         engine.fetchTransactions(acc.userId)
             .onSuccess { _transactions.value = it }
@@ -257,13 +257,23 @@ class SiteBinRepository(
         return result
     }
 
-    suspend fun refreshDailyLeaderboard(): Result<Unit> {
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+    suspend fun refreshWeeklyLeaderboard(): Result<Unit> {
+        val calendar = java.util.Calendar.getInstance(TimeZone.getTimeZone("UTC"), Locale.US).apply {
+            firstDayOfWeek = java.util.Calendar.MONDAY
+            minimalDaysInFirstWeek = 4
+        }
+        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        calendar.set(java.util.Calendar.MINUTE, 0)
+        calendar.set(java.util.Calendar.SECOND, 0)
+        calendar.set(java.util.Calendar.MILLISECOND, 0)
+        calendar.set(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.MONDAY)
+
+        val weekStart = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
-        }.format(Date())
+        }.format(calendar.time)
 
         val currentHandle = _account.value.userHandle.trim()
-        return engine.fetchDailyLeaderboard(today).onSuccess { allRows ->
+        return engine.fetchWeeklyLeaderboard(weekStart).onSuccess { allRows ->
             val rows = allRows.sortedBy { it.rank }
             val current = rows.firstOrNull {
                 it.userHandle.equals(currentHandle, ignoreCase = true)
@@ -279,8 +289,8 @@ class SiteBinRepository(
                 null
             }
 
-            _dailyLeaderboard.value = DailyLeaderboard(
-                leaderboardDate = today,
+            _weeklyLeaderboard.value = WeeklyLeaderboard(
+                weekStart = weekStart,
                 entries = rows.take(5),
                 currentUserRank = current?.rank,
                 currentUserViews = current?.completedViews ?: 0,
@@ -441,7 +451,7 @@ class SiteBinRepository(
                     .onSuccess { _transactions.value = it }
                 engine.fetchCampaigns(currentUserId)
                     .onSuccess { _campaigns.value = it }
-                refreshDailyLeaderboard()
+                refreshWeeklyLeaderboard()
             }
         }
         return result
