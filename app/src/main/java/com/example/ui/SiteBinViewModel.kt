@@ -11,7 +11,7 @@ import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
 import com.example.data.model.DailyBonusResult
-import com.example.data.model.DailyLeaderboard
+import com.example.data.model.WeeklyLeaderboard
 import com.example.data.model.TransactionType
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
@@ -83,7 +83,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     val dailyBonus: StateFlow<DailyBonusResult?> = repository.dailyBonus
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.dailyBonus.value)
 
-    val dailyLeaderboard: StateFlow<DailyLeaderboard?> = repository.dailyLeaderboard
+    val weeklyLeaderboard: StateFlow<WeeklyLeaderboard?> = repository.weeklyLeaderboard
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.dailyLeaderboard.value)
 
     val campaigns: StateFlow<List<Campaign>> = repository.campaigns
@@ -195,7 +195,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 ) {
                     refreshFinancialStateForIncomingTransfers()
                     repository.refreshAutoViewStatus()
-                    repository.refreshDailyLeaderboard()
+                    repository.refreshWeeklyLeaderboard()
                     if (_currentScreen.value != AppScreen.VIEWER) {
                         repository.refreshCampaigns()
                     }
