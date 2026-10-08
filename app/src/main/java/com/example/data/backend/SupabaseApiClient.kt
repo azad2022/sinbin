@@ -393,7 +393,7 @@ class SupabaseApiClient(
             val cleanWeekStart = weekStart.trim()
             if (!cleanWeekStart.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$"))) {
                 return@withContext Result.failure(
-                    IllegalArgumentException("INVALID_DATE: Leaderboard week start must be yyyy-MM-dd")
+                    IllegalArgumentException("INVALID_WEEK_START: Leaderboard week start must be yyyy-MM-dd")
                 )
             }
 
@@ -414,7 +414,7 @@ class SupabaseApiClient(
             val raw = response.body?.string() ?: ""
             if (!response.isSuccessful) {
                 return@withContext Result.failure(
-                    IOException("Failed to fetch daily leaderboard: HTTP " + response.code)
+                    IOException("Failed to fetch weekly leaderboard: HTTP " + response.code)
                 )
             }
 
