@@ -83,7 +83,7 @@ data class WeeklyLeaderboardEntry(
 
 data class WeeklyLeaderboard(
     val weekStart: String,
-    val entries: List<DailyLeaderboardEntry>,
+    val entries: List<WeeklyLeaderboardEntry>,
     val currentUserRank: Int?,
     val currentUserViews: Int,
     val viewsToNextRank: Int?
