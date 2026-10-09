@@ -305,6 +305,25 @@ private fun WeeklyLeaderboardCard(
 ) {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
     val entries = leaderboard?.entries.orEmpty()
+    val eyeTransition = rememberInfiniteTransition(label = "leaderboard_eye")
+    val eyeScale by eyeTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(760, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "leaderboard_eye_scale"
+    )
+    val eyeAlpha by eyeTransition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(760, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "leaderboard_eye_alpha"
+    )
 
     Card(
         modifier = Modifier
@@ -436,8 +455,9 @@ private fun WeeklyLeaderboardCard(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = "کاربر ${entry.userHandle}",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = if (isCurrentUser) FontWeight.Bold else FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isCurrentUser) FontWeight.Bold else FontWeight.Medium,
                                         color = Color.White,
                                         maxLines = 1,
                                         softWrap = false,
@@ -451,17 +471,29 @@ private fun WeeklyLeaderboardCard(
                                         )
                                     }
                                 }
-                                Column(horizontalAlignment = Alignment.End) {
+                                Row(
+                                    modifier = Modifier.testTag("leaderboard_views_${entry.rank}"),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
                                     Text(
                                         text = formatter.format(entry.completedViews),
-                                        style = MaterialTheme.typography.titleMedium,
+                                        style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Black,
-                                        color = Color.White
+                                        color = Color.White,
+                                        maxLines = 1
                                     )
-                                    Text(
-                                        text = "بازدید موفق",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White.copy(alpha = 0.68f)
+                                    Icon(
+                                        imageVector = Icons.Default.Visibility,
+                                        contentDescription = "${formatter.format(entry.completedViews)} بازدید موفق",
+                                        tint = Color(0xFF8BE9FD),
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .graphicsLayer {
+                                                scaleX = eyeScale
+                                                scaleY = eyeScale
+                                                alpha = eyeAlpha
+                                            }
                                     )
                                 }
                             }
@@ -506,13 +538,30 @@ private fun WeeklyLeaderboardCard(
                     shape = RoundedCornerShape(14.dp),
                     color = Color.White.copy(alpha = 0.14f)
                 ) {
-                    Text(
-                        text = "${formatter.format(views)} بازدید",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Text(
+                            text = formatter.format(views),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Visibility,
+                            contentDescription = "${formatter.format(views)} بازدید",
+                            tint = Color(0xFF8BE9FD),
+                            modifier = Modifier
+                                .size(17.dp)
+                                .graphicsLayer {
+                                    scaleX = eyeScale
+                                    scaleY = eyeScale
+                                    alpha = eyeAlpha
+                                }
+                        )
+                    }
                 }
             }
         }
