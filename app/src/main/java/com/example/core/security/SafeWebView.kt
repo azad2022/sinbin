@@ -276,36 +276,36 @@ fun SafeWebView(
                         }
                     }
 
-                    // Security Hardening & Performance Configurations
-                settings.apply {
-                    javaScriptEnabled = true
-                    domStorageEnabled = true
-                    allowFileAccess = false
-                    allowContentAccess = false
-                    setSupportMultipleWindows(false)
-                    javaScriptCanOpenWindowsAutomatically = false
-                    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                    useWideViewPort = true
-                    loadWithOverviewMode = true
-                    builtInZoomControls = true
-                    displayZoomControls = false
+                    // Security Hardening & Performance Configurations.
+                    settings.apply {
+                        javaScriptEnabled = true
+                        domStorageEnabled = true
+                        allowFileAccess = false
+                        allowContentAccess = false
+                        setSupportMultipleWindows(false)
+                        javaScriptCanOpenWindowsAutomatically = false
+                        mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
+                        builtInZoomControls = true
+                        displayZoomControls = false
 
-                    cacheMode = WebSettings.LOAD_DEFAULT
-                    mediaPlaybackRequiresUserGesture = true
-                    setGeolocationEnabled(false)
-                    databaseEnabled = false
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        safeBrowsingEnabled = true
+                        cacheMode = WebSettings.LOAD_DEFAULT
+                        mediaPlaybackRequiresUserGesture = true
+                        setGeolocationEnabled(false)
+                        databaseEnabled = false
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            safeBrowsingEnabled = true
+                        }
                     }
-                }
 
-                // Anti-Download Policy: block any file download attempt
-                setDownloadListener { downloadUrl, _, _, _, _ ->
-                    currentOnUrlBlocked(downloadUrl, "دانلود مستقیم فایل در سایت بین مجاز نیست.")
-                }
+                    // Anti-Download Policy: block any file download attempt.
+                    setDownloadListener { downloadUrl, _, _, _, _ ->
+                        currentOnUrlBlocked(downloadUrl, "دانلود مستقیم فایل در سایت بین مجاز نیست.")
+                    }
 
-                webViewClient = safeClient
-                webChromeClient = safeChromeClient
+                    webViewClient = safeClient
+                    webChromeClient = safeChromeClient
 
                     targetLoadKey = contentKey
                     loadUrl(url)
