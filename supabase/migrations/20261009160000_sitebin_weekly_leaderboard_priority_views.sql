@@ -25,6 +25,7 @@ ALTER TABLE public.view_sessions
     (
       leaderboard_feature_week IS NOT NULL
       AND leaderboard_feature_owner_id IS NOT NULL
+      AND leaderboard_feature_rank IS NOT NULL
       AND leaderboard_feature_rank BETWEEN 1 AND 5
     )
   );
@@ -49,6 +50,20 @@ SECURITY DEFINER
 SET search_path = ''
 AS $function$
 BEGIN
+  -- Deleting an unfinished featured session must not leak its reservation.
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.leaderboard_feature_week IS NOT NULL
+       AND OLD.leaderboard_feature_owner_id IS NOT NULL
+       AND OLD.status IN ('INITIALIZED', 'CONTENT_READY') THEN
+      UPDATE private.weekly_featured_campaign_quota q
+      SET reserved_views = pg_catalog.greatest(q.reserved_views - 1, 0),
+          updated_at = pg_catalog.clock_timestamp()
+      WHERE q.week_start = OLD.leaderboard_feature_week
+        AND q.owner_id = OLD.leaderboard_feature_owner_id;
+    END IF;
+    RETURN OLD;
+  END IF;
+
   -- A reserved featured impression is consumed only on valid completion.
   -- If the viewer abandons or the session expires/is cancelled, release it.
   IF OLD.leaderboard_feature_week IS NOT NULL
@@ -80,6 +95,19 @@ FOR EACH ROW
 WHEN (
   OLD.status IN ('INITIALIZED', 'CONTENT_READY')
   AND NEW.status NOT IN ('INITIALIZED', 'CONTENT_READY')
+)
+EXECUTE FUNCTION private.record_weekly_featured_campaign_quota();
+
+DROP TRIGGER IF EXISTS trg_release_weekly_featured_campaign_quota_delete
+  ON public.view_sessions;
+
+CREATE TRIGGER trg_release_weekly_featured_campaign_quota_delete
+AFTER DELETE ON public.view_sessions
+FOR EACH ROW
+WHEN (
+  OLD.status IN ('INITIALIZED', 'CONTENT_READY')
+  AND OLD.leaderboard_feature_week IS NOT NULL
+  AND OLD.leaderboard_feature_owner_id IS NOT NULL
 )
 EXECUTE FUNCTION private.record_weekly_featured_campaign_quota();
 
