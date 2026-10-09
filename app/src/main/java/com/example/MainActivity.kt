@@ -332,6 +332,8 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                             BackHandler { viewModel.navigateTo(AppScreen.HOME) }
                             SettingsScreen(
                                 account = account,
+                                activeCampaignsCount = campaigns.count { it.status.name == "ACTIVE" },
+                                weeklyLeaderboard = weeklyLeaderboard,
                                 isDarkTheme = isDarkTheme,
                                 onToggleDarkTheme = { viewModel.setDarkTheme(it) },
                                 notificationsEnabled = notificationsEnabled,
