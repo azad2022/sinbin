@@ -104,6 +104,7 @@ DECLARE
     v_feature_owner_id uuid;
     v_feature_score integer;
     v_feature_quota record;
+    v_campaign_found boolean := false;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'UNAUTHORIZED: Authentication token required';
@@ -258,7 +259,9 @@ BEGIN
             FOR UPDATE OF c SKIP LOCKED
             LIMIT 1;
 
-            IF v_campaign.id IS NOT NULL THEN
+            v_campaign_found := FOUND;
+
+            IF v_campaign_found THEN
                 UPDATE private.weekly_featured_campaign_quota q
                 SET reserved_views = q.reserved_views + 1,
                     updated_at = pg_catalog.clock_timestamp()
@@ -266,12 +269,8 @@ BEGIN
                   AND q.owner_id = v_feature_owner_id
                   AND q.reserved_views + q.completed_views < q.quota_views;
 
-                IF FOUND THEN
-                    -- Mark this session so completion/expiry can consume or
-                    -- release exactly this one reserved featured impression.
-                    NULL;
-                ELSE
-                    v_campaign := NULL;
+                IF NOT FOUND THEN
+                    v_campaign_found := false;
                     v_feature_rank := NULL;
                     v_feature_owner_id := NULL;
                 END IF;
@@ -290,7 +289,7 @@ BEGIN
 
     -- From the sixth issued website, or whenever the matching rank's campaign
     -- is not eligible/available, preserve the existing randomized distribution.
-    IF v_campaign.id IS NULL THEN
+    IF NOT v_campaign_found THEN
         SELECT c.*
         INTO v_campaign
         FROM public.campaigns c
@@ -313,9 +312,10 @@ BEGIN
         ORDER BY c.id ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1;
+        v_campaign_found := FOUND;
     END IF;
 
-    IF v_campaign.id IS NULL THEN
+    IF NOT v_campaign_found THEN
         SELECT c.*
         INTO v_campaign
         FROM public.campaigns c
@@ -337,9 +337,10 @@ BEGIN
         ORDER BY c.id ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1;
+        v_campaign_found := FOUND;
     END IF;
 
-    IF v_campaign.id IS NULL THEN
+    IF NOT v_campaign_found THEN
         SELECT c.*
         INTO v_campaign
         FROM public.campaigns c
@@ -352,9 +353,10 @@ BEGIN
         ORDER BY c.id ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1;
+        v_campaign_found := FOUND;
     END IF;
 
-    IF v_campaign.id IS NULL THEN
+    IF NOT v_campaign_found THEN
         SELECT c.*
         INTO v_campaign
         FROM public.campaigns c
@@ -366,9 +368,10 @@ BEGIN
         ORDER BY c.id ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1;
+        v_campaign_found := FOUND;
     END IF;
 
-    IF v_campaign.id IS NULL THEN
+    IF NOT v_campaign_found THEN
         RETURN NULL;
     END IF;
 
