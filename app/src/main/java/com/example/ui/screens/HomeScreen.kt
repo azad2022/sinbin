@@ -31,12 +31,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MonetizationOn
-import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.RocketLaunch
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -74,7 +70,6 @@ import com.example.ui.theme.SiteBinBlue
 import com.example.ui.theme.SiteBinBlueDark
 import com.example.ui.theme.SiteBinGold
 import com.example.ui.theme.SiteBinGoldLight
-import com.example.ui.theme.SiteBinSuccess
 import com.example.ui.theme.SiteBinTeal
 import java.text.NumberFormat
 import java.util.Locale
@@ -192,13 +187,6 @@ fun HomeScreen(
                     gradientColors = listOf(Color(0xFF0F766E), SiteBinTeal),
                     testTag = "create_campaign_button",
                     onClick = { onNavigate(AppScreen.CREATE_CAMPAIGN) }
-                )
-            }
-
-            item {
-                AccountMetricsGrid(
-                    account = account,
-                    activeCampaignsCount = campaigns.count { it.status.name == "ACTIVE" }
                 )
             }
 
@@ -861,104 +849,6 @@ private fun ActionHeroCard(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun AccountMetricsGrid(account: UserAccount, activeCampaignsCount: Int) {
-    val formatter = NumberFormat.getNumberInstance(Locale.US)
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "وضعیت حساب کاربری",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            MetricCard(
-                title = "بازدیدهای انجام‌شده",
-                value = formatter.format(account.completedViewsCount),
-                icon = Icons.Default.RemoveRedEye,
-                color = SiteBinBlue,
-                modifier = Modifier.weight(1f)
-            )
-
-            MetricCard(
-                title = "سفارش‌های فعال",
-                value = formatter.format(activeCampaignsCount),
-                icon = Icons.Default.Language,
-                color = SiteBinTeal,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            MetricCard(
-                title = "سکه رزرو شده",
-                value = formatter.format(account.reservedCoins),
-                icon = Icons.Default.MonetizationOn,
-                color = SiteBinGold,
-                modifier = Modifier.weight(1f)
-            )
-
-            MetricCard(
-                title = "امتیاز اعتماد",
-                value = "${account.trustScore.toInt()}%",
-                icon = Icons.Default.Shield,
-                color = SiteBinSuccess,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun MetricCard(
-    title: String,
-    value: String,
-    icon: ImageVector,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(18.dp)
-                )
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
         }
     }
 }
