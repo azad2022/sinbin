@@ -88,6 +88,10 @@ internal fun isWelcomeBonusBannerVisible(
         nowMillis >= grantedAtMillis &&
         nowMillis - grantedAtMillis < WELCOME_BONUS_BANNER_DURATION_MS
 
+internal fun shouldShowDailyBonusBanner(bonus: DailyBonusResult): Boolean =
+    bonus.grantDate.isNotBlank() &&
+        (bonus.granted || bonus.reason == "WELCOME_DAY" || bonus.reason == "VISIT_REQUIRED")
+
 @Composable
 fun HomeScreen(
     account: UserAccount,
@@ -155,7 +159,7 @@ fun HomeScreen(
                 }
             }
 
-            if (dailyBonus != null && dailyBonus.grantDate.isNotBlank()) {
+            if (dailyBonus != null && shouldShowDailyBonusBanner(dailyBonus)) {
                 item {
                     DailyBonusBanner(
                         bonus = dailyBonus,
@@ -307,11 +311,23 @@ private fun WeeklyLeaderboardCard(
             .fillMaxWidth()
             .testTag("weekly_leaderboard"),
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(22.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            Color(0xFF071B3F),
+                            Color(0xFF253B7E),
+                            Color(0xFF542C83)
+                        )
+                    )
+                )
+                .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
@@ -323,21 +339,50 @@ private fun WeeklyLeaderboardCard(
                     Text(
                         text = "🏆 برترین بازدیدکنندگان این هفته",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.Black,
+                        color = Color.White
                     )
                     Text(
                         text = "بر اساس تعداد بازدیدهای موفق ثبت‌شده در سرور",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color.White.copy(alpha = 0.74f)
                     )
                 }
+
+                val trophyTransition = rememberInfiniteTransition(label = "leaderboard_trophy")
+                val trophyScale by trophyTransition.animateFloat(
+                    initialValue = 0.94f,
+                    targetValue = 1.08f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(900, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "leaderboard_trophy_scale"
+                )
+                val trophyTilt by trophyTransition.animateFloat(
+                    initialValue = -7f,
+                    targetValue = 7f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1_150, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "leaderboard_trophy_tilt"
+                )
                 Surface(
                     shape = CircleShape,
-                    color = SiteBinGold.copy(alpha = 0.14f),
-                    modifier = Modifier.size(40.dp)
+                    color = Color.White.copy(alpha = 0.14f),
+                    modifier = Modifier.size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(text = "🏆", fontSize = 20.sp)
+                        Text(
+                            text = "🏆",
+                            fontSize = 23.sp,
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = trophyScale
+                                scaleY = trophyScale
+                                rotationZ = trophyTilt
+                            }
+                        )
                     }
                 }
             }
@@ -346,13 +391,13 @@ private fun WeeklyLeaderboardCard(
                 leaderboard == null -> Text(
                     text = "در حال دریافت جدول این هفته…",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color.White.copy(alpha = 0.86f),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
                 )
                 entries.isEmpty() -> Text(
                     text = "هنوز بازدید موفقی برای این هفته ثبت نشده است.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color.White.copy(alpha = 0.86f),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
                 )
                 else -> {
@@ -369,9 +414,9 @@ private fun WeeklyLeaderboardCard(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
                             color = if (isCurrentUser) {
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.09f)
+                                Color.White.copy(alpha = 0.22f)
                             } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                Color.White.copy(alpha = 0.085f)
                             }
                         ) {
                             Row(
@@ -383,10 +428,9 @@ private fun WeeklyLeaderboardCard(
                                     modifier = Modifier.width(34.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(
-                                        text = medal,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
+                                    LeaderboardRankIcon(
+                                        rank = entry.rank,
+                                        fallbackText = medal
                                     )
                                 }
                                 Column(modifier = Modifier.weight(1f)) {
@@ -394,6 +438,7 @@ private fun WeeklyLeaderboardCard(
                                         text = "کاربر ${entry.userHandle}",
                                         style = MaterialTheme.typography.bodyLarge,
                                         fontWeight = if (isCurrentUser) FontWeight.Bold else FontWeight.SemiBold,
+                                        color = Color.White,
                                         maxLines = 1,
                                         softWrap = false,
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -402,7 +447,7 @@ private fun WeeklyLeaderboardCard(
                                         Text(
                                             text = "رتبه شما",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary
+                                            color = Color(0xFFFFD982)
                                         )
                                     }
                                 }
@@ -410,12 +455,13 @@ private fun WeeklyLeaderboardCard(
                                     Text(
                                         text = formatter.format(entry.completedViews),
                                         style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Black
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White
                                     )
                                     Text(
                                         text = "بازدید موفق",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = Color.White.copy(alpha = 0.68f)
                                     )
                                 }
                             }
@@ -424,7 +470,7 @@ private fun WeeklyLeaderboardCard(
                 }
             }
 
-            HorizontalDivider()
+            HorizontalDivider(color = Color.White.copy(alpha = 0.20f))
 
             val rank = leaderboard?.currentUserRank
             val views = leaderboard?.currentUserViews ?: 0
@@ -442,7 +488,8 @@ private fun WeeklyLeaderboardCard(
                             else -> "رتبه شما: ${formatter.format(rank)}"
                         },
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                     Text(
                         text = when {
@@ -452,24 +499,83 @@ private fun WeeklyLeaderboardCard(
                             else -> "فاصله تا رتبه بالاتر محاسبه نشد."
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color.White.copy(alpha = 0.74f)
                     )
                 }
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                    color = Color.White.copy(alpha = 0.14f)
                 ) {
                     Text(
                         text = "${formatter.format(views)} بازدید",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = Color.White,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun LeaderboardRankIcon(
+    rank: Int,
+    fallbackText: String
+) {
+    if (rank !in 1..3) {
+        Text(
+            text = fallbackText,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color.White
+        )
+        return
+    }
+
+    val transition = rememberInfiniteTransition(label = "leaderboard_rank_$rank")
+    val scale by transition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = if (rank == 1) 1.12f else 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = if (rank == 1) 760 else 1_050,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "leaderboard_rank_scale"
+    )
+    val tilt by transition.animateFloat(
+        initialValue = if (rank == 1) -6f else -3f,
+        targetValue = if (rank == 1) 6f else 3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = if (rank == 1) 980 else 1_250,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "leaderboard_rank_tilt"
+    )
+    val medal = when (rank) {
+        1 -> "🥇"
+        2 -> "🥈"
+        else -> "🥉"
+    }
+
+    Text(
+        text = medal,
+        fontSize = if (rank == 1) 25.sp else 23.sp,
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                rotationZ = tilt
+            }
+            .testTag("leaderboard_rank_icon_$rank")
+    )
 }
 
 @Composable
