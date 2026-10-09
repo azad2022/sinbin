@@ -6,6 +6,7 @@ import android.net.http.SslError
 import android.os.Build
 import android.os.SystemClock
 import com.example.BuildConfig
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
@@ -23,7 +24,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -48,9 +51,16 @@ fun SafeWebView(
     // Keep track of the currently loaded URL requested by Compose
     // to prevent unwanted re-loads on timer ticks / recompositions
     var targetLoadKey by remember { mutableStateOf<String?>(null) }
-    var webViewRef: WebView? = remember { null }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var webViewGeneration by remember { mutableStateOf(0) }
+    var rendererTerminated by remember { mutableStateOf(false) }
     var currentPageStartedAt by remember { mutableStateOf(0L) }
     var contentReadyReported by remember { mutableStateOf(false) }
+
+    val currentOnPageStarted by rememberUpdatedState(onPageStarted)
+    val currentOnPageContentReady by rememberUpdatedState(onPageContentReady)
+    val currentOnUrlBlocked by rememberUpdatedState(onUrlBlocked)
+    val currentOnErrorOccurred by rememberUpdatedState(onErrorOccurred)
 
     val safeClient = remember {
         object : WebViewClient() {
@@ -73,7 +83,7 @@ fun SafeWebView(
                         "operation=webview_content_visible host=$host elapsedMs=$elapsedMs"
                     )
                 }
-                onPageContentReady()
+                currentOnPageContentReady()
             }
 
             override fun shouldOverrideUrlLoading(
@@ -90,11 +100,11 @@ fun SafeWebView(
                     }
                     is PolicyResult.Blocked -> {
                         // Block external app escapes (Telegram, Google Play, Market, custom schemes, APKs)
-                        onUrlBlocked(targetUrl, check.reason)
+                        currentOnUrlBlocked(targetUrl, check.reason)
                         true
                     }
                     is PolicyResult.Controlled -> {
-                        onUrlBlocked(targetUrl, check.reason)
+                        currentOnUrlBlocked(targetUrl, check.reason)
                         true
                     }
                 }
@@ -104,7 +114,7 @@ fun SafeWebView(
                 super.onPageStarted(view, pageUrl, favicon)
                 currentPageStartedAt = SystemClock.elapsedRealtime()
                 contentReadyReported = false
-                onPageStarted()
+                currentOnPageStarted()
             }
 
             override fun onPageCommitVisible(view: WebView?, pageUrl: String?) {
@@ -127,7 +137,7 @@ fun SafeWebView(
             ) {
                 // Strict SSL Enforcement: never proceed with invalid certs
                 handler?.cancel()
-                onErrorOccurred("گواهی امنیتی این وب‌سایت نامعتبر است (SSL Error).")
+                currentOnErrorOccurred("گواهی امنیتی این وب‌سایت نامعتبر است (SSL Error).")
             }
 
             override fun onReceivedError(
@@ -137,7 +147,7 @@ fun SafeWebView(
             ) {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame == true) {
-                    onErrorOccurred("خطا در بارگذاری وب‌سایت. ممکن است سرور مقصد در دسترس نباشد.")
+                    currentOnErrorOccurred("خطا در بارگذاری وب‌سایت. ممکن است سرور مقصد در دسترس نباشد.")
                 }
             }
 
@@ -145,13 +155,24 @@ fun SafeWebView(
                 view: WebView?,
                 detail: RenderProcessGoneDetail?
             ): Boolean {
-                view?.let {
-                    it.stopLoading()
-                    (it.parent as? ViewGroup)?.removeView(it)
-                    it.destroy()
+                view?.let { terminatedView ->
+                    terminatedView.stopLoading()
+                    (terminatedView.parent as? ViewGroup)?.removeView(terminatedView)
+                    if (webViewRef === terminatedView) {
+                        webViewRef = null
+                    }
+                    terminatedView.destroy()
                 }
-                webViewRef = null
-                onErrorOccurred("موتور وب‌ویو نیاز به بازیابی دارد. لطفاً دوباره امتحان کنید.")
+                rendererTerminated = true
+                contentReadyReported = false
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.w(
+                        "SiteBinWebView",
+                        "Renderer terminated; didCrash=${detail?.didCrash() == true}. " +
+                            "The destroyed WebView will not be reused."
+                    )
+                }
+                currentOnErrorOccurred("موتور نمایش وب‌سایت متوقف شد. برای ساخت مجدد مرورگر، تلاش مجدد را بزنید.")
                 return true
             }
         }
@@ -190,9 +211,11 @@ fun SafeWebView(
                     webViewRef?.resumeTimers()
                 }
                 Lifecycle.Event.ON_DESTROY -> {
-                    webViewRef?.stopLoading()
-                    webViewRef?.loadUrl("about:blank")
-                    webViewRef?.destroy()
+                    webViewRef?.let { webView ->
+                        webView.stopLoading()
+                        (webView.parent as? ViewGroup)?.removeView(webView)
+                        webView.destroy()
+                    }
                     webViewRef = null
                 }
                 else -> Unit
@@ -201,9 +224,11 @@ fun SafeWebView(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            webViewRef?.stopLoading()
-            webViewRef?.loadUrl("about:blank")
-            webViewRef?.destroy()
+            webViewRef?.let { webView ->
+                webView.stopLoading()
+                (webView.parent as? ViewGroup)?.removeView(webView)
+                webView.destroy()
+            }
             webViewRef = null
         }
     }
@@ -213,64 +238,93 @@ fun SafeWebView(
         if (targetLoadKey != contentKey) {
             targetLoadKey = contentKey
             contentReadyReported = false
-            webViewRef?.loadUrl(url)
+            if (rendererTerminated) {
+                // Changing the AndroidView key forces factory() to create a new instance.
+                rendererTerminated = false
+                webViewGeneration += 1
+            } else {
+                webViewRef?.loadUrl(url)
+            }
         }
     }
 
-    AndroidView(
-        modifier = modifier.fillMaxSize(),
-        factory = { ctx ->
-            WebView(ctx).apply {
-                webViewRef = this
+    key(webViewGeneration) {
+        AndroidView(
+            modifier = modifier.fillMaxSize(),
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    webViewRef = this
 
-                // Security Hardening & Performance Configurations
-                settings.apply {
-                    javaScriptEnabled = true
-                    domStorageEnabled = true
-                    allowFileAccess = false
-                    allowContentAccess = false
-                    setSupportMultipleWindows(false)
-                    javaScriptCanOpenWindowsAutomatically = false
-                    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                    useWideViewPort = true
-                    loadWithOverviewMode = true
-                    builtInZoomControls = true
-                    displayZoomControls = false
-
-                    cacheMode = WebSettings.LOAD_DEFAULT
-                    mediaPlaybackRequiresUserGesture = true
-                    setGeolocationEnabled(false)
-                    databaseEnabled = false
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        safeBrowsingEnabled = true
+                    // WebView 153/154 have a documented, device/GPU-specific black-rendering
+                    // regression. Apply software drawing only to those affected release families;
+                    // keep hardware drawing for other versions to preserve video/WebGL performance.
+                    val webViewMajorVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        WebView.getCurrentWebViewPackage()
+                            ?.versionName
+                            ?.substringBefore('.')
+                            ?.toIntOrNull()
+                    } else {
+                        null
                     }
+                    if (webViewMajorVersion != null && webViewMajorVersion in 153..154) {
+                        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                        if (BuildConfig.DEBUG) {
+                            android.util.Log.w(
+                                "SiteBinWebView",
+                                "Using software drawing for known WebView $webViewMajorVersion rendering regression."
+                            )
+                        }
+                    }
+
+                    // Security Hardening & Performance Configurations.
+                    settings.apply {
+                        javaScriptEnabled = true
+                        domStorageEnabled = true
+                        allowFileAccess = false
+                        allowContentAccess = false
+                        setSupportMultipleWindows(false)
+                        javaScriptCanOpenWindowsAutomatically = false
+                        mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
+                        builtInZoomControls = true
+                        displayZoomControls = false
+
+                        cacheMode = WebSettings.LOAD_DEFAULT
+                        mediaPlaybackRequiresUserGesture = true
+                        setGeolocationEnabled(false)
+                        databaseEnabled = false
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            safeBrowsingEnabled = true
+                        }
+                    }
+
+                    // Anti-Download Policy: block any file download attempt.
+                    setDownloadListener { downloadUrl, _, _, _, _ ->
+                        currentOnUrlBlocked(downloadUrl, "دانلود مستقیم فایل در سایت بین مجاز نیست.")
+                    }
+
+                    webViewClient = safeClient
+                    webChromeClient = safeChromeClient
+
+                    targetLoadKey = contentKey
+                    loadUrl(url)
                 }
-
-                // Anti-Download Policy: block any file download attempt
-                setDownloadListener { downloadUrl, _, _, _, _ ->
-                    onUrlBlocked(downloadUrl, "دانلود مستقیم فایل در سایت بین مجاز نیست.")
+            },
+            update = { webView ->
+                webViewRef = webView
+                // Only load if the requested destination has genuinely changed.
+                if (targetLoadKey != contentKey) {
+                    targetLoadKey = contentKey
+                    contentReadyReported = false
+                    webView.loadUrl(url)
                 }
-
-                webViewClient = safeClient
-                webChromeClient = safeChromeClient
-
-                targetLoadKey = contentKey
-                loadUrl(url)
+            },
+            onReset = { webView ->
+                webView.stopLoading()
+                targetLoadKey = null
+                webView.loadUrl("about:blank")
             }
-        },
-        update = { webView ->
-            webViewRef = webView
-            // Only load if the requested destination has genuinely changed
-            if (targetLoadKey != contentKey) {
-                targetLoadKey = contentKey
-                contentReadyReported = false
-                webView.loadUrl(url)
-            }
-        },
-        onReset = { webView ->
-            webView.stopLoading()
-            targetLoadKey = null
-            webView.loadUrl("about:blank")
-        }
-    )
+        )
+    }
 }

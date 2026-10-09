@@ -87,6 +87,13 @@ internal fun leaderboardMedalLabel(rank: Int?): String? = when (rank) {
     else -> null
 }
 
+internal fun leaderboardMedalNumeral(rank: Int): String = when (rank) {
+    1 -> "1"
+    2 -> "2"
+    3 -> "3"
+    else -> rank.toString()
+}
+
 @Composable
 fun SettingsScreen(
     account: UserAccount,
@@ -139,13 +146,13 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Box(modifier = Modifier.size(66.dp)) {
+                        Box(modifier = Modifier.size(width = 66.dp, height = 84.dp)) {
                             Surface(
                                 shape = CircleShape,
                                 color = SiteBinBlue.copy(alpha = 0.2f),
                                 modifier = Modifier
                                     .size(50.dp)
-                                    .align(Alignment.Center)
+                                    .align(Alignment.TopCenter)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
@@ -164,8 +171,8 @@ fun SettingsScreen(
                                     rank = medalRank,
                                     label = leaderboardMedalLabel(medalRank).orEmpty(),
                                     modifier = Modifier
-                                        .align(Alignment.BottomStart)
-                                        .offset(x = 3.dp, y = 1.dp)
+                                        .align(Alignment.TopCenter)
+                                        .offset(y = 44.dp)
                                 )
                             }
                         }
@@ -508,16 +515,21 @@ private fun MetricCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier,
+        modifier = modifier.height(106.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(10.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Icon(
@@ -529,15 +541,21 @@ private fun MetricCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    minLines = 2,
+                    modifier = Modifier.weight(1f),
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
-            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
     }
@@ -578,11 +596,7 @@ private fun RankMedalBadge(
         2 -> Color(0xFF34536D)
         else -> Color(0xFF6D3D2F)
     }
-    val numeral = when (rank) {
-        1 -> "۱"
-        2 -> "۲"
-        else -> "۳"
-    }
+    val numeral = leaderboardMedalNumeral(rank)
     val numeralColor = when (rank) {
         1 -> Color(0xFF5D3A00)
         2 -> Color(0xFF293541)

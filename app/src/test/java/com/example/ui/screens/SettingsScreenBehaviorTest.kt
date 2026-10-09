@@ -14,6 +14,13 @@ class SettingsScreenBehaviorTest {
     }
 
     @Test
+    fun medalNumeralsUseAsciiDigits() {
+        assertEquals("1", leaderboardMedalNumeral(1))
+        assertEquals("2", leaderboardMedalNumeral(2))
+        assertEquals("3", leaderboardMedalNumeral(3))
+    }
+
+    @Test
     fun usersOutsideTopThreeDoNotReceiveAMedal() {
         assertNull(leaderboardMedalLabel(null))
         assertNull(leaderboardMedalLabel(0))
