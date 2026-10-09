@@ -108,48 +108,50 @@ declare
   v_lock_keys bigint[] := array[]::bigint[];
   v_lock_key bigint;
 begin
-  if tg_op <> 'INSERT'
-     and old.status = 'COMPLETED'
-     and old.completed_at is not null
-     and old.viewer_id is not null then
-    v_lock_keys := pg_catalog.array_append(
-      v_lock_keys,
-      pg_catalog.hashtextextended(
-        'sitebin:daily:' || old.viewer_id::text || ':' ||
-          ((old.completed_at at time zone 'UTC')::date)::text,
-        0
-      )
-    );
-    v_lock_keys := pg_catalog.array_append(
-      v_lock_keys,
-      pg_catalog.hashtextextended(
-        'sitebin:weekly:' || old.viewer_id::text || ':' ||
-          pg_catalog.date_trunc('week', old.completed_at at time zone 'UTC')::date::text,
-        0
-      )
-    );
+  if tg_op in ('UPDATE', 'DELETE') then
+    if old.status = 'COMPLETED'
+       and old.completed_at is not null
+       and old.viewer_id is not null then
+      v_lock_keys := pg_catalog.array_append(
+        v_lock_keys,
+        pg_catalog.hashtextextended(
+          'sitebin:daily:' || old.viewer_id::text || ':' ||
+            ((old.completed_at at time zone 'UTC')::date)::text,
+          0
+        )
+      );
+      v_lock_keys := pg_catalog.array_append(
+        v_lock_keys,
+        pg_catalog.hashtextextended(
+          'sitebin:weekly:' || old.viewer_id::text || ':' ||
+            pg_catalog.date_trunc('week', old.completed_at at time zone 'UTC')::date::text,
+          0
+        )
+      );
+    end if;
   end if;
 
-  if tg_op <> 'DELETE'
-     and new.status = 'COMPLETED'
-     and new.completed_at is not null
-     and new.viewer_id is not null then
-    v_lock_keys := pg_catalog.array_append(
-      v_lock_keys,
-      pg_catalog.hashtextextended(
-        'sitebin:daily:' || new.viewer_id::text || ':' ||
-          ((new.completed_at at time zone 'UTC')::date)::text,
-        0
-      )
-    );
-    v_lock_keys := pg_catalog.array_append(
-      v_lock_keys,
-      pg_catalog.hashtextextended(
-        'sitebin:weekly:' || new.viewer_id::text || ':' ||
-          pg_catalog.date_trunc('week', new.completed_at at time zone 'UTC')::date::text,
-        0
-      )
-    );
+  if tg_op in ('INSERT', 'UPDATE') then
+    if new.status = 'COMPLETED'
+       and new.completed_at is not null
+       and new.viewer_id is not null then
+      v_lock_keys := pg_catalog.array_append(
+        v_lock_keys,
+        pg_catalog.hashtextextended(
+          'sitebin:daily:' || new.viewer_id::text || ':' ||
+            ((new.completed_at at time zone 'UTC')::date)::text,
+          0
+        )
+      );
+      v_lock_keys := pg_catalog.array_append(
+        v_lock_keys,
+        pg_catalog.hashtextextended(
+          'sitebin:weekly:' || new.viewer_id::text || ':' ||
+            pg_catalog.date_trunc('week', new.completed_at at time zone 'UTC')::date::text,
+          0
+        )
+      );
+    end if;
   end if;
 
   -- Every transaction acquires all affected bucket locks in the same order.
@@ -161,16 +163,16 @@ begin
     perform pg_catalog.pg_advisory_xact_lock(v_lock_key);
   end loop;
 
-  if tg_op <> 'INSERT'
-     and old.status = 'COMPLETED'
-     and old.completed_at is not null then
-    perform private.reconcile_view_leaderboard_entry(old.viewer_id, old.completed_at);
+  if tg_op in ('UPDATE', 'DELETE') then
+    if old.status = 'COMPLETED' and old.completed_at is not null then
+      perform private.reconcile_view_leaderboard_entry(old.viewer_id, old.completed_at);
+    end if;
   end if;
 
-  if tg_op <> 'DELETE'
-     and new.status = 'COMPLETED'
-     and new.completed_at is not null then
-    perform private.reconcile_view_leaderboard_entry(new.viewer_id, new.completed_at);
+  if tg_op in ('INSERT', 'UPDATE') then
+    if new.status = 'COMPLETED' and new.completed_at is not null then
+      perform private.reconcile_view_leaderboard_entry(new.viewer_id, new.completed_at);
+    end if;
   end if;
 
   if tg_op = 'DELETE' then
