@@ -192,8 +192,11 @@ USING (inviter_id = (SELECT auth.uid()) OR invitee_id = (SELECT auth.uid()));
 CREATE TABLE IF NOT EXISTS private.referral_completed_views (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   referral_id uuid NOT NULL REFERENCES public.referrals(id) ON DELETE CASCADE,
-  view_session_id uuid NOT NULL UNIQUE REFERENCES public.view_sessions(id) ON DELETE CASCADE,
-  campaign_id uuid NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
+  -- Keep immutable completion evidence even if campaigns or session rows are later
+  -- pruned for operational reasons; deleting source rows must not inflate or erase
+  -- a referral's previously-earned distinct-site progress.
+  view_session_id uuid NOT NULL UNIQUE,
+  campaign_id uuid NOT NULL,
   site_key text,
   completed_at timestamptz NOT NULL,
   CONSTRAINT referral_completed_views_site_key_check
@@ -210,7 +213,7 @@ CREATE INDEX IF NOT EXISTS idx_referral_completed_views_referral_completed
 CREATE TABLE IF NOT EXISTS private.referral_website_progress (
   referral_id uuid NOT NULL REFERENCES public.referrals(id) ON DELETE CASCADE,
   website_key text NOT NULL,
-  first_view_session_id uuid NOT NULL UNIQUE REFERENCES public.view_sessions(id) ON DELETE CASCADE,
+  first_view_session_id uuid NOT NULL UNIQUE,
   first_completed_at timestamptz NOT NULL,
   PRIMARY KEY (referral_id, website_key)
 );
