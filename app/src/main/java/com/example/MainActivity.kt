@@ -155,7 +155,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
         prefs.edit().putBoolean("referral_notification_permission_asked", true).apply()
         viewModel.setReferralNotificationsEnabled(granted)
         if (!granted) {
-            snackbarHostState.showSnackbar("برای دریافت اعلان زیرمجموعه‌ها، اجازه اعلان SiteBin را فعال کنید.")
+            viewModel.showMessage("برای دریافت اعلان زیرمجموعه‌ها، اجازه اعلان SiteBin را فعال کنید.")
         }
     }
 
