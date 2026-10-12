@@ -1325,7 +1325,7 @@ class SupabaseApiClient(
             if (!refresh.isNullOrBlank()) {
                 val newToken = refreshSession(refresh)
                 if (newToken != null) {
-                    return executeRpcRequest(functionName, isRetry = true, requestFactory)
+                    return executeRpcRequest(functionName, true, requestFactory)
                 }
             }
         }
