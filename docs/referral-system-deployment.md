@@ -18,6 +18,7 @@ This feature is server-authoritative. The client submits only the inviter's exis
 3. Apply the SQL migration and verify its version in Supabase migration history.
 4. Deploy the `send-referral-push` Edge Function with JWT verification enabled.
 4a. Apply `20261012185446_sitebin_referral_reward_ledger_index.sql` when present in the merged migration history; it covers the reward-ledger foreign key.
+4b. Apply `20261012211811_sitebin_referral_preference_rate_limit_fix.sql` to prevent the idempotent notification-preference switch from receiving false-positive 429 responses.
 5. Run `supabase/tests/sitebin_referral_rewards.sql` against a disposable database or an explicitly authorized test database. It runs inside a transaction and ends with `ROLLBACK`; never remove that rollback when running against a shared environment.
 6. Complete device testing with two independent accounts/devices, including one invite, the 100-view milestone, and a controlled 500-domain milestone test. Verify the live ledger, not only the UI.
 
