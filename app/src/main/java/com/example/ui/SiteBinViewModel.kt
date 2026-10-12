@@ -115,6 +115,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     val referralStatus: StateFlow<ReferralStatus?> = repository.referralStatus
     private val _isRefreshingReferralStatus = MutableStateFlow(false)
     val isRefreshingReferralStatus: StateFlow<Boolean> = _isRefreshingReferralStatus.asStateFlow()
+    private var referralStatusRefreshQueued = false
     private val _referralStatusLoadFailed = MutableStateFlow(false)
     val referralStatusLoadFailed: StateFlow<Boolean> = _referralStatusLoadFailed.asStateFlow()
     private val _isRegisteringReferral = MutableStateFlow(false)
@@ -188,7 +189,12 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshReferralStatus() {
-        if (_isRefreshingReferralStatus.value) return
+        if (_isRefreshingReferralStatus.value) {
+            // A successful registration can race the initial status fetch. Queue
+            // one follow-up instead of dropping the post-registration refresh.
+            referralStatusRefreshQueued = true
+            return
+        }
         viewModelScope.launch {
             _isRefreshingReferralStatus.value = true
             try {
@@ -208,6 +214,10 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                     .onFailure { _referralStatusLoadFailed.value = true }
             } finally {
                 _isRefreshingReferralStatus.value = false
+                if (referralStatusRefreshQueued) {
+                    referralStatusRefreshQueued = false
+                    refreshReferralStatus()
+                }
             }
         }
     }
@@ -260,15 +270,21 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setReferralNotificationsEnabled(enabled: Boolean) {
+        val preferenceChanged = _referralNotificationsEnabled.value != enabled
         _referralNotificationsEnabled.value = enabled
         prefs.edit().putBoolean("referral_notifications_enabled", enabled).apply()
 
         viewModelScope.launch {
-            repository.setReferralPushNotificationsEnabled(enabled)
-                .onFailure {
-                    // The preference remains local and authoritative for this device's UI.
-                    // Refresh/re-register on the next foreground to repair transient failures.
-                }
+            // Permission-result callbacks and switch interactions can report the
+            // same value. Skip duplicate preference writes but still refresh a
+            // token when enabled, which can repair a missing or stale FCM row.
+            if (preferenceChanged) {
+                repository.setReferralPushNotificationsEnabled(enabled)
+                    .onFailure {
+                        // The local preference remains authoritative for this
+                        // device's UI; server failure must not block referral state.
+                    }
+            }
             if (enabled) {
                 lastReferralTokenSyncAt = 0L
                 syncReferralPushToken(force = true)

@@ -57,7 +57,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -584,19 +583,6 @@ private fun DurationCard(
     modifier: Modifier = Modifier
 ) {
     val transition = rememberInfiniteTransition(label = "duration_${option.seconds}s")
-    val pulseScale by transition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (isSelected) 1.035f else 1.018f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = if (isSelected) 900 else 1200,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "duration_scale_${option.seconds}s"
-    )
-
     val animatedBorderAlpha by transition.animateFloat(
         initialValue = if (isSelected) 0.62f else 0.26f,
         targetValue = if (isSelected) 1f else 0.48f,
@@ -626,7 +612,6 @@ private fun DurationCard(
             }
         ),
         modifier = modifier
-            .scale(pulseScale)
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
     ) {
@@ -881,18 +866,6 @@ private fun PresetViewsCard(
     modifier: Modifier = Modifier
 ) {
     val transition = rememberInfiniteTransition(label = "preset_card_$count")
-    val pulseScale by transition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (isSelected) 1.025f else 1.012f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = if (isSelected) 950 else 1250,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "preset_card_scale_$count"
-    )
     val borderAlpha by transition.animateFloat(
         initialValue = if (isSelected) 0.72f else 0.22f,
         targetValue = if (isSelected) 1f else 0.42f,
@@ -918,7 +891,6 @@ private fun PresetViewsCard(
             }
         ),
         modifier = modifier
-            .scale(pulseScale)
             .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
     ) {
@@ -970,15 +942,6 @@ private fun AnimatedEyeIcon(
     modifier: Modifier = Modifier
 ) {
     val transition = rememberInfiniteTransition(label = "preset_eye")
-    val scale by transition.animateFloat(
-        initialValue = 0.90f,
-        targetValue = 1.08f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "preset_eye_scale"
-    )
     val alpha by transition.animateFloat(
         initialValue = 0.72f,
         targetValue = 1f,
@@ -995,7 +958,6 @@ private fun AnimatedEyeIcon(
         tint = tint.copy(alpha = alpha),
         modifier = modifier
             .size(22.dp)
-            .scale(scale)
     )
 }
 
