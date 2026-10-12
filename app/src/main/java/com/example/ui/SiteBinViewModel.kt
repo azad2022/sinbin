@@ -375,6 +375,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                     if (table == "view_sessions") {
                         repository.refreshWeeklyLeaderboard()
                     }
+                    if (table == "referrals" && _currentScreen.value == AppScreen.SETTINGS) {
+                        refreshReferralStatus()
+                    }
                 }
         }
     }
