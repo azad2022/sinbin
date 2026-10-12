@@ -733,6 +733,7 @@ AS $function$
 DECLARE
   v_uid uuid := (SELECT auth.uid());
   v_token text := NULLIF(pg_catalog.btrim(p_token), '');
+  v_registered_uid uuid;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'UNAUTHORIZED: Authentication token required';
@@ -740,6 +741,7 @@ BEGIN
   IF COALESCE((SELECT (auth.jwt()->>'is_anonymous')::boolean), false) THEN
     RAISE EXCEPTION 'UNAUTHORIZED: Anonymous authentication is not allowed';
   END IF;
+  PERFORM private.enforce_user_rate_limit(v_uid, 'register_push_token');
   IF v_token IS NULL
      OR pg_catalog.length(v_token) NOT BETWEEN 20 AND 4096
      OR v_token ~ '[[:cntrl:]]' THEN
@@ -749,9 +751,14 @@ BEGIN
   INSERT INTO private.referral_push_tokens(token, user_id, enabled, platform, updated_at)
   VALUES(v_token, v_uid, COALESCE(p_enabled, true), 'android', pg_catalog.clock_timestamp())
   ON CONFLICT (token) DO UPDATE
-  SET user_id = EXCLUDED.user_id,
-      enabled = EXCLUDED.enabled,
-      updated_at = EXCLUDED.updated_at;
+  SET enabled = EXCLUDED.enabled,
+      updated_at = EXCLUDED.updated_at
+  WHERE private.referral_push_tokens.user_id = EXCLUDED.user_id
+  RETURNING user_id INTO v_registered_uid;
+
+  IF v_registered_uid IS NULL THEN
+    RETURN pg_catalog.jsonb_build_object('success', false, 'code', 'TOKEN_ALREADY_BOUND');
+  END IF;
 
   -- A freshly registered token makes pending invitations immediately eligible
   -- again even if a prior attempt was leased while the user had no token.
@@ -781,6 +788,7 @@ BEGIN
   IF COALESCE((SELECT (auth.jwt()->>'is_anonymous')::boolean), false) THEN
     RAISE EXCEPTION 'UNAUTHORIZED: Anonymous authentication is not allowed';
   END IF;
+  PERFORM private.enforce_user_rate_limit(v_uid, 'set_referral_push_notifications_enabled');
 
   UPDATE private.referral_push_tokens
   SET enabled = COALESCE(p_enabled, false),
@@ -954,7 +962,8 @@ BEGIN
         ELSE delivered_at
       END,
       claimed_until = CASE
-        WHEN p_outcome IN ('SENT', 'SKIPPED', 'NO_TOKEN') THEN NULL
+        WHEN p_outcome IN ('SENT', 'SKIPPED') THEN NULL
+        WHEN p_outcome = 'NO_TOKEN' THEN pg_catalog.clock_timestamp() + INTERVAL '1 day'
         ELSE pg_catalog.clock_timestamp() + INTERVAL '3 minutes'
       END,
       last_error = CASE
