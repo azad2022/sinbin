@@ -123,10 +123,13 @@ SET search_path TO ''
 AS $function$
 DECLARE
   v_key text;
+  v_has_referral_metadata boolean := false;
   v_found boolean := false;
 BEGIN
-  SELECT t.referral_site_key, true
-  INTO v_key, v_found
+  SELECT t.referral_site_key,
+         COALESCE(t.diagnostics ? 'referral_site_key', false),
+         true
+  INTO v_key, v_has_referral_metadata, v_found
   FROM private.campaign_preflight_tokens t
   WHERE t.user_id = NEW.owner_id
     AND t.source_url = NEW.url
@@ -135,8 +138,8 @@ BEGIN
   ORDER BY t.consumed_at DESC, t.created_at DESC
   LIMIT 1;
 
-  IF NOT COALESCE(v_found, false) THEN
-    RAISE EXCEPTION 'PREFLIGHT_REFERRAL_METADATA_MISSING: campaign must be created from a consumed, server-validated preflight token';
+  IF NOT COALESCE(v_found, false) OR NOT COALESCE(v_has_referral_metadata, false) THEN
+    RAISE EXCEPTION 'PREFLIGHT_REFERRAL_METADATA_MISSING: run website preflight again before creating a campaign';
   END IF;
 
   -- NULL means the public hostname has no registrable domain in the pinned PSL
