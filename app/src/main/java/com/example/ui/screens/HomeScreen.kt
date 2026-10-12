@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.RepeatMode
@@ -46,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -79,6 +82,18 @@ import kotlin.math.sin
 import kotlinx.coroutines.delay
 
 internal const val WELCOME_BONUS_BANNER_DURATION_MS = 2L * 60L * 60L * 1000L
+
+internal val HOME_VIEWING_CARD_SUBTITLES = listOf(
+    "با مشاهده وب‌سایت‌های دیگران سکه رایگان دریافت کن و به موجودی خودت اضافه کن.",
+    "هر چقدر بیشتر بازدید کنی امکان اینکه نفر اول لیدربورد بشی بیشتر میشه",
+    "نفرات برتر لیدربورد لینک های آنها در صفحات ابتدایی مرورگر به ترتیب نمایش داده میشه"
+)
+
+internal val HOME_ADVERTISING_CARD_SUBTITLES = listOf(
+    "با سکه‌های خود برای وب‌سایتت بازدید واقعی، هدفمند و بر اساس ثانیه دلخواه دریافت کن.",
+    "زمان بیشتر و بازدید بیشتر و مداوم از وبسایتت تاثیر سئوی آن بیشتر خواهد بود",
+    "سکه های بیشتر بگیر بازدید بیشتر دریافت کن و با تداوم باعث سئوی سایتت شو"
+)
 
 internal fun isWelcomeBonusBannerVisible(
     grantedAtMillis: Long,
@@ -171,7 +186,8 @@ fun HomeScreen(
             item {
                 ActionHeroCard(
                     title = "بازدید کسب کن",
-                    subtitle = "با مشاهده وب‌سایت‌های دیگران سکه رایگان دریافت کن و به موجودی خودت اضافه کن.",
+                    subtitle = HOME_VIEWING_CARD_SUBTITLES.first(),
+                    subtitleVariants = HOME_VIEWING_CARD_SUBTITLES.drop(1),
                     buttonText = "شروع مشاهده",
                     icon = Icons.Default.Visibility,
                     badgeText = "دریافت تا ۳۸+ سکه",
@@ -184,7 +200,8 @@ fun HomeScreen(
             item {
                 ActionHeroCard(
                     title = "سایتت را تبلیغ کن",
-                    subtitle = "با سکه‌های خود برای وب‌سایتت بازدید واقعی، هدفمند و بر اساس ثانیه دلخواه دریافت کن.",
+                    subtitle = HOME_ADVERTISING_CARD_SUBTITLES.first(),
+                    subtitleVariants = HOME_ADVERTISING_CARD_SUBTITLES.drop(1),
                     buttonText = "ثبت سفارش بازدید",
                     icon = Icons.Default.RocketLaunch,
                     badgeText = "افزایش رتبه الکسا و سئو",
@@ -895,6 +912,7 @@ private fun HomeHeader(account: UserAccount, onNavigate: (AppScreen) -> Unit) {
 private fun ActionHeroCard(
     title: String,
     subtitle: String,
+    subtitleVariants: List<String> = emptyList(),
     buttonText: String,
     icon: ImageVector,
     badgeText: String,
@@ -902,6 +920,20 @@ private fun ActionHeroCard(
     testTag: String,
     onClick: () -> Unit
 ) {
+    val subtitleMessages = remember(subtitle, subtitleVariants) {
+        listOf(subtitle) + subtitleVariants
+    }
+    var subtitleIndex by remember(title) { mutableIntStateOf(0) }
+
+    LaunchedEffect(title, subtitleMessages) {
+        if (subtitleMessages.size > 1) {
+            while (true) {
+                delay(10_000L)
+                subtitleIndex = (subtitleIndex + 1) % subtitleMessages.size
+            }
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -977,12 +1009,21 @@ private fun ActionHeroCard(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.9f),
-                    lineHeight = 22.sp
-                )
+                AnimatedContent(
+                    targetState = subtitleMessages[subtitleIndex],
+                    transitionSpec = {
+                        fadeIn(tween(350)) togetherWith fadeOut(tween(350))
+                    },
+                    label = "action_hero_subtitle_$testTag"
+                ) { displayedSubtitle ->
+                    Text(
+                        text = displayedSubtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.9f),
+                        lineHeight = 22.sp,
+                        maxLines = 3
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(18.dp))
 
