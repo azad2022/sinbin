@@ -63,6 +63,8 @@ BEGIN
   INTO v_campaign_id, v_campaign_owner, v_campaign_key
   FROM public.campaigns c
   WHERE c.referral_site_key IS NOT NULL
+    AND c.status = 'ACTIVE'
+    AND c.reserved_budget >= c.cost_per_view
     AND c.owner_id NOT IN (v_inviter, v_invitee, v_downstream)
   ORDER BY c.id
   LIMIT 1;
@@ -72,6 +74,8 @@ BEGIN
   FROM public.campaigns c
   WHERE c.referral_site_key IS NOT NULL
     AND c.referral_site_key <> v_campaign_key
+    AND c.status = 'ACTIVE'
+    AND c.reserved_budget >= c.cost_per_view
     AND c.owner_id NOT IN (v_inviter, v_invitee, v_downstream)
   ORDER BY c.id
   LIMIT 1;
