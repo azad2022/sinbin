@@ -786,6 +786,560 @@ $function$;
 REVOKE ALL ON FUNCTION public.set_referral_push_notifications_enabled(boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_referral_push_notifications_enabled(boolean) TO authenticated;
 
+
+ALTER TABLE private.referral_notification_outbox
+  ADD COLUMN IF NOT EXISTS claimed_until timestamptz;
+
+CREATE OR REPLACE FUNCTION public.claim_referral_notifications(
+  p_event_id uuid DEFAULT NULL,
+  p_limit integer DEFAULT 10
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_uid uuid := (SELECT auth.uid());
+  v_limit integer := LEAST(GREATEST(COALESCE(p_limit, 10), 1), 10);
+  v_claimed jsonb;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'UNAUTHORIZED: Authentication token required';
+  END IF;
+  IF COALESCE((SELECT (auth.jwt()->>'is_anonymous')::boolean), false) THEN
+    RAISE EXCEPTION 'UNAUTHORIZED: Anonymous authentication is not allowed';
+  END IF;
+
+  WITH candidates AS (
+    SELECT o.event_id
+    FROM private.referral_notification_outbox o
+    WHERE o.delivered_at IS NULL
+      AND (o.claimed_until IS NULL OR o.claimed_until <= pg_catalog.clock_timestamp())
+      AND (o.actor_id = v_uid OR o.recipient_id = v_uid)
+      AND (p_event_id IS NULL OR o.event_id = p_event_id)
+    ORDER BY o.created_at, o.event_id
+    FOR UPDATE SKIP LOCKED
+    LIMIT v_limit
+  ),
+  claimed AS (
+    UPDATE private.referral_notification_outbox o
+    SET claimed_until = pg_catalog.clock_timestamp() + INTERVAL '3 minutes',
+        last_attempt_at = pg_catalog.clock_timestamp(),
+        attempt_count = attempt_count + 1
+    FROM candidates c
+    WHERE o.event_id = c.event_id
+    RETURNING o.event_id
+  )
+  SELECT COALESCE(
+    pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('event_id', c.event_id)),
+    '[]'::jsonb
+  )
+  INTO v_claimed
+  FROM claimed c;
+
+  RETURN v_claimed;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.claim_referral_notifications(uuid, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.claim_referral_notifications(uuid, integer) TO authenticated;
+
+-- Configure dedicated rate limits for referral mutations.
+CREATE OR REPLACE FUNCTION private.enforce_user_rate_limit(p_user_id uuid, p_action text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+    v_now timestamptz := pg_catalog.clock_timestamp();
+    v_bucket private.rate_limit_buckets%rowtype;
+
+    v_limit_10s integer;
+    v_limit_1m integer;
+    v_limit_5m integer;
+    v_limit_1h integer;
+
+    v_block_10s integer;
+    v_block_1m integer;
+    v_block_5m integer;
+    v_block_1h integer;
+
+    v_count_10s integer;
+    v_count_1m integer;
+    v_count_5m integer;
+    v_count_1h integer;
+
+    v_block_seconds integer := 0;
+    v_retry_after integer := 1;
+begin
+    if p_user_id is null or p_action is null or pg_catalog.btrim(p_action) = '' then
+        return;
+    end if;
+
+    case pg_catalog.btrim(p_action)
+        when '__GLOBAL__' then
+            v_limit_10s := 8;   v_limit_1m := 30; v_limit_5m := 90;  v_limit_1h := 300;
+            v_block_10s := 15;  v_block_1m := 120; v_block_5m := 600; v_block_1h := 3600;
+        when 'create_campaign' then
+            v_limit_10s := 2;   v_limit_1m := 5;  v_limit_5m := 10;  v_limit_1h := 30;
+            v_block_10s := 30;  v_block_1m := 180; v_block_5m := 900; v_block_1h := 3600;
+        when 'transfer_coins' then
+            v_limit_10s := 3;   v_limit_1m := 8;  v_limit_5m := 20;  v_limit_1h := 50;
+            v_block_10s := 30;  v_block_1m := 300; v_block_5m := 1200; v_block_1h := 3600;
+        when 'request_view_session' then
+            v_limit_10s := 4;   v_limit_1m := 12; v_limit_5m := 50;  v_limit_1h := 240;
+            v_block_10s := 15;  v_block_1m := 60;  v_block_5m := 600; v_block_1h := 3600;
+        when 'signal_content_ready' then
+            v_limit_10s := 3;   v_limit_1m := 12; v_limit_5m := 60;  v_limit_1h := 240;
+            v_block_10s := 15;  v_block_1m := 60;  v_block_5m := 600; v_block_1h := 3600;
+        when 'complete_view_session' then
+            v_limit_10s := 3;   v_limit_1m := 10; v_limit_5m := 40;  v_limit_1h := 200;
+            v_block_10s := 15;  v_block_1m := 60;  v_block_5m := 600; v_block_1h := 3600;
+        when 'cancel_view_session' then
+            v_limit_10s := 4;   v_limit_1m := 10; v_limit_5m := 30;  v_limit_1h := 150;
+            v_block_10s := 15;  v_block_1m := 60;  v_block_5m := 600; v_block_1h := 3600;
+        when 'pause_campaign', 'resume_campaign', 'cancel_campaign' then
+            v_limit_10s := 3;   v_limit_1m := 10; v_limit_5m := 25;  v_limit_1h := 100;
+            v_block_10s := 20;  v_block_1m := 120; v_block_5m := 600; v_block_1h := 3600;
+        when 'activate_auto_view' then
+            v_limit_10s := 2;   v_limit_1m := 4;  v_limit_5m := 10;  v_limit_1h := 30;
+            v_block_10s := 30;  v_block_1m := 300; v_block_5m := 1200; v_block_1h := 3600;
+        when 'init_user_account' then
+            v_limit_10s := 3;   v_limit_1m := 6;  v_limit_5m := 15;  v_limit_1h := 30;
+            v_block_10s := 20;  v_block_1m := 120; v_block_5m := 600; v_block_1h := 3600;
+        when 'register_referral' then
+            v_limit_10s := 1;   v_limit_1m := 3;  v_limit_5m := 8;   v_limit_1h := 20;
+            v_block_10s := 30;  v_block_1m := 180; v_block_5m := 900; v_block_1h := 3600;
+        when 'register_push_token' then
+            v_limit_10s := 2;   v_limit_1m := 10; v_limit_5m := 30;  v_limit_1h := 120;
+            v_block_10s := 15;  v_block_1m := 60;  v_block_5m := 300; v_block_1h := 1800;
+        when 'set_referral_push_notifications_enabled' then
+            v_limit_10s := 2;   v_limit_1m := 6;  v_limit_5m := 18;  v_limit_1h := 60;
+            v_block_10s := 15;  v_block_1m := 120; v_block_5m := 600; v_block_1h := 1800;
+        when 'campaign_url_preflight' then
+            v_limit_10s := 2;   v_limit_1m := 6;  v_limit_5m := 12;  v_limit_1h := 30;
+            v_block_10s := 20;  v_block_1m := 120; v_block_5m := 600; v_block_1h := 3600;
+        when 'keyword_resolver' then
+            v_limit_10s := 1;   v_limit_1m := 4;  v_limit_5m := 8;   v_limit_1h := 20;
+            v_block_10s := 30;  v_block_1m := 180; v_block_5m := 900; v_block_1h := 3600;
+        else
+            v_limit_10s := null;
+            v_limit_1m := null;
+            v_limit_5m := null;
+            v_limit_1h := null;
+    end case;
+
+    insert into private.rate_limit_buckets (
+        user_id, action,
+        ten_second_started_at,
+        minute_started_at,
+        five_minute_started_at,
+        hour_started_at
+    )
+    values (
+        p_user_id, pg_catalog.btrim(p_action),
+        v_now, v_now, v_now, v_now
+    )
+    on conflict (user_id, action) do nothing;
+
+    select *
+    into v_bucket
+    from private.rate_limit_buckets
+    where user_id = p_user_id
+      and action = pg_catalog.btrim(p_action)
+    for update;
+
+    if v_bucket.blocked_until is not null and v_bucket.blocked_until > v_now then
+        v_retry_after := greatest(1, ceil(extract(epoch from (v_bucket.blocked_until - v_now)))::integer);
+
+        raise sqlstate 'PGRST'
+        using
+            message = pg_catalog.json_build_object(
+                'code', 'SITEBIN_RATE_LIMITED',
+                'message', 'تعداد درخواست‌های شما برای این عملیات بیش از حد مجاز است.',
+                'details', pg_catalog.json_build_object(
+                    'retry_after_seconds', v_retry_after,
+                    'action', pg_catalog.btrim(p_action)
+                )::text,
+                'hint', 'لطفاً پس از پایان محدودیت دوباره تلاش کنید.'
+            )::text,
+            detail = pg_catalog.json_build_object(
+                'status', 429,
+                'status_text', 'Too Many Requests',
+                'headers', pg_catalog.json_build_object(
+                    'Retry-After', v_retry_after::text,
+                    'Cache-Control', 'no-store'
+                )
+            )::text;
+    end if;
+
+    v_count_10s := case
+        when v_bucket.ten_second_started_at <= v_now - interval '10 seconds' then 1
+        else v_bucket.ten_second_count + 1
+    end;
+
+    v_count_1m := case
+        when v_bucket.minute_started_at <= v_now - interval '1 minute' then 1
+        else v_bucket.minute_count + 1
+    end;
+
+    v_count_5m := case
+        when v_bucket.five_minute_started_at <= v_now - interval '5 minutes' then 1
+        else v_bucket.five_minute_count + 1
+    end;
+
+    v_count_1h := case
+        when v_bucket.hour_started_at <= v_now - interval '1 hour' then 1
+        else v_bucket.hour_count + 1
+    end;
+
+    update private.rate_limit_buckets
+    set
+        ten_second_started_at = case
+            when v_bucket.ten_second_started_at <= v_now - interval '10 seconds' then v_now
+            else v_bucket.ten_second_started_at
+        end,
+        ten_second_count = v_count_10s,
+        minute_started_at = case
+            when v_bucket.minute_started_at <= v_now - interval '1 minute' then v_now
+            else v_bucket.minute_started_at
+        end,
+        minute_count = v_count_1m,
+        five_minute_started_at = case
+            when v_bucket.five_minute_started_at <= v_now - interval '5 minutes' then v_now
+            else v_bucket.five_minute_started_at
+        end,
+        five_minute_count = v_count_5m,
+        hour_started_at = case
+            when v_bucket.hour_started_at <= v_now - interval '1 hour' then v_now
+            else v_bucket.hour_started_at
+        end,
+        hour_count = v_count_1h,
+        updated_at = v_now,
+        blocked_until = null
+    where user_id = p_user_id
+      and action = pg_catalog.btrim(p_action);
+
+    if v_limit_10s is not null then
+        if v_count_1h >= v_limit_1h then
+            v_block_seconds := v_block_1h;
+        elsif v_count_5m >= v_limit_5m then
+            v_block_seconds := v_block_5m;
+        elsif v_count_1m >= v_limit_1m then
+            v_block_seconds := v_block_1m;
+        elsif v_count_10s >= v_limit_10s then
+            v_block_seconds := v_block_10s;
+        end if;
+    end if;
+
+    if v_block_seconds > 0 then
+        update private.rate_limit_buckets
+        set blocked_until = v_now + make_interval(secs => v_block_seconds),
+            updated_at = v_now
+        where user_id = p_user_id
+          and action = pg_catalog.btrim(p_action);
+
+        /*
+         * Hourly exhaustion on high-impact operations is strong evidence of
+         * abusive automation. Escalate to a one-hour account-wide write block.
+         * Viewer timing/telemetry operations deliberately do not trigger this.
+         */
+        if v_count_1h >= v_limit_1h
+           and pg_catalog.btrim(p_action) in (
+               'create_campaign',
+               'transfer_coins',
+               'activate_auto_view',
+               'init_user_account'
+           ) then
+            insert into private.rate_limit_buckets (
+                user_id, action,
+                ten_second_started_at,
+                minute_started_at,
+                five_minute_started_at,
+                hour_started_at,
+                blocked_until,
+                updated_at
+            )
+            values (
+                p_user_id, '__GLOBAL__',
+                v_now, v_now, v_now, v_now,
+                v_now + interval '1 hour',
+                v_now
+            )
+            on conflict (user_id, action) do update
+            set blocked_until = greatest(
+                    coalesce(private.rate_limit_buckets.blocked_until, v_now),
+                    v_now + interval '1 hour'
+                ),
+                updated_at = v_now;
+        end if;
+    end if;
+
+    -- Limit the table footprint lazily per user. A user can only accumulate
+    -- stale action rows from actions they actually used.
+    delete from private.rate_limit_buckets
+    where user_id = p_user_id
+      and action <> pg_catalog.btrim(p_action)
+      and updated_at < v_now - interval '2 hours';
+end;
+$function$
+
+
+-- The completion path locks inviter, viewer and advertiser profiles in UUID order
+-- before the AFTER UPDATE referral trigger can credit two wallets.
+CREATE OR REPLACE FUNCTION public.complete_view_session(p_session_id uuid, p_idempotency_key text)
+ RETURNS json
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+    v_uid UUID := (select auth.uid());
+    v_clean_key TEXT;
+    v_existing_by_key RECORD;
+    v_session RECORD;
+    v_campaign RECORD;
+    v_referral_inviter_id UUID;
+    v_lock_profile_id UUID;
+    v_owner RECORD;
+    v_viewer RECORD;
+    v_first_lock UUID;
+    v_second_lock UUID;
+    v_dummy_profile RECORD;
+    v_elapsed_seconds NUMERIC;
+    v_campaign_completed BOOLEAN := FALSE;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'UNAUTHORIZED: Authentication token required';
+    END IF;
+
+    IF COALESCE((SELECT (auth.jwt()->>'is_anonymous')::boolean), false) THEN
+        RAISE EXCEPTION 'UNAUTHORIZED: Anonymous authentication is not allowed';
+    END IF;
+
+    IF p_session_id IS NULL THEN
+        RAISE EXCEPTION 'INVALID_ARGUMENT: Session ID cannot be null';
+    END IF;
+
+    v_clean_key := trim(p_idempotency_key);
+    IF v_clean_key IS NULL OR length(v_clean_key) = 0 THEN
+        RAISE EXCEPTION 'INVALID_IDEMPOTENCY_KEY: Idempotency key cannot be empty';
+    END IF;
+
+    IF length(v_clean_key) > 128 THEN
+        RAISE EXCEPTION 'INVALID_IDEMPOTENCY_KEY: Idempotency key exceeds maximum length of 128 characters';
+    END IF;
+
+    SELECT * INTO v_existing_by_key
+    FROM public.view_sessions
+    WHERE idempotency_key = v_clean_key;
+
+    IF v_existing_by_key.id IS NOT NULL THEN
+        IF v_existing_by_key.viewer_id <> v_uid THEN
+            RAISE EXCEPTION 'IDEMPOTENCY_KEY_CONFLICT: Key has already been used by another user';
+        END IF;
+        IF v_existing_by_key.id <> p_session_id THEN
+            RAISE EXCEPTION 'IDEMPOTENCY_KEY_CONFLICT: Key has already been associated with a different session';
+        END IF;
+        IF v_existing_by_key.status = 'COMPLETED' THEN
+            SELECT available_coins, lifetime_earned, completed_views_count
+            INTO v_viewer
+            FROM public.profiles
+            WHERE id = v_uid;
+
+            SELECT completed_views >= target_views
+            INTO v_campaign_completed
+            FROM public.campaigns
+            WHERE id = v_existing_by_key.campaign_id;
+
+            RETURN pg_catalog.json_build_object(
+                'success', TRUE,
+                'reward', v_existing_by_key.reward_coins,
+                'already_completed', TRUE,
+                'available_coins', COALESCE(v_viewer.available_coins, 0),
+                'lifetime_earned', COALESCE(v_viewer.lifetime_earned, 0),
+                'completed_views_count', COALESCE(v_viewer.completed_views_count, 0),
+                'campaign_completed', COALESCE(v_campaign_completed, FALSE)
+            );
+        END IF;
+    END IF;
+
+    SELECT * INTO v_session
+    FROM public.view_sessions
+    WHERE id = p_session_id
+    FOR UPDATE;
+
+    IF v_session IS NULL THEN
+        RAISE EXCEPTION 'SESSION_NOT_FOUND: View session does not exist';
+    END IF;
+
+    IF v_session.viewer_id <> v_uid THEN
+        RAISE EXCEPTION 'FORBIDDEN: Session does not belong to the caller';
+    END IF;
+
+    IF v_session.status = 'COMPLETED' THEN
+        SELECT available_coins, lifetime_earned, completed_views_count
+        INTO v_viewer
+        FROM public.profiles
+        WHERE id = v_uid;
+
+        SELECT completed_views >= target_views
+        INTO v_campaign_completed
+        FROM public.campaigns
+        WHERE id = v_session.campaign_id;
+
+        RETURN pg_catalog.json_build_object(
+            'success', TRUE,
+            'reward', v_session.reward_coins,
+            'already_completed', TRUE,
+            'available_coins', COALESCE(v_viewer.available_coins, 0),
+            'lifetime_earned', COALESCE(v_viewer.lifetime_earned, 0),
+            'completed_views_count', COALESCE(v_viewer.completed_views_count, 0),
+            'campaign_completed', COALESCE(v_campaign_completed, FALSE)
+        );
+    END IF;
+
+    IF v_session.status <> 'CONTENT_READY' THEN
+        RAISE EXCEPTION 'INVALID_SESSION_STATUS: Session is % but must be CONTENT_READY to complete', v_session.status;
+    END IF;
+
+    IF v_session.content_ready_at IS NULL THEN
+        RAISE EXCEPTION 'INVALID_SESSION_STATE: Content ready signal was never received';
+    END IF;
+
+    v_elapsed_seconds := extract(epoch from (pg_catalog.clock_timestamp() - v_session.content_ready_at));
+
+    IF v_elapsed_seconds < (v_session.required_duration_seconds - 1.0) THEN
+        RAISE EXCEPTION 'PREMATURE_COMPLETION: Elapsed time (%) is less than required duration (%)',
+            v_elapsed_seconds, v_session.required_duration_seconds;
+    END IF;
+
+    SELECT * INTO v_campaign
+    FROM public.campaigns
+    WHERE id = v_session.campaign_id
+    FOR UPDATE;
+
+    IF v_campaign IS NULL THEN
+        RAISE EXCEPTION 'CAMPAIGN_NOT_FOUND: Associated campaign no longer exists';
+    END IF;
+
+    IF v_campaign.status NOT IN ('ACTIVE', 'PAUSED') THEN
+        RAISE EXCEPTION 'CAMPAIGN_INACTIVE: Campaign is % but must be ACTIVE or PAUSED', v_campaign.status;
+    END IF;
+
+    IF v_campaign.completed_views >= v_campaign.target_views THEN
+        RAISE EXCEPTION 'CAMPAIGN_EXHAUSTED: Campaign has already reached its target view count';
+    END IF;
+
+    IF v_campaign.reserved_budget < v_campaign.cost_per_view THEN
+        RAISE EXCEPTION 'INSUFFICIENT_CAMPAIGN_BUDGET: Campaign reserved budget (%) is less than cost per view (%)',
+            v_campaign.reserved_budget, v_campaign.cost_per_view;
+    END IF;
+
+    v_campaign_completed := (v_campaign.completed_views + 1 >= v_campaign.target_views);
+
+    -- Referral rewards also touch the direct inviter's wallet. Lock all
+    -- participating profiles in global UUID order before the completion trigger
+    -- updates referral progress, preserving deterministic lock ordering.
+    SELECT r.inviter_id
+    INTO v_referral_inviter_id
+    FROM public.referrals r
+    WHERE r.invitee_id = v_uid
+      AND v_session.started_at > r.created_at;
+
+    FOR v_lock_profile_id IN
+        SELECT DISTINCT participant_id
+        FROM pg_catalog.unnest(
+            ARRAY[v_campaign.owner_id, v_uid, v_referral_inviter_id]::uuid[]
+        ) AS lock_ids(participant_id)
+        WHERE participant_id IS NOT NULL
+        ORDER BY participant_id
+    LOOP
+        PERFORM 1
+        FROM public.profiles p
+        WHERE p.id = v_lock_profile_id
+        FOR UPDATE;
+    END LOOP;
+
+    v_first_lock := CASE WHEN v_campaign.owner_id < v_uid THEN v_campaign.owner_id ELSE v_uid END;
+    v_second_lock := CASE WHEN v_campaign.owner_id < v_uid THEN v_uid ELSE v_campaign.owner_id END;
+
+    SELECT * INTO v_dummy_profile FROM public.profiles WHERE id = v_first_lock FOR UPDATE;
+    IF v_first_lock <> v_second_lock THEN
+        SELECT * INTO v_dummy_profile FROM public.profiles WHERE id = v_second_lock FOR UPDATE;
+    END IF;
+
+    SELECT * INTO v_owner FROM public.profiles WHERE id = v_campaign.owner_id;
+    SELECT * INTO v_viewer FROM public.profiles WHERE id = v_uid;
+
+    IF v_owner.reserved_coins < v_campaign.cost_per_view THEN
+        RAISE EXCEPTION 'INSUFFICIENT_RESERVED_BALANCE: Campaign owner reserved balance (%) is less than cost per view (%)',
+            v_owner.reserved_coins, v_campaign.cost_per_view;
+    END IF;
+
+    UPDATE public.campaigns
+    SET completed_views = completed_views + 1,
+        spent_budget = spent_budget + cost_per_view,
+        reserved_budget = reserved_budget - cost_per_view,
+        status = CASE WHEN completed_views + 1 >= target_views THEN 'COMPLETED' ELSE status END,
+        updated_at = pg_catalog.clock_timestamp()
+    WHERE id = v_campaign.id;
+
+    UPDATE public.profiles
+    SET reserved_coins = reserved_coins - v_campaign.cost_per_view,
+        lifetime_spent = lifetime_spent + v_campaign.cost_per_view,
+        received_views_count = received_views_count + 1,
+        updated_at = pg_catalog.clock_timestamp()
+    WHERE id = v_campaign.owner_id;
+
+    UPDATE public.profiles
+    SET available_coins = available_coins + v_session.reward_coins,
+        lifetime_earned = lifetime_earned + v_session.reward_coins,
+        completed_views_count = completed_views_count + 1,
+        updated_at = pg_catalog.clock_timestamp()
+    WHERE id = v_uid
+    RETURNING available_coins, lifetime_earned, completed_views_count
+    INTO v_viewer;
+
+    UPDATE public.view_sessions
+    SET status = 'COMPLETED',
+        completed_at = pg_catalog.clock_timestamp(),
+        idempotency_key = v_clean_key
+    WHERE id = v_session.id;
+
+    INSERT INTO public.coin_ledger(
+        user_id, amount, transaction_type, description, reference_id, idempotency_key, created_at
+    )
+    VALUES(
+        v_uid, v_session.reward_coins, 'VIEW_REWARD',
+        'مشاهده موفق ' || v_session.required_duration_seconds || ' ثانیه‌ای از ' || v_campaign.domain,
+        v_campaign.id::text, v_clean_key, pg_catalog.clock_timestamp()
+    );
+
+    INSERT INTO public.coin_ledger(
+        user_id, amount, transaction_type, description, reference_id, idempotency_key, created_at
+    )
+    VALUES(
+        v_campaign.owner_id, -v_campaign.cost_per_view, 'CAMPAIGN_SPEND',
+        'مصرف بودجه بازدید از ' || v_campaign.domain,
+        v_campaign.id::text, 'spend_' || v_session.id::text, pg_catalog.clock_timestamp()
+    );
+
+    RETURN pg_catalog.json_build_object(
+        'success', TRUE,
+        'reward', v_session.reward_coins,
+        'already_completed', FALSE,
+        'available_coins', COALESCE(v_viewer.available_coins, 0),
+        'lifetime_earned', COALESCE(v_viewer.lifetime_earned, 0),
+        'completed_views_count', COALESCE(v_viewer.completed_views_count, 0),
+        'campaign_completed', v_campaign_completed
+    );
+END;
+$function$
+
+
 -- Extend the account-rebind transaction so profile FK cascades cannot remove
 -- referral relationships, payout audit rows, tokens or pending notifications.
 CREATE OR REPLACE FUNCTION private.rebind_user_account(p_old_uid uuid, p_new_uid uuid, p_install_id text)
