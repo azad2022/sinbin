@@ -25,7 +25,7 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Validate referral Edge Functions
+      - name: Validate referral Edge Functions and strict TypeScript types
         run: |
           deno check --no-lock supabase/functions/campaign-url-preflight/index.ts
           deno check --no-lock supabase/functions/send-referral-push/index.ts
