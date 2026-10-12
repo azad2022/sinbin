@@ -498,7 +498,7 @@ class SupabaseApiClient(
 
     suspend fun getReferralStatus(): Result<ReferralStatus> = withContext(Dispatchers.IO) {
         try {
-            val response = callRpc("get_referral_status", JSONObject())
+            val response = callRpcGet("get_referral_status")
             val membership = if (response.isNull("my_referral")) {
                 null
             } else {
@@ -1275,26 +1275,57 @@ class SupabaseApiClient(
         return if (raw.isBlank() || raw == "null") JSONObject() else JSONObject(raw)
     }
 
-    private fun callRpcRaw(functionName: String, body: JSONObject, isRetry: Boolean = false): String {
-        val token = getValidUserToken()
+    /**
+     * PostgREST permits GET/HEAD for read-only (STABLE/IMMUTABLE) RPCs.
+     * Read-only referral status is intentionally queried with GET rather than
+     * POST; POST is rejected by PostgREST with HTTP 405 for this function.
+     */
+    private fun callRpcGet(functionName: String): JSONObject {
+        val raw = callRpcGetRaw(functionName)
+        return if (raw.isBlank() || raw == "null") JSONObject() else JSONObject(raw)
+    }
+
+    private fun callRpcRaw(
+        functionName: String,
+        body: JSONObject,
+        isRetry: Boolean = false
+    ): String = executeRpcRequest(functionName, isRetry) { token ->
         val requestBody = body.toString().toRequestBody(jsonMediaType)
-        val request = Request.Builder()
+        Request.Builder()
             .url("$supabaseUrl/rest/v1/rpc/$functionName")
             .addHeader("apikey", supabasePublishableKey)
             .addHeader("Authorization", "Bearer $token")
             .post(requestBody)
             .build()
+    }
 
-        val response = httpClient.newCall(request).execute()
+    private fun callRpcGetRaw(functionName: String, isRetry: Boolean = false): String =
+        executeRpcRequest(functionName, isRetry) { token ->
+            Request.Builder()
+                .url("$supabaseUrl/rest/v1/rpc/$functionName")
+                .addHeader("apikey", supabasePublishableKey)
+                .addHeader("Authorization", "Bearer $token")
+                .get()
+                .build()
+        }
+
+    private fun executeRpcRequest(
+        functionName: String,
+        isRetry: Boolean,
+        requestFactory: (String) -> Request
+    ): String {
+        val token = getValidUserToken()
+        val response = httpClient.newCall(requestFactory(token)).execute()
         val raw = response.body?.string() ?: ""
 
-        // If 401 Unauthorized occurs, attempt a proactive token refresh and retry ONCE
+        // If authentication expires, refresh the session and retry the exact same
+        // HTTP method once. In particular, GET must never be retried as POST.
         if ((response.code == 401 || response.code == 403) && !isRetry) {
             val refresh = currentRefreshToken
             if (!refresh.isNullOrBlank()) {
                 val newToken = refreshSession(refresh)
                 if (newToken != null) {
-                    return callRpcRaw(functionName, body, isRetry = true)
+                    return executeRpcRequest(functionName, isRetry = true, requestFactory)
                 }
             }
         }
@@ -1331,7 +1362,7 @@ class SupabaseApiClient(
         if (!response.isSuccessful) {
             val errObj = runCatching { JSONObject(raw) }.getOrNull()
             val errMsg = errObj?.optString("message") ?: "Server error ${response.code}"
-            throw IOException(errMsg)
+            throw IOException("$functionName failed (HTTP ${response.code}): $errMsg")
         }
         return raw
     }
