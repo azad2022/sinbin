@@ -19,6 +19,9 @@ import com.example.data.model.DailyBonusResult
 import com.example.data.model.WeeklyLeaderboard
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
+import com.example.data.model.ReferralStatus
+import com.example.data.model.ReferralRegistrationResult
+import com.example.data.backend.SupabaseApiClient
 import com.example.data.model.ViewCompletionResult
 import com.example.data.model.ViewSession
 import com.example.data.backend.WebsitePreflightResult
@@ -103,6 +106,9 @@ class SiteBinRepository(
 
     private val _campaigns = MutableStateFlow<List<Campaign>>(emptyList())
     val campaigns: StateFlow<List<Campaign>> = _campaigns.asStateFlow()
+
+    private val _referralStatus = MutableStateFlow<ReferralStatus?>(null)
+    val referralStatus: StateFlow<ReferralStatus?> = _referralStatus.asStateFlow()
 
     private val _reports = MutableStateFlow<List<AbuseReport>>(emptyList())
     val reports: StateFlow<List<AbuseReport>> = _reports.asStateFlow()
@@ -196,6 +202,50 @@ class SiteBinRepository(
         engine.fetchCampaigns(acc.userId)
             .onSuccess { _campaigns.value = it }
             .onFailure { throw it }
+    }
+
+    private fun referralClient(): SupabaseApiClient? = engine as? SupabaseApiClient
+
+    suspend fun refreshReferralStatus(): Result<ReferralStatus> {
+        val client = referralClient()
+            ?: return Result.failure(IllegalStateException("Referral operations require the configured Supabase backend."))
+        val result = client.getReferralStatus()
+        result.onSuccess { _referralStatus.value = it }
+        return result
+    }
+
+    suspend fun registerReferral(inviterHandle: String): Result<ReferralRegistrationResult> {
+        val client = referralClient()
+            ?: return Result.failure(IllegalStateException("Referral operations require the configured Supabase backend."))
+        val result = client.registerReferral(inviterHandle)
+        result.onSuccess { registration ->
+            if (registration.success) {
+                // Push delivery is a best-effort side effect; it must never roll
+                // back or misreport a successfully committed referral relationship.
+                registration.eventId?.let { eventId ->
+                    scope.launch { client.dispatchReferralNotifications(eventId) }
+                }
+            }
+        }
+        return result
+    }
+
+    suspend fun registerReferralPushToken(token: String, enabled: Boolean): Result<Unit> {
+        val client = referralClient()
+            ?: return Result.failure(IllegalStateException("Referral notifications require the configured Supabase backend."))
+        return client.registerReferralPushToken(token, enabled)
+    }
+
+    suspend fun setReferralPushNotificationsEnabled(enabled: Boolean): Result<Unit> {
+        val client = referralClient()
+            ?: return Result.failure(IllegalStateException("Referral notifications require the configured Supabase backend."))
+        return client.setReferralPushNotificationsEnabled(enabled)
+    }
+
+    suspend fun dispatchReferralNotifications(eventId: String? = null): Result<Unit> {
+        val client = referralClient()
+            ?: return Result.failure(IllegalStateException("Referral notifications require the configured Supabase backend."))
+        return client.dispatchReferralNotifications(eventId)
     }
 
     suspend fun transferCoins(

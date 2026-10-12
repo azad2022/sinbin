@@ -43,6 +43,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -74,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.UserAccount
 import com.example.data.model.WeeklyLeaderboard
+import com.example.data.model.ReferralStatus
 import com.example.ui.theme.SiteBinBlue
 import com.example.ui.theme.SiteBinGold
 import com.example.ui.theme.SiteBinGoldLight
@@ -107,8 +111,17 @@ fun SettingsScreen(
     isUpdatingAutoView: Boolean,
     onToggleAutoView: (Boolean) -> Unit,
     onOpenHelp: () -> Unit,
+    referralStatus: ReferralStatus? = null,
+    isRefreshingReferralStatus: Boolean = false,
+    referralStatusLoadFailed: Boolean = false,
+    isRegisteringReferral: Boolean = false,
+    onRegisterReferral: (String) -> Unit = {},
+    onRefreshReferralStatus: () -> Unit = {},
+    referralNotificationsEnabled: Boolean = false,
+    onToggleReferralNotifications: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var referralCode by remember { mutableStateOf("") }
     var showTermsDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
@@ -223,7 +236,7 @@ fun SettingsScreen(
                                 .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                         )
                         Text(
-                            text = "شناسه کاربری شما",
+                            text = "شناسه کاربری و کد دعوت شما",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -259,7 +272,7 @@ fun SettingsScreen(
                             }
                         }
                         Text(
-                            text = "این شناسه را برای دریافت سکه با دیگران به اشتراک بگذارید.",
+                            text = "این شناسه هم برای دریافت سکه و هم برای دعوت دوستان استفاده می‌شود.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -273,6 +286,161 @@ fun SettingsScreen(
                         account = account,
                         activeCampaignsCount = activeCampaignsCount
                     )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "دعوت دوستان و پاداش‌ها",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "شناسه‌تان را با دوستان به اشتراک بگذارید. آن‌ها می‌توانند از بازدیدهای معتبر سکه بگیرند و با تکمیل دو هدف دعوت، هر دو پاداش دریافت کنید.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        when {
+                            isRefreshingReferralStatus && referralStatus == null -> {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Text("در حال دریافت آمار دعوت…", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                            referralStatusLoadFailed && referralStatus == null -> {
+                                Text(
+                                    text = "دریافت آمار دعوت ناموفق بود. وضعیت حساب و موجودی شما تغییری نکرده است.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                TextButton(
+                                    onClick = onRefreshReferralStatus,
+                                    enabled = !isRefreshingReferralStatus
+                                ) { Text("تلاش مجدد") }
+                            }
+                            referralStatus == null -> {
+                                Text(
+                                    text = "برای مشاهده وضعیت دعوت، آمار را تازه‌سازی کنید.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                TextButton(onClick = onRefreshReferralStatus) { Text("تازه‌سازی آمار") }
+                            }
+                            else -> {
+                                val status = referralStatus
+                                if (status.myReferral == null) {
+                                    OutlinedTextField(
+                                        value = referralCode,
+                                        onValueChange = { referralCode = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text("کد دعوت دعوت‌کننده") },
+                                        placeholder = { Text("شناسه کاربری دوستتان") },
+                                        singleLine = true,
+                                        enabled = !isRegisteringReferral
+                                    )
+                                    Text(
+                                        text = "هر حساب فقط یک‌بار می‌تواند دعوت‌کننده خود را ثبت کند. بعد از ثبت، کد قابل تغییر نیست.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Button(
+                                        onClick = {
+                                            onRegisterReferral(referralCode)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        enabled = referralCode.isNotBlank() && !isRegisteringReferral
+                                    ) {
+                                        if (isRegisteringReferral) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                        }
+                                        Text(if (isRegisteringReferral) "در حال ثبت…" else "ثبت کد دعوت")
+                                    }
+                                } else {
+                                    Text(
+                                        text = "دعوت‌کننده شما: " + status.myReferral.inviterHandle,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "رابطه دعوت ثبت و قفل شده است؛ بازدیدهای پیش از ثبت دعوت محاسبه نمی‌شوند.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    ReferralProgressRow(
+                                        title = "بازدید معتبر تکمیل‌شده",
+                                        count = status.myReferral.completedViewsCount,
+                                        target = 100
+                                    )
+                                    ReferralProgressRow(
+                                        title = "وب‌سایت متفاوت",
+                                        count = status.myReferral.uniqueWebsitesCount,
+                                        target = 500
+                                    )
+                                    Text(
+                                        text = "پاداش ۱۰۰ بازدید: " +
+                                            if (status.myReferral.tier100Paid) "پرداخت شد" else "در انتظار تکمیل شرط",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (status.myReferral.tier100Paid) SiteBinSuccess else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "پاداش ۵۰۰ وب‌سایت متفاوت: " +
+                                            if (status.myReferral.tier500Paid) "پرداخت شد" else "در انتظار تکمیل شرط",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (status.myReferral.tier500Paid) SiteBinSuccess else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                                Text(
+                                    text = "آمار زیرمجموعه‌های مستقیم شما",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    ReferralStatTile(
+                                        title = "دعوت مستقیم",
+                                        value = status.directInviteCount.toString(),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    ReferralStatTile(
+                                        title = "پاداش ۱۰۰ بازدید",
+                                        value = status.directTier100CompletedCount.toString(),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    ReferralStatTile(
+                                        title = "پاداش ۵۰۰ سایت",
+                                        value = status.directTier500CompletedCount.toString(),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                Text(
+                                    text = "کل سکه‌های دریافتی از دعوت‌ها: " +
+                                        java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
+                                            .format(status.referralCoinsEarned),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -307,6 +475,14 @@ fun SettingsScreen(
                         subtitle = "اطلاع‌رسانی هنگام دریافت سکه",
                         checked = notificationsEnabled,
                         onCheckedChange = onToggleNotifications
+                    )
+
+                    SettingsToggleRow(
+                        icon = Icons.Default.Notifications,
+                        title = "اعلان‌های زیرمجموعه‌ها",
+                        subtitle = "هنگام ثبت دعوت جدید، به شما اطلاع داده شود",
+                        checked = referralNotificationsEnabled,
+                        onCheckedChange = onToggleReferralNotifications
                     )
 
                     SettingsToggleRow(
@@ -647,6 +823,60 @@ private fun RankMedalBadge(
                     color = numeralColor
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ReferralProgressRow(
+    title: String,
+    count: Int,
+    target: Int
+) {
+    val safeCount = count.coerceAtLeast(0)
+    val progress = (safeCount.toFloat() / target.toFloat()).coerceIn(0f, 1f)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(title, style = MaterialTheme.typography.bodySmall)
+            Text(
+                safeCount.coerceAtMost(target).toString() + " / " + target,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        LinearProgressIndicator(
+            progress = progress,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun ReferralStatTile(
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                title,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
