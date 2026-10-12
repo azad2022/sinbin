@@ -144,6 +144,13 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         viewModel.setNotificationsEnabled(granted)
+        if (granted) {
+            viewModel.syncReferralPushToken(force = true)
+        } else {
+            // Android's notification permission is shared by both notification
+            // categories. Keep the referral toggle consistent with a denial.
+            viewModel.setReferralNotificationsEnabled(false)
+        }
         prefs.edit().putBoolean("coin_transfer_notification_permission_asked", true).apply()
     }
 
