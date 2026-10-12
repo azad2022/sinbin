@@ -115,6 +115,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     val referralStatus: StateFlow<ReferralStatus?> = repository.referralStatus
     private val _isRefreshingReferralStatus = MutableStateFlow(false)
     val isRefreshingReferralStatus: StateFlow<Boolean> = _isRefreshingReferralStatus.asStateFlow()
+    private var referralStatusRefreshQueued = false
     private val _referralStatusLoadFailed = MutableStateFlow(false)
     val referralStatusLoadFailed: StateFlow<Boolean> = _referralStatusLoadFailed.asStateFlow()
     private val _isRegisteringReferral = MutableStateFlow(false)
@@ -188,7 +189,12 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshReferralStatus() {
-        if (_isRefreshingReferralStatus.value) return
+        if (_isRefreshingReferralStatus.value) {
+            // A successful registration can race the initial status fetch. Queue
+            // one follow-up instead of dropping the post-registration refresh.
+            referralStatusRefreshQueued = true
+            return
+        }
         viewModelScope.launch {
             _isRefreshingReferralStatus.value = true
             try {
@@ -208,6 +214,10 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                     .onFailure { _referralStatusLoadFailed.value = true }
             } finally {
                 _isRefreshingReferralStatus.value = false
+                if (referralStatusRefreshQueued) {
+                    referralStatusRefreshQueued = false
+                    refreshReferralStatus()
+                }
             }
         }
     }
