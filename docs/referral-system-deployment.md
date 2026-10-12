@@ -14,9 +14,10 @@ This feature is server-authoritative. The client submits only the inviter's exis
 ## Required rollout order
 
 1. Merge the source and migration files into the deployment branch after CI passes.
-2. Deploy the updated `campaign-url-preflight` Edge Function **before** applying `20261012163000_sitebin_referral_system.sql`. The new database trigger consumes the registrable-site metadata stored by preflight.
+2. Deploy the updated `campaign-url-preflight` Edge Function **before** applying `20261012184746_sitebin_referral_system.sql`. The new database trigger consumes the registrable-site metadata stored by preflight.
 3. Apply the SQL migration and verify its version in Supabase migration history.
 4. Deploy the `send-referral-push` Edge Function with JWT verification enabled.
+4a. Apply `20261012190000_sitebin_referral_reward_ledger_index.sql` when present in the merged migration history; it covers the reward-ledger foreign key.
 5. Run `supabase/tests/sitebin_referral_rewards.sql` against a disposable database or an explicitly authorized test database. It runs inside a transaction and ends with `ROLLBACK`; never remove that rollback when running against a shared environment.
 6. Complete device testing with two independent accounts/devices, including one invite, the 100-view milestone, and a controlled 500-domain milestone test. Verify the live ledger, not only the UI.
 
