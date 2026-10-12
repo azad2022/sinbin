@@ -49,7 +49,12 @@ function decodePem(value: string): ArrayBuffer {
 function getServiceAccount(): { project_id: string; client_email: string; private_key: string } {
   const raw = Deno.env.get("FCM_SERVICE_ACCOUNT_JSON");
   if (!raw) throw new Error("FCM_NOT_CONFIGURED");
-  const account = JSON.parse(raw) as Record<string, unknown>;
+  let account: Record<string, unknown>;
+  try {
+    account = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    throw new Error("FCM_SERVICE_ACCOUNT_INVALID");
+  }
   const projectId = typeof account.project_id === "string" ? account.project_id.trim() : "";
   const email = typeof account.client_email === "string" ? account.client_email.trim() : "";
   const privateKey = typeof account.private_key === "string" ? account.private_key : "";
@@ -121,7 +126,6 @@ async function getAdminClient(): Promise<SupabaseClient> {
     }
   }
   if (!url || !secret) throw new Error("SUPABASE_SERVER_CONFIG_MISSING");
-  const { createClient } = await import("npm:@supabase/supabase-js@2");
   return createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
@@ -133,45 +137,30 @@ function safeError(error: unknown): string {
 async function dispatchOne(
   admin: SupabaseClient,
   accessToken: string,
-  event: OutboxEvent,
+  event: OutboxEvent & { tokens: Array<{ token: string }>; has_registered_tokens: boolean },
 ): Promise<"sent" | "skipped" | "retry"> {
-  const privateDb = admin.schema("private");
-  const { data: allTokens, error: tokenError } = await privateDb
-    .from("referral_push_tokens")
-    .select("token,user_id,enabled")
-    .eq("user_id", event.recipient_id);
-  if (tokenError) throw new Error("PUSH_TOKEN_LOOKUP_FAILED");
-
-  const tokens = (allTokens ?? []) as Array<PushToken & { enabled: boolean }>;
-  const enabled = tokens.filter((item) => item.enabled);
-
-  if (enabled.length === 0) {
-    // Don't hold events forever for users who explicitly disabled push. If this
-    // recipient has never registered a token, release the lease so next app
-    // foreground/token registration can deliver it.
-    if (tokens.length > 0) {
-      const { error } = await privateDb.from("referral_notification_outbox")
-        .update({ delivered_at: new Date().toISOString(), claimed_until: null, last_error: "PUSH_DISABLED" })
-        .eq("event_id", event.event_id);
-      if (error) throw new Error("OUTBOX_SKIP_UPDATE_FAILED");
-      return "skipped";
-    }
-    const { error } = await privateDb.from("referral_notification_outbox")
-      .update({ claimed_until: null, last_error: "NO_PUSH_TOKEN" })
-      .eq("event_id", event.event_id);
-    if (error) throw new Error("OUTBOX_RELEASE_FAILED");
-    return "retry";
+  const tokens = event.tokens ?? [];
+  if (tokens.length === 0) {
+    const outcome = event.has_registered_tokens ? "SKIPPED" : "NO_TOKEN";
+    const { error } = await admin.rpc("finish_referral_notification_delivery", {
+      p_event_id: event.event_id,
+      p_outcome: outcome,
+      p_error: outcome === "NO_TOKEN" ? "No FCM token is registered for this recipient." : null,
+      p_invalid_tokens: [],
+    });
+    if (error) throw new Error("OUTBOX_FINISH_FAILED");
+    return outcome === "SKIPPED" ? "skipped" : "retry";
   }
 
   const serviceAccount = getServiceAccount();
   const payload = event.payload ?? {};
   const title = typeof payload.title === "string" ? payload.title : "زیرمجموعه جدید";
-  const body = typeof payload.body === "string" ? payload.body : "یک کاربر با کد دعوت شما ثبت شد.";
+  const body = typeof payload.body === "string" ? payload.body : "یک کاربر زیرمجموعه مستقیم شما شد.";
   let anySent = false;
   const invalidTokens: string[] = [];
   const errors: string[] = [];
 
-  for (const target of enabled) {
+  for (const target of tokens) {
     try {
       const response = await fetch(
         "https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(serviceAccount.project_id) + "/messages:send",
@@ -202,7 +191,7 @@ async function dispatchOne(
         continue;
       }
       const responseBody = await response.text();
-      if (response.status === 404 || responseBody.includes("UNREGISTERED")) {
+      if (responseBody.includes("UNREGISTERED")) {
         invalidTokens.push(target.token);
       } else {
         errors.push("FCM_" + response.status);
@@ -212,28 +201,15 @@ async function dispatchOne(
     }
   }
 
-  if (invalidTokens.length > 0) {
-    const { error } = await privateDb.from("referral_push_tokens").delete().in("token", invalidTokens);
-    if (error) errors.push("INVALID_TOKEN_CLEANUP_FAILED");
-  }
-
-  if (anySent) {
-    const { error } = await privateDb.from("referral_notification_outbox")
-      .update({ delivered_at: new Date().toISOString(), claimed_until: null, last_error: null })
-      .eq("event_id", event.event_id);
-    if (error) throw new Error("OUTBOX_DELIVERY_UPDATE_FAILED");
-    return "sent";
-  }
-
-  const retryAt = new Date(Date.now() + CLAIM_LEASE_MINUTES * 60_000).toISOString();
-  const { error } = await privateDb.from("referral_notification_outbox")
-    .update({
-      claimed_until: retryAt,
-      last_error: errors.slice(0, 3).join(",") || "NO_ENABLED_PUSH_TARGET",
-    })
-    .eq("event_id", event.event_id);
-  if (error) throw new Error("OUTBOX_FAILURE_UPDATE_FAILED");
-  return "retry";
+  const outcome = anySent ? "SENT" : "RETRY";
+  const { error } = await admin.rpc("finish_referral_notification_delivery", {
+    p_event_id: event.event_id,
+    p_outcome: outcome,
+    p_error: errors.slice(0, 3).join(",") || (anySent ? null : "NO_FCM_TARGET_ACCEPTED"),
+    p_invalid_tokens: invalidTokens,
+  });
+  if (error) throw new Error("OUTBOX_FINISH_FAILED");
+  return anySent ? "sent" : "retry";
 }
 
 export default {
@@ -290,17 +266,22 @@ export default {
         : [];
       if (ids.length === 0) return json({ success: true, sent: 0, skipped: 0, retry: 0 });
 
-      const { data: events, error: eventError } = await admin.schema("private")
-        .from("referral_notification_outbox")
-        .select("event_id,referral_id,event_type,actor_id,recipient_id,payload,attempt_count")
-        .in("event_id", ids);
+      const { data: events, error: eventError } = await admin.rpc("load_referral_notification_delivery", {
+        p_event_ids: ids,
+      });
       if (eventError) throw new Error("OUTBOX_READ_FAILED");
+
+      const parsedEvents = Array.isArray(events) ? events as Array<OutboxEvent & {
+        tokens: Array<{ token: string }>;
+        has_registered_tokens: boolean;
+      }> : [];
+      if (parsedEvents.length === 0) return json({ success: true, sent: 0, skipped: 0, retry: 0 });
 
       const accessToken = await createFcmAccessToken();
       let sent = 0;
       let skipped = 0;
       let retry = 0;
-      for (const event of (events ?? []) as OutboxEvent[]) {
+      for (const event of parsedEvents) {
         const result = await dispatchOne(admin, accessToken, event);
         if (result === "sent") sent++;
         else if (result === "skipped") skipped++;
