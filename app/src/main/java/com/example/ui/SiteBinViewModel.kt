@@ -266,7 +266,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         ) return
 
         val now = SystemClock.elapsedRealtime()
-        if (!force && now - lastReferralTokenSyncAt < 5 * 60_000L) return
+        if (!force && lastReferralTokenSyncAt > 0L &&
+            now - lastReferralTokenSyncAt < 5 * 60_000L
+        ) return
         referralTokenSyncInFlight = true
         lastReferralTokenSyncAt = now
 
