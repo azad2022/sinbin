@@ -91,6 +91,10 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        if (intent.getBooleanExtra("sitebin_open_referral_settings", false)) {
+            viewModel.navigateTo(AppScreen.SETTINGS)
+        }
+
         enableEdgeToEdge()
 
         setContent {
@@ -98,6 +102,14 @@ class MainActivity : ComponentActivity() {
             SiteBinTheme(darkTheme = isDarkTheme) {
                 MainAppContent(viewModel = viewModel)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("sitebin_open_referral_settings", false)) {
+            viewModel.navigateTo(AppScreen.SETTINGS)
         }
     }
 }
@@ -117,6 +129,11 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     val transactions by viewModel.transactions.collectAsState()
     val dailyBonus by viewModel.dailyBonus.collectAsState()
     val weeklyLeaderboard by viewModel.weeklyLeaderboard.collectAsState()
+    val referralStatus by viewModel.referralStatus.collectAsState()
+    val isRefreshingReferralStatus by viewModel.isRefreshingReferralStatus.collectAsState()
+    val referralStatusLoadFailed by viewModel.referralStatusLoadFailed.collectAsState()
+    val isRegisteringReferral by viewModel.isRegisteringReferral.collectAsState()
+    val referralNotificationsEnabled by viewModel.referralNotificationsEnabled.collectAsState()
     val viewerState by viewModel.viewerState.collectAsState()
     val autoViewEnabled by viewModel.autoViewEnabled.collectAsState()
     val isUpdatingAutoView by viewModel.isUpdatingAutoView.collectAsState()
@@ -131,6 +148,16 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     }
 
     val notificationsEnabled by viewModel.notificationsEnabled.collectAsState()
+
+    val referralNotificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        prefs.edit().putBoolean("referral_notification_permission_asked", true).apply()
+        viewModel.setReferralNotificationsEnabled(granted)
+        if (!granted) {
+            snackbarHostState.showSnackbar("برای دریافت اعلان زیرمجموعه‌ها، اجازه اعلان SiteBin را فعال کنید.")
+        }
+    }
 
     LaunchedEffect(currentScreen, notificationsEnabled) {
         if (
@@ -350,6 +377,28 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                     } else {
                                         viewModel.setNotificationsEnabled(enabled)
+                                    }
+                                },
+                                referralStatus = referralStatus,
+                                isRefreshingReferralStatus = isRefreshingReferralStatus,
+                                referralStatusLoadFailed = referralStatusLoadFailed,
+                                isRegisteringReferral = isRegisteringReferral,
+                                onRegisterReferral = viewModel::registerReferral,
+                                onRefreshReferralStatus = viewModel::refreshReferralStatus,
+                                referralNotificationsEnabled = referralNotificationsEnabled,
+                                onToggleReferralNotifications = { enabled ->
+                                    if (
+                                        enabled &&
+                                        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                                        ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.POST_NOTIFICATIONS
+                                        ) != PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        prefs.edit().putBoolean("referral_notification_permission_asked", true).apply()
+                                        referralNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        viewModel.setReferralNotificationsEnabled(enabled)
                                     }
                                 },
                                 autoViewEnabled = autoViewEnabled,
