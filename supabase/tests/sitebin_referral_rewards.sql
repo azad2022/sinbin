@@ -59,29 +59,74 @@ BEGIN
     (v_invitee, v_handle_invitee, 'inst_ref_test_' || replace(v_invitee::text, '-', ''), 100, 0),
     (v_downstream, v_handle_downstream, 'inst_ref_test_' || replace(v_downstream::text, '-', ''), 100, 0);
 
-  SELECT c.id, c.owner_id, c.referral_site_key
-  INTO v_campaign_id, v_campaign_owner, v_campaign_key
-  FROM public.campaigns c
-  WHERE c.referral_site_key IS NOT NULL
-    AND c.status = 'ACTIVE'
-    AND c.reserved_budget >= c.cost_per_view
-    AND c.owner_id NOT IN (v_inviter, v_invitee, v_downstream)
-  ORDER BY c.id
-  LIMIT 1;
+  v_campaign_owner := v_downstream;
+  v_campaign2_owner := v_downstream;
+  v_campaign_key := 'example.com';
+  v_campaign2_key := 'example.net';
 
-  SELECT c.id, c.owner_id, c.referral_site_key
-  INTO v_campaign2_id, v_campaign2_owner, v_campaign2_key
-  FROM public.campaigns c
-  WHERE c.referral_site_key IS NOT NULL
-    AND c.referral_site_key <> v_campaign_key
-    AND c.status = 'ACTIVE'
-    AND c.reserved_budget >= c.cost_per_view
-    AND c.owner_id NOT IN (v_inviter, v_invitee, v_downstream)
-  ORDER BY c.id
-  LIMIT 1;
+  -- Seed two synthetic, server-validated preflight tokens and campaigns owned
+  -- by a synthetic third-party profile. The test never locks or rewrites a
+  -- real user's campaign.
+  INSERT INTO private.campaign_preflight_tokens(
+    token_hash, user_id, source_url, normalized_url, domain, final_url,
+    http_status, redirect_count, response_ms, content_type, content_length,
+    viewer_compatibility, quality_score, diagnostics, created_at, expires_at, consumed_at
+  )
+  VALUES
+  (
+    pg_catalog.md5(gen_random_uuid()::text) || pg_catalog.md5(gen_random_uuid()::text),
+    v_campaign_owner,
+    'https://ref-test-1.example.com/',
+    'https://ref-test-1.example.com/',
+    'ref-test-1.example.com',
+    'https://ref-test-1.example.com/',
+    200, 0, 25, 'text/html', 100, 'COMPATIBLE', 100,
+    pg_catalog.jsonb_build_object('diagnostics', '[]'::jsonb, 'referral_site_key', v_campaign_key),
+    pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp() + INTERVAL '10 minutes',
+    pg_catalog.clock_timestamp()
+  ),
+  (
+    pg_catalog.md5(gen_random_uuid()::text) || pg_catalog.md5(gen_random_uuid()::text),
+    v_campaign2_owner,
+    'https://ref-test-2.example.net/',
+    'https://ref-test-2.example.net/',
+    'ref-test-2.example.net',
+    'https://ref-test-2.example.net/',
+    200, 0, 25, 'text/html', 100, 'COMPATIBLE', 100,
+    pg_catalog.jsonb_build_object('diagnostics', '[]'::jsonb, 'referral_site_key', v_campaign2_key),
+    pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp() + INTERVAL '10 minutes',
+    pg_catalog.clock_timestamp()
+  );
 
-  IF v_campaign_id IS NULL OR v_campaign2_id IS NULL THEN
-    RAISE EXCEPTION 'TEST_SETUP_FAILED: at least two campaigns on distinct registered websites are required';
+  INSERT INTO public.campaigns(
+    owner_id, url, normalized_url, domain, duration_seconds, target_views,
+    completed_views, cost_per_view, total_budget, spent_budget, reserved_budget,
+    refunded_budget, status, keyword, resolved_target_url, resolver_status,
+    resolved_at, resolver_version
+  )
+  VALUES(
+    v_campaign_owner, 'https://ref-test-1.example.com/', 'https://ref-test-1.example.com/',
+    'ref-test-1.example.com', 5, 1000, 0, 5, 5000, 0, 5000, 0,
+    'ACTIVE', NULL, NULL, 'NOT_REQUIRED', NULL, 1
+  )
+  RETURNING id INTO v_campaign_id;
+
+  INSERT INTO public.campaigns(
+    owner_id, url, normalized_url, domain, duration_seconds, target_views,
+    completed_views, cost_per_view, total_budget, spent_budget, reserved_budget,
+    refunded_budget, status, keyword, resolved_target_url, resolver_status,
+    resolved_at, resolver_version
+  )
+  VALUES(
+    v_campaign2_owner, 'https://ref-test-2.example.net/', 'https://ref-test-2.example.net/',
+    'ref-test-2.example.net', 5, 1000, 0, 5, 5000, 0, 5000, 0,
+    'ACTIVE', NULL, NULL, 'NOT_REQUIRED', NULL, 1
+  )
+  RETURNING id INTO v_campaign2_id;
+
+  IF (SELECT c.referral_site_key FROM public.campaigns c WHERE c.id = v_campaign_id) <> v_campaign_key
+     OR (SELECT c.referral_site_key FROM public.campaigns c WHERE c.id = v_campaign2_id) <> v_campaign2_key THEN
+    RAISE EXCEPTION 'TEST_SETUP_FAILED: preflight registrable-domain metadata was not attached to synthetic campaigns';
   END IF;
 
   -- Self-referral must be rejected without creating a relationship.
@@ -169,9 +214,24 @@ BEGIN
   SET status = 'COMPLETED', completed_at = pg_catalog.clock_timestamp()
   WHERE id = v_session_id;
 
-  -- Campaigns owned by the invitee or their direct inviter do not count toward
-  -- either milestone, even if the WebView/session status is otherwise valid.
+  -- Campaigns owned by the invitee or their direct inviter do not count.
   UPDATE public.campaigns SET owner_id = v_inviter WHERE id = v_campaign_id;
+
+  INSERT INTO public.view_sessions(
+    campaign_id, viewer_id, required_duration_seconds, reward_coins,
+    status, started_at, content_ready_at
+  )
+  VALUES(
+    v_campaign_id, v_invitee, 5, 3, 'CONTENT_READY',
+    pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp()
+  )
+  RETURNING id INTO v_session_id;
+
+  UPDATE public.view_sessions
+  SET status = 'COMPLETED', completed_at = pg_catalog.clock_timestamp()
+  WHERE id = v_session_id;
+
+  UPDATE public.campaigns SET owner_id = v_invitee WHERE id = v_campaign_id;
 
   INSERT INTO public.view_sessions(
     campaign_id, viewer_id, required_duration_seconds, reward_coins,
