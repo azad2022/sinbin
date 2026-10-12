@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -191,6 +192,17 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _isRefreshingReferralStatus.value = true
             try {
+                var state = repository.serverState.value
+                if (state is ServerInitializationState.Initializing) {
+                    state = repository.serverState.first {
+                        it !is ServerInitializationState.Initializing
+                    }
+                }
+                if (state !is ServerInitializationState.Ready) {
+                    _referralStatusLoadFailed.value = true
+                    return@launch
+                }
+
                 repository.refreshReferralStatus()
                     .onSuccess { _referralStatusLoadFailed.value = false }
                     .onFailure { _referralStatusLoadFailed.value = true }
@@ -315,6 +327,10 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 .filter { it.type == TransactionType.COIN_TRANSFER_RECEIVED }
                 .forEach { seenIncomingTransferIds.add(it.id) }
             notificationBaselineReady = true
+
+            // Register the initial FCM token only after Supabase authentication
+            // and server identity initialization have completed.
+            syncReferralPushToken()
 
             // Realtime is the primary low-latency path. Polling is only a safety
             // reconciliation path: 60s when the socket is healthy, 15s if it is not.
