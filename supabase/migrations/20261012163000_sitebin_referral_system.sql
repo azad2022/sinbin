@@ -858,7 +858,11 @@ AS $function$
 DECLARE
   v_result jsonb;
 BEGIN
-  IF COALESCE(current_setting('request.jwt.claim.role', true), '') <> 'service_role' THEN
+  IF COALESCE(
+       NULLIF(current_setting('request.jwt.claim.role', true), ''),
+       NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role',
+       ''
+     ) <> 'service_role' THEN
     RAISE EXCEPTION 'FORBIDDEN: service role required';
   END IF;
   IF p_event_ids IS NULL OR pg_catalog.cardinality(p_event_ids) = 0
@@ -916,7 +920,11 @@ SECURITY DEFINER
 SET search_path TO ''
 AS $function$
 BEGIN
-  IF COALESCE(current_setting('request.jwt.claim.role', true), '') <> 'service_role' THEN
+  IF COALESCE(
+       NULLIF(current_setting('request.jwt.claim.role', true), ''),
+       NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role',
+       ''
+     ) <> 'service_role' THEN
     RAISE EXCEPTION 'FORBIDDEN: service role required';
   END IF;
   IF p_event_id IS NULL
@@ -924,7 +932,7 @@ BEGIN
     RAISE EXCEPTION 'INVALID_REFERRAL_DELIVERY_RESULT';
   END IF;
 
-  IF pg_catalog.coalesce(pg_catalog.array_length(p_invalid_tokens, 1), 0) > 0 THEN
+  IF COALESCE(pg_catalog.array_length(p_invalid_tokens, 1), 0) > 0 THEN
     DELETE FROM private.referral_push_tokens
     WHERE token = ANY(p_invalid_tokens);
   END IF;
