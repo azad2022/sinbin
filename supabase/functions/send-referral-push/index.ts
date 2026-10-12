@@ -212,8 +212,7 @@ async function dispatchOne(
   return anySent ? "sent" : "retry";
 }
 
-export default {
-  fetch: async (req: Request): Promise<Response> => {
+Deno.serve(async (req: Request): Promise<Response> => {
     if (req.method !== "POST") return json({ code: "METHOD_NOT_ALLOWED" }, 405);
     try {
       const authorization = req.headers.get("Authorization") ?? "";
@@ -295,5 +294,4 @@ export default {
         : "REFERRAL_PUSH_FAILED";
       return json({ code }, code === "FCM_NOT_CONFIGURED" ? 503 : 500);
     }
-  },
-};
+});
