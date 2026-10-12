@@ -32,6 +32,8 @@ DECLARE
   v_ledger_inviter bigint;
   v_ledger_invitee bigint;
   v_ledger_downstream bigint;
+  v_tier100_paid boolean;
+  v_tier500_paid boolean;
   i integer;
 BEGIN
   -- Use synthetic Auth users and profiles; no existing user's balances or
@@ -210,10 +212,10 @@ BEGIN
 
   SELECT completed_views_count, unique_websites_count, tier_100_paid_at IS NOT NULL,
          tier_500_paid_at IS NOT NULL
-  INTO v_count, i, v_ledger_inviter, v_ledger_invitee
+  INTO v_count, i, v_tier100_paid, v_tier500_paid
   FROM public.referrals WHERE id = v_referral_id;
 
-  IF v_count <> 100 OR i <> 1 OR NOT v_ledger_inviter OR v_ledger_invitee THEN
+  IF v_count <> 100 OR i <> 1 OR NOT v_tier100_paid OR v_tier500_paid THEN
     RAISE EXCEPTION 'TEST_FAILED: 100 views should pay only the first tier; views %, unique %, tier100 %, tier500 %',
       v_count, i, v_ledger_inviter, v_ledger_invitee;
   END IF;
