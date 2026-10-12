@@ -8,6 +8,9 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import com.example.data.model.AutoViewActivationResult
 import com.example.data.model.AutoViewStatus
+import com.example.data.model.ReferralMembership
+import com.example.data.model.ReferralStatus
+import com.example.data.model.ReferralRegistrationResult
 import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
@@ -490,6 +493,119 @@ class SupabaseApiClient(
             )
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun getReferralStatus(): Result<ReferralStatus> = withContext(Dispatchers.IO) {
+        try {
+            val response = callRpc("get_referral_status", JSONObject())
+            val membership = if (response.isNull("my_referral")) {
+                null
+            } else {
+                response.optJSONObject("my_referral")?.let { item ->
+                    ReferralMembership(
+                        inviterHandle = item.optString("inviter_handle", ""),
+                        createdAt = parseTimestamp(item.optString("created_at", "")),
+                        completedViewsCount = item.optInt("completed_views_count", 0).coerceAtLeast(0),
+                        uniqueWebsitesCount = item.optInt("unique_websites_count", 0).coerceAtLeast(0),
+                        tier100Paid = item.optBoolean("tier_100_paid", false),
+                        tier500Paid = item.optBoolean("tier_500_paid", false)
+                    )
+                }
+            }
+            Result.success(
+                ReferralStatus(
+                    myReferral = membership,
+                    directInviteCount = response.optInt("direct_invite_count", 0).coerceAtLeast(0),
+                    directTier100CompletedCount = response.optInt("direct_tier_100_completed_count", 0).coerceAtLeast(0),
+                    directTier500CompletedCount = response.optInt("direct_tier_500_completed_count", 0).coerceAtLeast(0),
+                    referralCoinsEarned = response.optLong("referral_coins_earned", 0L).coerceAtLeast(0L)
+                )
+            )
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun registerReferral(inviterHandle: String): Result<ReferralRegistrationResult> = withContext(Dispatchers.IO) {
+        try {
+            val cleanHandle = inviterHandle.trim()
+            if (cleanHandle.isBlank() || cleanHandle.length > 64) {
+                return@withContext Result.failure(IllegalArgumentException("شناسه دعوت را به‌درستی وارد کنید."))
+            }
+            val response = callRpc(
+                "register_referral",
+                JSONObject().put("p_inviter_handle", cleanHandle)
+            )
+            Result.success(
+                ReferralRegistrationResult(
+                    success = response.optBoolean("success", false),
+                    code = response.optString("code", "").ifBlank { null },
+                    inviterHandle = response.optString("inviter_handle", "").ifBlank { null },
+                    eventId = response.optString("event_id", "").ifBlank { null }
+                )
+            )
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun registerReferralPushToken(token: String, enabled: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val cleanToken = token.trim()
+            if (cleanToken.length !in 20..4096) {
+                return@withContext Result.failure(IllegalArgumentException("توکن اعلان معتبر نیست."))
+            }
+            callRpc(
+                "register_push_token",
+                JSONObject()
+                    .put("p_token", cleanToken)
+                    .put("p_enabled", enabled)
+            )
+            Result.success(Unit)
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun setReferralPushNotificationsEnabled(enabled: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            callRpc(
+                "set_referral_push_notifications_enabled",
+                JSONObject().put("p_enabled", enabled)
+            )
+            Result.success(Unit)
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun dispatchReferralNotifications(eventId: String? = null): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val token = getValidUserToken()
+            val body = JSONObject().put("limit", 10)
+            if (!eventId.isNullOrBlank()) body.put("event_id", eventId)
+            val request = Request.Builder()
+                .url("$supabaseUrl/functions/v1/send-referral-push")
+                .addHeader("apikey", supabasePublishableKey)
+                .addHeader("Authorization", "Bearer $token")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("Referral notification dispatch failed with HTTP " + response.code)
+                    )
+                }
+                val result = runCatching { JSONObject(responseBody) }.getOrNull()
+                if (result?.optBoolean("success", false) != true) {
+                    return@withContext Result.failure(IOException("Referral notification dispatch returned an invalid response"))
+                }
+            }
+            Result.success(Unit)
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
