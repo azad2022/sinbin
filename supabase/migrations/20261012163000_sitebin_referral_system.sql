@@ -845,6 +845,117 @@ $function$;
 REVOKE ALL ON FUNCTION public.claim_referral_notifications(uuid, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.claim_referral_notifications(uuid, integer) TO authenticated;
 
+
+-- Private schema tables are intentionally not exposed through PostgREST. These
+-- two service_role-only RPCs bridge the outbox to the Edge Function without
+-- granting authenticated clients direct access to push tokens or delivery rows.
+CREATE OR REPLACE FUNCTION public.load_referral_notification_delivery(p_event_ids uuid[])
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_result jsonb;
+BEGIN
+  IF COALESCE(current_setting('request.jwt.claim.role', true), '') <> 'service_role' THEN
+    RAISE EXCEPTION 'FORBIDDEN: service role required';
+  END IF;
+  IF p_event_ids IS NULL OR pg_catalog.cardinality(p_event_ids) = 0
+     OR pg_catalog.cardinality(p_event_ids) > 10 THEN
+    RETURN '[]'::jsonb;
+  END IF;
+
+  SELECT COALESCE(
+    pg_catalog.jsonb_agg(
+      pg_catalog.jsonb_build_object(
+        'event_id', o.event_id,
+        'referral_id', o.referral_id,
+        'event_type', o.event_type,
+        'actor_id', o.actor_id,
+        'recipient_id', o.recipient_id,
+        'payload', o.payload,
+        'attempt_count', o.attempt_count,
+        'has_registered_tokens', EXISTS (
+          SELECT 1 FROM private.referral_push_tokens t
+          WHERE t.user_id = o.recipient_id
+        ),
+        'tokens', COALESCE((
+          SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('token', t.token))
+          FROM private.referral_push_tokens t
+          WHERE t.user_id = o.recipient_id AND t.enabled
+        ), '[]'::jsonb)
+      )
+      ORDER BY o.created_at, o.event_id
+    ),
+    '[]'::jsonb
+  )
+  INTO v_result
+  FROM private.referral_notification_outbox o
+  WHERE o.event_id = ANY(p_event_ids)
+    AND o.delivered_at IS NULL
+    AND o.claimed_until > pg_catalog.clock_timestamp();
+
+  RETURN v_result;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.load_referral_notification_delivery(uuid[])
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.load_referral_notification_delivery(uuid[]) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.finish_referral_notification_delivery(
+  p_event_id uuid,
+  p_outcome text,
+  p_error text DEFAULT NULL,
+  p_invalid_tokens text[] DEFAULT ARRAY[]::text[]
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+BEGIN
+  IF COALESCE(current_setting('request.jwt.claim.role', true), '') <> 'service_role' THEN
+    RAISE EXCEPTION 'FORBIDDEN: service role required';
+  END IF;
+  IF p_event_id IS NULL
+     OR p_outcome NOT IN ('SENT', 'SKIPPED', 'NO_TOKEN', 'RETRY') THEN
+    RAISE EXCEPTION 'INVALID_REFERRAL_DELIVERY_RESULT';
+  END IF;
+
+  IF pg_catalog.coalesce(pg_catalog.array_length(p_invalid_tokens, 1), 0) > 0 THEN
+    DELETE FROM private.referral_push_tokens
+    WHERE token = ANY(p_invalid_tokens);
+  END IF;
+
+  UPDATE private.referral_notification_outbox
+  SET delivered_at = CASE
+        WHEN p_outcome IN ('SENT', 'SKIPPED') THEN pg_catalog.clock_timestamp()
+        ELSE delivered_at
+      END,
+      claimed_until = CASE
+        WHEN p_outcome IN ('SENT', 'SKIPPED', 'NO_TOKEN') THEN NULL
+        ELSE pg_catalog.clock_timestamp() + INTERVAL '3 minutes'
+      END,
+      last_error = CASE
+        WHEN p_outcome = 'SENT' THEN NULL
+        WHEN p_outcome = 'SKIPPED' THEN 'PUSH_DISABLED'
+        ELSE pg_catalog.left(pg_catalog.regexp_replace(COALESCE(p_error, p_outcome), '[[:cntrl:]]', ' ', 'g'), 240)
+      END
+  WHERE event_id = p_event_id
+    AND delivered_at IS NULL;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'REFERRAL_OUTBOX_EVENT_NOT_PENDING';
+  END IF;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.finish_referral_notification_delivery(uuid,text,text,text[])
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.finish_referral_notification_delivery(uuid,text,text,text[]) TO service_role;
+
 -- Configure dedicated rate limits for referral mutations.
 CREATE OR REPLACE FUNCTION private.enforce_user_rate_limit(p_user_id uuid, p_action text)
  RETURNS void
