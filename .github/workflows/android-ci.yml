@@ -137,6 +137,22 @@ jobs:
           print("Supabase duration_pricing keyword smoke test passed")
           PY
 
+      - name: Referral status RPC must use a read-only HTTP method
+        shell: bash
+        run: |
+          set -euo pipefail
+          SUPABASE_URL="$(sed -n 's/^SUPABASE_URL=//p' .env.example)"
+          SUPABASE_PUBLISHABLE_KEY="$(sed -n 's/^SUPABASE_PUBLISHABLE_KEY=//p' .env.example)"
+          code="$(curl --silent --show-error --output /tmp/sitebin-referral-status-unauth.json --write-out '%{http_code}' \
+            -X GET "$SUPABASE_URL/rest/v1/rpc/get_referral_status" \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY")"
+          if [[ "$code" == "405" ]]; then
+            cat /tmp/sitebin-referral-status-unauth.json
+            echo "Read-only referral status RPC incorrectly rejects GET."
+            exit 1
+          fi
+          echo "Referral status GET route is accepted by PostgREST (unauthenticated response: HTTP $code)"
+
       - name: Campaign preflight authentication smoke test
         run: |
           set -euo pipefail
