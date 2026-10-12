@@ -73,8 +73,6 @@ SET referral_site_key = CASE pg_catalog.lower(domain)
   WHEN 'solmint.ir' THEN 'solmint.ir'
   WHEN 'torob.com' THEN 'torob.com'
   WHEN 'wikipedia.org' THEN 'wikipedia.org'
-  WHEN 'www.parhana.ir' THEN 'parhana.ir'
-  WHEN 'www.zagrospoosh.com' THEN 'zagrospoosh.com'
   ELSE NULL
 END;
 
@@ -267,6 +265,10 @@ CREATE TABLE IF NOT EXISTS private.referral_notification_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_referral_notification_outbox_pending_recipient
   ON private.referral_notification_outbox (recipient_id, created_at)
+  WHERE delivered_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_referral_notification_outbox_pending_actor
+  ON private.referral_notification_outbox (actor_id, created_at)
   WHERE delivered_at IS NULL;
 
 ALTER TABLE private.referral_completed_views ENABLE ROW LEVEL SECURITY;
