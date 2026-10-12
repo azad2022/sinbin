@@ -748,12 +748,12 @@ BEGIN
     RAISE EXCEPTION 'INVALID_PUSH_TOKEN';
   END IF;
 
-  INSERT INTO private.referral_push_tokens(token, user_id, enabled, platform, updated_at)
+  INSERT INTO private.referral_push_tokens AS existing(token, user_id, enabled, platform, updated_at)
   VALUES(v_token, v_uid, COALESCE(p_enabled, true), 'android', pg_catalog.clock_timestamp())
   ON CONFLICT (token) DO UPDATE
   SET enabled = EXCLUDED.enabled,
       updated_at = EXCLUDED.updated_at
-  WHERE private.referral_push_tokens.user_id = EXCLUDED.user_id
+  WHERE existing.user_id = EXCLUDED.user_id
   RETURNING user_id INTO v_registered_uid;
 
   IF v_registered_uid IS NULL THEN
