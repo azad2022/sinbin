@@ -220,7 +220,6 @@ class SiteBinRepository(
         val result = client.registerReferral(inviterHandle)
         result.onSuccess { registration ->
             if (registration.success) {
-                refreshReferralStatus()
                 // Push delivery is a best-effort side effect; it must never roll
                 // back or misreport a successfully committed referral relationship.
                 registration.eventId?.let { eventId ->
