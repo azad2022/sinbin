@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -66,12 +67,7 @@ data class OnboardingStep(
     val iconColor: Color
 )
 
-@Composable
-fun OnboardingScreen(
-    onFinish: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val steps = listOf(
+internal val siteBinOnboardingSteps = listOf(
         OnboardingStep(
             title = "بازدید بگیر",
             subtitle = "سایتت را در پلتفرم هوشمند SiteBin ثبت کن و بازدیدکنندگان واقعی را به سمت کسب‌وکارت هدایت کن.",
@@ -89,8 +85,21 @@ fun OnboardingScreen(
             subtitle = "سکه‌های دریافتی را برای جذب ترافیک، ارتقای رتبه سئو و بهبود تعامل وب‌سایت خودت مصرف کن.",
             icon = Icons.Default.RocketLaunch,
             iconColor = SiteBinTeal
+        ),
+        OnboardingStep(
+            title = "لیدربورد هفتگی",
+            subtitle = "بازدیدهای معتبر بیشتری کامل کن تا به رتبه‌های برتر برسی؛ لینک کمپین واجد شرایطت می‌تواند در صفحات ابتدایی مرورگر نمایش ویژه بگیرد.",
+            icon = Icons.Default.EmojiEvents,
+            iconColor = SiteBinGold
         )
     )
+
+@Composable
+fun OnboardingScreen(
+    onFinish: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val steps = siteBinOnboardingSteps
 
     var currentStepIndex by remember { mutableIntStateOf(0) }
     val currentStep = steps[currentStepIndex]

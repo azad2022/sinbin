@@ -12,8 +12,8 @@ class SiteBinHelpContentTest {
     fun guideContainsAllCoreProductAreas() {
         val ids = siteBinHelpSections.map { it.id }.toSet()
         val required = setOf(
-            "getting_started",
             "referrals",
+            "getting_started",
             "coins",
             "viewing",
             "website",
@@ -34,13 +34,19 @@ class SiteBinHelpContentTest {
         val leaderboardText = leaderboard.paragraphs.joinToString(" ")
         assertTrue(leaderboardText.contains("دوشنبه"))
         assertTrue(leaderboardText.contains("UTC"))
-        assertTrue(leaderboardText.contains("پنج نفر اول"))
+        assertTrue(leaderboardText.contains("در خانه، سه نفر اول جدول نمایش داده می‌شوند"))
         assertTrue(leaderboardText.contains("پاداش سکهٔ جداگانه"))
         assertTrue(leaderboardText.contains("جایگاه اول برای رتبهٔ اول"))
-        assertTrue(leaderboardText.contains("از وب‌سایت ششم به بعد"))
+        assertTrue(leaderboardText.contains("از نوبت ششم به بعد"))
         assertTrue(leaderboardText.contains("سهمیهٔ نمایش ویژه"))
         assertTrue(leaderboardText.contains("سشن رهاشده یا منقضی‌شده"))
-        assertTrue(leaderboardText.contains("کمپین فعال و دارای بودجهٔ رزروشده"))
+        assertTrue(leaderboardText.contains("فقط همان لینک ثابت می‌ماند"))
+        assertTrue(leaderboardText.contains("بازدیدهای بیشتری را تا انتها"))
+        assertTrue(leaderboardText.contains("پیش از آماده شدن محتوا"))
+        assertTrue(leaderboardText.contains("کمپین ثابت‌شده، فعال و دارای بودجهٔ رزروشده"))
+        val keywordText = siteBinHelpSections.first { it.id == "keyword" }.paragraphs.joinToString(" ")
+        assertFalse(keywordText.contains("این قابلیت به معنی ارسال خودکار جست‌وجو یا کلیک در Google یا موتور جست‌وجوی دیگری نیست"))
+
         val referralText = siteBinHelpSections.first { it.id == "referrals" }.paragraphs.joinToString(" ")
         assertTrue(referralText.contains("۱۰۰ بازدید معتبر"))
         assertTrue(referralText.contains("۵۰۰ وب‌سایت متفاوت"))
@@ -49,6 +55,7 @@ class SiteBinHelpContentTest {
         assertTrue(referralText.contains("قابل تغییر نیست"))
         assertTrue(referralText.contains("دامنهٔ ثبت‌پذیر"))
         assertTrue(referralText.contains("اعلان‌های زیرمجموعه‌ها"))
+
 
         val coinsText = siteBinHelpSections.first { it.id == "coins" }.paragraphs.joinToString(" ")
         assertTrue(coinsText.contains("حداقل یک بازدید"))

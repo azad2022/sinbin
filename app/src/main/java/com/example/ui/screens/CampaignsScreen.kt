@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -91,7 +92,9 @@ fun CampaignsScreen(
                 containerColor = SiteBinBlue,
                 contentColor = Color.White,
                 shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.testTag("fab_add_campaign")
+                modifier = Modifier
+                    .offset(y = 8.dp)
+                    .testTag("fab_add_campaign")
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp),
@@ -191,9 +194,6 @@ fun CampaignsScreen(
                             onResume = { onResumeCampaign(campaign.id) },
                             onCancel = { onCancelCampaign(campaign.id) }
                         )
-                    }
-                    item {
-                        Spacer(modifier = Modifier.height(80.dp))
                     }
                 }
             }
