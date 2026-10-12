@@ -89,6 +89,30 @@ data class WeeklyLeaderboard(
     val viewsToNextRank: Int?
 )
 
+data class ReferralMembership(
+    val inviterHandle: String,
+    val createdAt: Long,
+    val completedViewsCount: Int,
+    val uniqueWebsitesCount: Int,
+    val tier100Paid: Boolean,
+    val tier500Paid: Boolean
+)
+
+data class ReferralStatus(
+    val myReferral: ReferralMembership? = null,
+    val directInviteCount: Int = 0,
+    val directTier100CompletedCount: Int = 0,
+    val directTier500CompletedCount: Int = 0,
+    val referralCoinsEarned: Long = 0L
+)
+
+data class ReferralRegistrationResult(
+    val success: Boolean,
+    val code: String? = null,
+    val inviterHandle: String? = null,
+    val eventId: String? = null
+)
+
 data class UserAccount(
     val userId: String,
     val userHandle: String = "",
