@@ -232,9 +232,15 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                         refreshReferralStatus()
                     } else {
                         showMessage(referralRegistrationMessage(registration.code))
+                        if (registration.code == "ALREADY_REGISTERED") {
+                            refreshReferralStatus()
+                        }
                     }
                 }.onFailure { error ->
                     showMessage(error.message ?: "ثبت کد دعوت ناموفق بود.")
+                    // The server may have committed before a transport timeout.
+                    // Reconcile authoritative state before inviting the user to retry.
+                    refreshReferralStatus()
                 }
             } finally {
                 _isRegisteringReferral.value = false
