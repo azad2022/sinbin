@@ -556,12 +556,22 @@ class SupabaseApiClient(
             if (cleanToken.length !in 20..4096) {
                 return@withContext Result.failure(IllegalArgumentException("توکن اعلان معتبر نیست."))
             }
-            callRpc(
+            val response = callRpc(
                 "register_push_token",
                 JSONObject()
                     .put("p_token", cleanToken)
                     .put("p_enabled", enabled)
             )
+            if (!response.optBoolean("success", false)) {
+                return@withContext Result.failure(
+                    IllegalStateException(
+                        when (response.optString("code")) {
+                            "TOKEN_ALREADY_BOUND" -> "این توکن اعلان از قبل به حساب دیگری متصل است."
+                            else -> "ثبت توکن اعلان در سرور ناموفق بود."
+                        }
+                    )
+                )
+            }
             Result.success(Unit)
         } catch (error: Exception) {
             Result.failure(error)
@@ -570,10 +580,15 @@ class SupabaseApiClient(
 
     suspend fun setReferralPushNotificationsEnabled(enabled: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            callRpc(
+            val response = callRpc(
                 "set_referral_push_notifications_enabled",
                 JSONObject().put("p_enabled", enabled)
             )
+            if (!response.optBoolean("success", false)) {
+                return@withContext Result.failure(
+                    IOException("Failed to update referral notification preference on server.")
+                )
+            }
             Result.success(Unit)
         } catch (error: Exception) {
             Result.failure(error)
