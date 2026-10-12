@@ -1208,7 +1208,7 @@ begin
       and action <> pg_catalog.btrim(p_action)
       and updated_at < v_now - interval '2 hours';
 end;
-$function$
+$function$;
 
 
 -- The completion path locks inviter, viewer and advertiser profiles in UUID order
@@ -1461,7 +1461,7 @@ BEGIN
         'campaign_completed', v_campaign_completed
     );
 END;
-$function$
+$function$;
 
 
 -- Extend the account-rebind transaction so profile FK cascades cannot remove
@@ -1641,7 +1641,7 @@ BEGIN
 
     DELETE FROM public.profiles WHERE id = p_old_uid;
 END;
-$function$
+$function$;
 
 
 COMMIT;
