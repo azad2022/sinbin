@@ -272,7 +272,7 @@ fun SettingsScreen(
                             }
                         }
                         Text(
-                            text = "این شناسه را برای دریافت سکه با دیگران به اشتراک بگذارید.",
+                            text = "این شناسه هم برای دریافت سکه و هم برای دعوت دوستان استفاده می‌شود.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -421,12 +421,12 @@ fun SettingsScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                     ReferralStatTile(
-                                        title = "۱۰۰ بازدید",
+                                        title = "پاداش ۱۰۰ بازدید",
                                         value = status.directTier100CompletedCount.toString(),
                                         modifier = Modifier.weight(1f)
                                     )
                                     ReferralStatTile(
-                                        title = "۵۰۰ سایت",
+                                        title = "پاداش ۵۰۰ سایت",
                                         value = status.directTier500CompletedCount.toString(),
                                         modifier = Modifier.weight(1f)
                                     )
