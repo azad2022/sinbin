@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { getDomain } from "npm:tldts@6.1.86";
 
 const MAX_URL_LENGTH = 2_048;
@@ -104,7 +104,7 @@ function isPrivateIpv6(ip: string): boolean {
   if ((parts[0] & 0xffc0n) === 0xfe80n) return true; // fe80::/10
   if ((parts[0] & 0xff00n) === 0xff00n) return true; // ff00::/8
 
-  if (parts[0] === 0 && parts[1] === 0 && parts[2] === 0 && parts[3] === 0xffffn) {
+  if (parts[0] === 0n && parts[1] === 0n && parts[2] === 0n && parts[3] === 0xffffn) {
     const ipv4 = [
       Number(parts[4] >> 8n),
       Number(parts[4] & 0xffn),
@@ -358,7 +358,7 @@ function diagnostic(code: string, severity: "INFO" | "WARNING" | "BLOCK", messag
 }
 
 async function rateLimitOrThrow(
-  userClient: ReturnType<typeof createClient>,
+  userClient: SupabaseClient<any, "public", "public", any, any>,
 ): Promise<void> {
   const { error } = await userClient.rpc("consume_campaign_url_preflight_rate_limit");
   if (!error) return;
