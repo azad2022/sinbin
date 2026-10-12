@@ -635,7 +635,7 @@ BEGIN
     v_inviter_id,
     pg_catalog.jsonb_build_object(
       'title', 'زیرمجموعه جدید',
-      'body', v_inviter_handle || ' زیرمجموعه مستقیم شما شد.',
+      'body', (SELECT p.user_handle FROM public.profiles p WHERE p.id = v_uid) || ' زیرمجموعه مستقیم شما شد.',
       'inviter_handle', v_inviter_handle,
       'invitee_handle', (SELECT p.user_handle FROM public.profiles p WHERE p.id = v_uid)
     )
@@ -752,6 +752,12 @@ BEGIN
   SET user_id = EXCLUDED.user_id,
       enabled = EXCLUDED.enabled,
       updated_at = EXCLUDED.updated_at;
+
+  -- A freshly registered token makes pending invitations immediately eligible
+  -- again even if a prior attempt was leased while the user had no token.
+  UPDATE private.referral_notification_outbox
+  SET claimed_until = NULL
+  WHERE recipient_id = v_uid AND delivered_at IS NULL;
 
   RETURN pg_catalog.jsonb_build_object('success', true, 'enabled', COALESCE(p_enabled, true));
 END;
