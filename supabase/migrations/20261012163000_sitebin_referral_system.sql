@@ -187,6 +187,23 @@ ON public.referrals
 FOR SELECT TO authenticated
 USING (inviter_id = (SELECT auth.uid()) OR invitee_id = (SELECT auth.uid()));
 
+-- Extend the existing foreground Realtime channel only for direct inviter events.
+-- If Realtime publication is unavailable in a local/non-Supabase test database,
+-- the ordinary authenticated RPC refresh path remains functional.
+DO $publication$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_publication WHERE pubname = 'supabase_realtime')
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_catalog.pg_publication_tables
+       WHERE pubname = 'supabase_realtime'
+         AND schemaname = 'public'
+         AND tablename = 'referrals'
+     ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.referrals;
+  END IF;
+END;
+$publication$;
+
 CREATE TABLE IF NOT EXISTS private.referral_completed_views (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   referral_id uuid NOT NULL REFERENCES public.referrals(id) ON DELETE CASCADE,
