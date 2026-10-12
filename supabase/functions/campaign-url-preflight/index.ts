@@ -1,4 +1,5 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { getDomain } from "npm:tldts@6.1.86";
 
 const MAX_URL_LENGTH = 2_048;
 const MAX_REDIRECTS = 3;
@@ -103,7 +104,7 @@ function isPrivateIpv6(ip: string): boolean {
   if ((parts[0] & 0xffc0n) === 0xfe80n) return true; // fe80::/10
   if ((parts[0] & 0xff00n) === 0xff00n) return true; // ff00::/8
 
-  if (parts[0] === 0 && parts[1] === 0 && parts[2] === 0 && parts[3] === 0xffffn) {
+  if (parts[0] === 0n && parts[1] === 0n && parts[2] === 0n && parts[3] === 0xffffn) {
     const ipv4 = [
       Number(parts[4] >> 8n),
       Number(parts[4] & 0xffn),
@@ -146,7 +147,7 @@ async function assertPublicHost(host: string): Promise<void> {
   }
 }
 
-async function validateUrl(rawUrl: string): Promise<{ normalizedUrl: string; domain: string }> {
+async function validateUrl(rawUrl: string): Promise<{ normalizedUrl: string; domain: string; referralSiteKey: string | null }> {
   const trimmed = rawUrl.trim();
   if (!trimmed || trimmed.length > MAX_URL_LENGTH) {
     throw new Error("INVALID_URL: آدرس وب‌سایت خالی یا بیش از ۲۰۴۸ کاراکتر است.");
@@ -188,7 +189,11 @@ async function validateUrl(rawUrl: string): Promise<{ normalizedUrl: string; dom
   }
 
   await assertPublicHost(host);
-  return { normalizedUrl: parsed.toString(), domain: host };
+  // Keep a pinned PSL algorithm for campaign metadata and referral milestones.
+  // Private PSL rules prevent unrelated hosted tenants from collapsing into
+  // the same registrable-domain key. Public IP literals intentionally return null.
+  const referralSiteKey = getDomain(host, { allowPrivateDomains: true })?.toLowerCase() ?? null;
+  return { normalizedUrl: parsed.toString(), domain: host, referralSiteKey };
 }
 
 async function fetchHtml(url: string, origin: string): Promise<{
@@ -353,7 +358,7 @@ function diagnostic(code: string, severity: "INFO" | "WARNING" | "BLOCK", messag
 }
 
 async function rateLimitOrThrow(
-  userClient: ReturnType<typeof createClient>,
+  userClient: SupabaseClient<any, "public", "public", any, any>,
 ): Promise<void> {
   const { error } = await userClient.rpc("consume_campaign_url_preflight_rate_limit");
   if (!error) return;
@@ -530,7 +535,7 @@ export default {
         p_content_length: fetched.contentLength,
         p_viewer_compatibility: compatibility.level,
         p_quality_score: score,
-        p_diagnostics: diagnostics,
+        p_diagnostics: { diagnostics, referral_site_key: validated.referralSiteKey },
         p_expires_at: expiresAt,
       });
 
@@ -543,6 +548,7 @@ export default {
         source_url: validated.normalizedUrl,
         normalized_url: validated.normalizedUrl,
         domain: validated.domain,
+        referral_site_key: validated.referralSiteKey,
         final_url: fetched.finalUrl,
         http_status: fetched.status,
         redirect_count: fetched.redirects,

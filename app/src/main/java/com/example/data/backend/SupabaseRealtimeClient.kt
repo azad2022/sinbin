@@ -217,6 +217,13 @@ class SupabaseRealtimeClient(
                     .put("table", "campaigns")
                     .put("filter", "owner_id=eq.$uid")
             )
+            .put(
+                JSONObject()
+                    .put("event", "INSERT")
+                    .put("schema", "public")
+                    .put("table", "referrals")
+                    .put("filter", "inviter_id=eq.$uid")
+            )
 
         val config = JSONObject()
             .put(

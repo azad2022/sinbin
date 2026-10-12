@@ -12,6 +12,7 @@ class SiteBinHelpContentTest {
     fun guideContainsAllCoreProductAreas() {
         val ids = siteBinHelpSections.map { it.id }.toSet()
         val required = setOf(
+            "referrals",
             "getting_started",
             "coins",
             "viewing",
@@ -45,6 +46,16 @@ class SiteBinHelpContentTest {
         assertTrue(leaderboardText.contains("کمپین ثابت‌شده، فعال و دارای بودجهٔ رزروشده"))
         val keywordText = siteBinHelpSections.first { it.id == "keyword" }.paragraphs.joinToString(" ")
         assertFalse(keywordText.contains("این قابلیت به معنی ارسال خودکار جست‌وجو یا کلیک در Google یا موتور جست‌وجوی دیگری نیست"))
+
+        val referralText = siteBinHelpSections.first { it.id == "referrals" }.paragraphs.joinToString(" ")
+        assertTrue(referralText.contains("۱۰۰ بازدید معتبر"))
+        assertTrue(referralText.contains("۵۰۰ وب‌سایت متفاوت"))
+        assertTrue(referralText.contains("۲۵٬۰۰۰ سکه"))
+        assertTrue(referralText.contains("یک‌سطحی"))
+        assertTrue(referralText.contains("قابل تغییر نیست"))
+        assertTrue(referralText.contains("دامنهٔ ثبت‌پذیر"))
+        assertTrue(referralText.contains("اعلان‌های زیرمجموعه‌ها"))
+
 
         val coinsText = siteBinHelpSections.first { it.id == "coins" }.paragraphs.joinToString(" ")
         assertTrue(coinsText.contains("حداقل یک بازدید"))

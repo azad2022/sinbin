@@ -15,6 +15,9 @@ import com.example.data.model.WeeklyLeaderboard
 import com.example.data.model.TransactionType
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
+import com.example.data.model.ReferralStatus
+import com.google.firebase.messaging.FirebaseMessaging
+import com.example.notifications.SiteBinNotificationManager
 import com.example.data.model.ViewSession
 import com.example.data.backend.RateLimitException
 import com.example.data.backend.WebsitePreflightResult
@@ -30,6 +33,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -103,6 +107,23 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     )
     val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled.asStateFlow()
 
+    private val _referralNotificationsEnabled = MutableStateFlow(
+        prefs.getBoolean("referral_notifications_enabled", true)
+    )
+    val referralNotificationsEnabled: StateFlow<Boolean> = _referralNotificationsEnabled.asStateFlow()
+
+    val referralStatus: StateFlow<ReferralStatus?> = repository.referralStatus
+    private val _isRefreshingReferralStatus = MutableStateFlow(false)
+    val isRefreshingReferralStatus: StateFlow<Boolean> = _isRefreshingReferralStatus.asStateFlow()
+    private var referralStatusRefreshQueued = false
+    private val _referralStatusLoadFailed = MutableStateFlow(false)
+    val referralStatusLoadFailed: StateFlow<Boolean> = _referralStatusLoadFailed.asStateFlow()
+    private val _isRegisteringReferral = MutableStateFlow(false)
+    val isRegisteringReferral: StateFlow<Boolean> = _isRegisteringReferral.asStateFlow()
+
+    private var referralTokenSyncInFlight = false
+    private var lastReferralTokenSyncAt = 0L
+
     private val _autoViewEnabled = MutableStateFlow(
         prefs.getBoolean("auto_view_enabled", false)
     )
@@ -167,6 +188,150 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         prefs.edit().putBoolean("is_dark_theme", enabled).apply()
     }
 
+    fun refreshReferralStatus() {
+        if (_isRefreshingReferralStatus.value) {
+            // A successful registration can race the initial status fetch. Queue
+            // one follow-up instead of dropping the post-registration refresh.
+            referralStatusRefreshQueued = true
+            return
+        }
+        viewModelScope.launch {
+            _isRefreshingReferralStatus.value = true
+            try {
+                var state = repository.serverState.value
+                if (state is ServerInitializationState.Initializing) {
+                    state = repository.serverState.first {
+                        it !is ServerInitializationState.Initializing
+                    }
+                }
+                if (state !is ServerInitializationState.Ready) {
+                    _referralStatusLoadFailed.value = true
+                    return@launch
+                }
+
+                repository.refreshReferralStatus()
+                    .onSuccess { _referralStatusLoadFailed.value = false }
+                    .onFailure { _referralStatusLoadFailed.value = true }
+            } finally {
+                _isRefreshingReferralStatus.value = false
+                if (referralStatusRefreshQueued) {
+                    referralStatusRefreshQueued = false
+                    refreshReferralStatus()
+                }
+            }
+        }
+    }
+
+    fun registerReferral(inviterHandle: String) {
+        if (_isRegisteringReferral.value || !beginAction("register_referral")) return
+        val cleanHandle = inviterHandle.trim()
+        if (cleanHandle.isBlank()) {
+            showMessage("شناسه کاربری و کد دعوت را وارد کنید.")
+            endAction("register_referral")
+            return
+        }
+
+        _isRegisteringReferral.value = true
+        viewModelScope.launch {
+            try {
+                val result = repository.registerReferral(cleanHandle)
+                result.onSuccess { registration ->
+                    if (registration.success) {
+                        _referralStatusLoadFailed.value = false
+                        showMessage("کد دعوت با موفقیت ثبت شد. پیشرفت پاداش از بازدیدهای معتبر بعد از ثبت دعوت محاسبه می‌شود.")
+                        refreshReferralStatus()
+                    } else {
+                        showMessage(referralRegistrationMessage(registration.code))
+                        if (registration.code == "ALREADY_REGISTERED") {
+                            refreshReferralStatus()
+                        }
+                    }
+                }.onFailure { error ->
+                    showMessage(error.message ?: "ثبت کد دعوت ناموفق بود.")
+                    // The server may have committed before a transport timeout.
+                    // Reconcile authoritative state before inviting the user to retry.
+                    refreshReferralStatus()
+                }
+            } finally {
+                _isRegisteringReferral.value = false
+                endAction("register_referral")
+            }
+        }
+    }
+
+    private fun referralRegistrationMessage(code: String?): String = when (code?.uppercase()) {
+        "INVALID_CODE" -> "شناسه دعوت پیدا نشد. کد را بررسی کنید."
+        "SELF_REFERRAL" -> "نمی‌توانید شناسه کاربری خودتان را وارد کنید."
+        "ALREADY_REGISTERED" -> "برای حساب شما قبلاً دعوت‌کننده ثبت شده است."
+        "SAME_DEVICE" -> "این دعوت به‌دلیل هم‌پوشانی شواهد دستگاه قابل ثبت نیست."
+        "REFERRAL_CYCLE" -> "این کد دعوت یک چرخه ایجاد می‌کند و قابل ثبت نیست."
+        "ACCOUNT_NOT_FOUND" -> "حساب دعوت‌کننده یا حساب شما دیگر در دسترس نیست."
+        else -> "کد دعوت ثبت نشد. لطفاً وضعیت حساب را تازه‌سازی کنید."
+    }
+
+    fun setReferralNotificationsEnabled(enabled: Boolean) {
+        val preferenceChanged = _referralNotificationsEnabled.value != enabled
+        _referralNotificationsEnabled.value = enabled
+        prefs.edit().putBoolean("referral_notifications_enabled", enabled).apply()
+
+        viewModelScope.launch {
+            // Permission-result callbacks and switch interactions can report the
+            // same value. Skip duplicate preference writes but still refresh a
+            // token when enabled, which can repair a missing or stale FCM row.
+            if (preferenceChanged) {
+                repository.setReferralPushNotificationsEnabled(enabled)
+                    .onFailure {
+                        // The local preference remains authoritative for this
+                        // device's UI; server failure must not block referral state.
+                    }
+            }
+            if (enabled) {
+                lastReferralTokenSyncAt = 0L
+                syncReferralPushToken(force = true)
+            }
+        }
+    }
+
+    fun syncReferralPushToken(force: Boolean = false) {
+        if (!_referralNotificationsEnabled.value || !isAppInForeground ||
+            repository.serverState.value !is ServerInitializationState.Ready ||
+            !SiteBinNotificationManager.canPostNotifications(getApplication()) ||
+            referralTokenSyncInFlight
+        ) return
+
+        val now = SystemClock.elapsedRealtime()
+        if (!force && lastReferralTokenSyncAt > 0L &&
+            now - lastReferralTokenSyncAt < 5 * 60_000L
+        ) return
+        referralTokenSyncInFlight = true
+        lastReferralTokenSyncAt = now
+
+        try {
+            FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token ->
+                    viewModelScope.launch {
+                        try {
+                            if (token.isNotBlank()) {
+                                repository.registerReferralPushToken(token, enabled = true)
+                                    .onSuccess {
+                                        // This endpoint only delivers pending referral outbox items;
+                                        // it is not a periodic polling source.
+                                        repository.dispatchReferralNotifications()
+                                    }
+                            }
+                        } finally {
+                            referralTokenSyncInFlight = false
+                        }
+                    }
+                }
+                .addOnFailureListener {
+                    referralTokenSyncInFlight = false
+                }
+        } catch (_: Exception) {
+            referralTokenSyncInFlight = false
+        }
+    }
+
     init {
         viewModelScope.launch {
             while (repository.serverState.value !is ServerInitializationState.Ready) {
@@ -184,6 +349,10 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 .filter { it.type == TransactionType.COIN_TRANSFER_RECEIVED }
                 .forEach { seenIncomingTransferIds.add(it.id) }
             notificationBaselineReady = true
+
+            // Register the initial FCM token only after Supabase authentication
+            // and server identity initialization have completed.
+            syncReferralPushToken()
 
             // Realtime is the primary low-latency path. Polling is only a safety
             // reconciliation path: 60s when the socket is healthy, 15s if it is not.
@@ -227,6 +396,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                     }
                     if (table == "view_sessions") {
                         repository.refreshWeeklyLeaderboard()
+                    }
+                    if (table == "referrals" && _currentScreen.value == AppScreen.SETTINGS) {
+                        refreshReferralStatus()
                     }
                 }
         }
@@ -299,6 +471,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         _currentScreen.value = screen
+        if (screen == AppScreen.SETTINGS) {
+            refreshReferralStatus()
+        }
         if (screen == AppScreen.HOME) {
             viewModelScope.launch {
                 repository.refreshWeeklyLeaderboard()
@@ -410,6 +585,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         repository.setRealtimeActive(inForeground)
 
         if (!inForeground || repository.serverState.value !is ServerInitializationState.Ready) return
+
+        syncReferralPushToken()
+        if (_currentScreen.value == AppScreen.SETTINGS) refreshReferralStatus()
 
         viewModelScope.launch {
             // Foreground entry is a hard reconciliation point for both financial state
