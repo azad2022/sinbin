@@ -100,8 +100,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-
+}
 
 @Composable
 fun MainAppContent(viewModel: SiteBinViewModel) {
