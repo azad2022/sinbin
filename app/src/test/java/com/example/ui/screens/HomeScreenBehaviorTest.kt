@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import com.example.data.model.DailyBonusResult
+import com.example.data.model.WeeklyLeaderboardEntry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -93,4 +94,54 @@ class HomeScreenBehaviorTest {
             )
         )
     }
+
+    @Test
+    fun leaderboardPodiumOrdersRowsAsBronzeGoldSilverForVisualPlacement() {
+        val entries = listOf(
+            WeeklyLeaderboardEntry(rank = 5, userHandle = "fifth", completedViews = 3),
+            WeeklyLeaderboardEntry(rank = 2, userHandle = "second", completedViews = 25),
+            WeeklyLeaderboardEntry(rank = 1, userHandle = "first", completedViews = 47),
+            WeeklyLeaderboardEntry(rank = 4, userHandle = "fourth", completedViews = 5),
+            WeeklyLeaderboardEntry(rank = 3, userHandle = "third", completedViews = 9)
+        )
+
+        assertEquals(
+            listOf(3, 1, 2),
+            weeklyLeaderboardPodiumOrder(entries).map { it?.rank }
+        )
+    }
+
+    @Test
+    fun leaderboardShowsOnlyTopFiveAndPlacesFourthAndFifthInRows() {
+        val entries = (8 downTo 1).map { rank ->
+            WeeklyLeaderboardEntry(
+                rank = rank,
+                userHandle = "user_$rank",
+                completedViews = rank * 10
+            )
+        }
+
+        assertEquals(
+            listOf(1, 2, 3, 4, 5),
+            weeklyLeaderboardTopFive(entries).map { it.rank }
+        )
+        assertEquals(
+            listOf(4, 5),
+            weeklyLeaderboardLowerRows(entries).map { it.rank }
+        )
+    }
+
+    @Test
+    fun leaderboardHandlesMissingPodiumRanksWithoutInventingEntries() {
+        val entries = listOf(
+            WeeklyLeaderboardEntry(rank = 1, userHandle = "first", completedViews = 7),
+            WeeklyLeaderboardEntry(rank = 3, userHandle = "third", completedViews = 2)
+        )
+
+        assertEquals(
+            listOf(3, 1, null),
+            weeklyLeaderboardPodiumOrder(entries).map { it?.rank }
+        )
+    }
+
 }

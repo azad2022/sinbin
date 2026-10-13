@@ -155,6 +155,16 @@ jobs:
           grep -Fq 'PaddingValues(bottom = 112.dp)' app/src/main/java/com/example/ui/screens/CampaignsScreen.kt
           grep -Fq 'testTag("fab_add_campaign")' app/src/main/java/com/example/ui/screens/CampaignsScreen.kt
 
+      - name: Verify weekly leaderboard podium layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'testTag("weekly_leaderboard_podium")' app/src/main/java/com/example/ui/screens/HomeScreen.kt
+          grep -Fq 'testTag("weekly_leaderboard_rank_rows")' app/src/main/java/com/example/ui/screens/HomeScreen.kt
+          grep -Fq 'testTag("weekly_leaderboard_current_rank")' app/src/main/java/com/example/ui/screens/HomeScreen.kt
+          grep -Fq 'leaderboardPodiumOrdersRowsAsBronzeGoldSilverForVisualPlacement' app/src/test/java/com/example/ui/screens/HomeScreenBehaviorTest.kt
+          grep -Fq 'leaderboardShowsOnlyTopFiveAndPlacesFourthAndFifthInRows' app/src/test/java/com/example/ui/screens/HomeScreenBehaviorTest.kt
+
       - name: Unit tests
         run: gradle --no-daemon testDebugUnitTest
 

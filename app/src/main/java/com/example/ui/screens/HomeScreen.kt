@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -61,6 +62,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -315,203 +319,156 @@ private fun DailyBonusBanner(
     }
 }
 
+
+internal fun weeklyLeaderboardTopFive(
+    entries: List<com.example.data.model.WeeklyLeaderboardEntry>
+): List<com.example.data.model.WeeklyLeaderboardEntry> =
+    entries.sortedBy { it.rank }.take(5)
+
+internal fun weeklyLeaderboardPodiumOrder(
+    entries: List<com.example.data.model.WeeklyLeaderboardEntry>
+): List<com.example.data.model.WeeklyLeaderboardEntry?> {
+    val byRank = weeklyLeaderboardTopFive(entries).associateBy { it.rank }
+    // Visual order left-to-right: bronze (3), gold (1), silver (2).
+    return listOf(byRank[3], byRank[1], byRank[2])
+}
+
+internal fun weeklyLeaderboardLowerRows(
+    entries: List<com.example.data.model.WeeklyLeaderboardEntry>
+): List<com.example.data.model.WeeklyLeaderboardEntry> =
+    weeklyLeaderboardTopFive(entries).filter { it.rank in 4..5 }
+
 @Composable
 private fun WeeklyLeaderboardCard(
     leaderboard: WeeklyLeaderboard?,
     currentUserHandle: String
 ) {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
-    val entries = leaderboard?.entries.orEmpty()
-    val eyeTransition = rememberInfiniteTransition(label = "leaderboard_eye")
-    val eyeScale by eyeTransition.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.08f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(760, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "leaderboard_eye_scale"
-    )
-    val eyeAlpha by eyeTransition.animateFloat(
-        initialValue = 0.72f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(760, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "leaderboard_eye_alpha"
-    )
+    val entries = weeklyLeaderboardTopFive(leaderboard?.entries.orEmpty())
+    val podiumEntries = weeklyLeaderboardPodiumOrder(entries)
+    val lowerEntries = weeklyLeaderboardLowerRows(entries)
+    val rank = leaderboard?.currentUserRank
+    val gap = leaderboard?.viewsToNextRank
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("weekly_leaderboard"),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(22.dp))
+                .clip(RoundedCornerShape(32.dp))
                 .background(
                     Brush.linearGradient(
-                        listOf(
-                            Color(0xFF071B3F),
-                            Color(0xFF253B7E),
-                            Color(0xFF542C83)
-                        )
+                        listOf(Color(0xFF0D6566), Color(0xFF104C59), Color(0xFF0A2C43))
                     )
                 )
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 16.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "🏆 برترین بازدیدکنندگان این هفته",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "بر اساس تعداد بازدیدهای موفق ثبت‌شده در سرور",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.74f)
-                    )
-                }
-
-                val trophyTransition = rememberInfiniteTransition(label = "leaderboard_trophy")
-                val trophyScale by trophyTransition.animateFloat(
-                    initialValue = 0.94f,
-                    targetValue = 1.08f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(900, easing = FastOutSlowInEasing),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "leaderboard_trophy_scale"
+                Text(
+                    text = "برترین بازدیدکنندگان این هفته",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
-                val trophyTilt by trophyTransition.animateFloat(
-                    initialValue = -7f,
-                    targetValue = 7f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1_150, easing = FastOutSlowInEasing),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "leaderboard_trophy_tilt"
+                Text(
+                    text = "بر اساس تعداد بازدیدهای موفق ثبت‌شده در سرور",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.72f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
-                Surface(
-                    shape = CircleShape,
-                    color = Color.White.copy(alpha = 0.14f),
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "🏆",
-                            fontSize = 23.sp,
-                            modifier = Modifier.graphicsLayer {
-                                scaleX = trophyScale
-                                scaleY = trophyScale
-                                rotationZ = trophyTilt
-                            }
-                        )
-                    }
-                }
             }
 
             when {
-                leaderboard == null -> Text(
-                    text = "در حال دریافت جدول این هفته…",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.86f),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
-                )
-                entries.isEmpty() -> Text(
-                    text = "هنوز بازدید موفقی برای این هفته ثبت نشده است.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.86f),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
-                )
+                leaderboard == null -> {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(140.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "در حال دریافت جدول این هفته…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.86f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+                entries.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(140.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "هنوز بازدید موفقی برای این هفته ثبت نشده است.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.86f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
                 else -> {
-                    entries.forEach { entry ->
-                        val isCurrentUser = entry.userHandle.equals(currentUserHandle, ignoreCase = true)
-                        val medal = when (entry.rank) {
-                            1 -> "🥇"
-                            2 -> "🥈"
-                            3 -> "🥉"
-                            else -> entry.rank.toString()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(330.dp)
+                            .testTag("weekly_leaderboard_podium")
+                    ) {
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(
+                                        top = 16.dp,
+                                        bottom = if (lowerEntries.isNotEmpty()) 44.dp else 0.dp
+                                    ),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                podiumEntries.forEachIndexed { index, entry ->
+                                    LeaderboardPodiumSlot(
+                                        entry = entry,
+                                        displayRank = listOf(3, 1, 2)[index],
+                                        formatter = formatter,
+                                        modifier = Modifier.weight(1f).fillMaxHeight()
+                                    )
+                                }
+                            }
                         }
 
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (isCurrentUser) {
-                                Color.White.copy(alpha = 0.22f)
-                            } else {
-                                Color.White.copy(alpha = 0.085f)
-                            }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        if (lowerEntries.isNotEmpty()) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .testTag("weekly_leaderboard_rank_rows"),
+                                shape = RoundedCornerShape(26.dp),
+                                color = Color(0xFF1A414F),
+                                tonalElevation = 3.dp,
+                                shadowElevation = 4.dp
                             ) {
-                                Box(
-                                    modifier = Modifier.width(34.dp),
-                                    contentAlignment = Alignment.Center
+                                Column(
+                                    modifier = Modifier.padding(11.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    LeaderboardRankIcon(
-                                        rank = entry.rank,
-                                        fallbackText = medal
-                                    )
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "کاربر ${entry.userHandle}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (isCurrentUser) FontWeight.Bold else FontWeight.Medium,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                    )
-                                    if (isCurrentUser) {
-                                        Text(
-                                            text = "رتبه شما",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFFFFD982)
+                                    lowerEntries.forEach { entry ->
+                                        LeaderboardLowerRankRow(
+                                            entry = entry,
+                                            isCurrentUser = entry.userHandle.equals(currentUserHandle, ignoreCase = true),
+                                            formatter = formatter
                                         )
                                     }
-                                }
-                                Row(
-                                    modifier = Modifier.testTag("leaderboard_views_${entry.rank}"),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = formatter.format(entry.completedViews),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.White,
-                                        maxLines = 1
-                                    )
-                                    Icon(
-                                        imageVector = Icons.Default.Visibility,
-                                        contentDescription = "${formatter.format(entry.completedViews)} بازدید موفق",
-                                        tint = Color(0xFF8BE9FD),
-                                        modifier = Modifier
-                                            .size(18.dp)
-                                            .graphicsLayer {
-                                                scaleX = eyeScale
-                                                scaleY = eyeScale
-                                                alpha = eyeAlpha
-                                            }
-                                    )
                                 }
                             }
                         }
@@ -519,64 +476,38 @@ private fun WeeklyLeaderboardCard(
                 }
             }
 
-            HorizontalDivider(color = Color.White.copy(alpha = 0.20f))
-
-            val rank = leaderboard?.currentUserRank
-            val views = leaderboard?.currentUserViews ?: 0
-            val gap = leaderboard?.viewsToNextRank
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            val subtitle = when {
+                rank == null -> "با اولین بازدید موفق وارد جدول می‌شوید."
+                rank == 1 -> "شما صدر جدول هستید."
+                gap != null -> "${formatter.format(gap)} بازدید تا رتبه ${formatter.format(rank - 1)}"
+                else -> "فاصله تا رتبه بالاتر محاسبه نشد."
+            }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFF20A9A4).copy(alpha = 0.75f), RoundedCornerShape(20.dp))
+                    .testTag("weekly_leaderboard_current_rank"),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF0B5157).copy(alpha = 0.68f)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = when {
-                            rank == null -> "رتبه شما هنوز ثبت نشده"
-                            else -> "رتبه شما: ${formatter.format(rank)}"
-                        },
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = when {
-                            rank == null -> "با اولین بازدید موفق وارد جدول می‌شوید."
-                            rank == 1 -> "شما صدر جدول هستید."
-                            gap != null -> "${formatter.format(gap)} بازدید تا رتبه ${formatter.format(rank - 1)}"
-                            else -> "فاصله تا رتبه بالاتر محاسبه نشد."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.74f)
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.White.copy(alpha = 0.14f)
-                ) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = formatter.format(views),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
+                            text = if (rank == null) "رتبه شما: —" else "رتبه شما: ${formatter.format(rank)}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
                             color = Color.White
                         )
-                        Icon(
-                            imageVector = Icons.Default.Visibility,
-                            contentDescription = "${formatter.format(views)} بازدید",
-                            tint = Color(0xFF8BE9FD),
-                            modifier = Modifier
-                                .size(17.dp)
-                                .graphicsLayer {
-                                    scaleX = eyeScale
-                                    scaleY = eyeScale
-                                    alpha = eyeAlpha
-                                }
+                        Text(
+                            text = subtitle,
+                            modifier = Modifier.weight(1f).padding(start = 10.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.72f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Start
                         )
                     }
                 }
@@ -586,62 +517,168 @@ private fun WeeklyLeaderboardCard(
 }
 
 @Composable
-private fun LeaderboardRankIcon(
-    rank: Int,
-    fallbackText: String
+private fun LeaderboardPodiumSlot(
+    entry: com.example.data.model.WeeklyLeaderboardEntry?,
+    displayRank: Int,
+    formatter: NumberFormat,
+    modifier: Modifier = Modifier
 ) {
-    if (rank !in 1..3) {
-        Text(
-            text = fallbackText,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color.White
-        )
-        return
+    val rankColor = when (displayRank) {
+        1 -> Color(0xFFFFC72C)
+        2 -> Color(0xFFDDE4EA)
+        else -> Color(0xFFE38B49)
     }
-
-    val transition = rememberInfiniteTransition(label = "leaderboard_rank_$rank")
-    val scale by transition.animateFloat(
-        initialValue = 0.92f,
-        targetValue = if (rank == 1) 1.12f else 1.06f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = if (rank == 1) 760 else 1_050,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "leaderboard_rank_scale"
-    )
-    val tilt by transition.animateFloat(
-        initialValue = if (rank == 1) -6f else -3f,
-        targetValue = if (rank == 1) 6f else 3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = if (rank == 1) 980 else 1_250,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "leaderboard_rank_tilt"
-    )
-    val medal = when (rank) {
-        1 -> "🥇"
-        2 -> "🥈"
-        else -> "🥉"
+    val podiumHeight = when (displayRank) {
+        1 -> 152.dp
+        2 -> 120.dp
+        else -> 92.dp
     }
+    val podiumShape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 3.dp, bottomEnd = 3.dp)
 
-    Text(
-        text = medal,
-        fontSize = if (rank == 1) 25.sp else 23.sp,
-        modifier = Modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                rotationZ = tilt
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Bottom
+    ) {
+        if (entry != null) {
+            Surface(
+                shape = CircleShape,
+                color = rankColor,
+                modifier = Modifier.size(if (displayRank == 1) 52.dp else 44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = displayRank.toString(),
+                        fontSize = if (displayRank == 1) 25.sp else 22.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF132A39)
+                    )
+                }
             }
-            .testTag("leaderboard_rank_icon_$rank")
-    )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = entry.userHandle,
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.sp,
+                fontWeight = if (displayRank == 1) FontWeight.Bold else FontWeight.Medium,
+                color = Color.White.copy(alpha = 0.88f),
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Text(
+                        text = formatter.format(entry.completedViews),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontSize = if (displayRank == 1) 35.sp else 28.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Icon(
+                        imageVector = Icons.Default.Visibility,
+                        contentDescription = "${formatter.format(entry.completedViews)} بازدید موفق",
+                        tint = Color(0xFF36D4C9),
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
+            }
+        } else {
+            Spacer(modifier = Modifier.height(88.dp))
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(podiumHeight)
+                .clip(podiumShape)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            if (displayRank == 1) Color(0xFF245967) else Color(0xFF2B5965),
+                            Color(0xFF183E50)
+                        )
+                    )
+                )
+                .then(
+                    if (displayRank == 1) Modifier.border(2.dp, Color(0xFFFFC72C), podiumShape)
+                    else Modifier
+                )
+        )
+    }
+}
+
+@Composable
+private fun LeaderboardLowerRankRow(
+    entry: com.example.data.model.WeeklyLeaderboardEntry,
+    isCurrentUser: Boolean,
+    formatter: NumberFormat
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().testTag("weekly_leaderboard_row_${entry.rank}"),
+        shape = RoundedCornerShape(18.dp),
+        color = if (isCurrentUser) Color(0xFF315C69) else Color(0xFF2B515F)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.12f),
+                modifier = Modifier.size(34.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = entry.rank.toString(),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+            Text(
+                text = entry.userHandle,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White,
+                fontWeight = if (isCurrentUser) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Text(
+                        text = formatter.format(entry.completedViews),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                        maxLines = 1
+                    )
+                    Icon(
+                        imageVector = Icons.Default.Visibility,
+                        contentDescription = "${formatter.format(entry.completedViews)} بازدید موفق",
+                        tint = Color(0xFF36D4C9),
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
