@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,7 +38,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -85,34 +84,12 @@ fun CampaignsScreen(
         else -> campaigns
     }
 
-    Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onAddCampaign,
-                containerColor = SiteBinBlue,
-                contentColor = Color.White,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .offset(y = 8.dp)
-                    .testTag("fab_add_campaign")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "سفارش جدید")
-                    Text("سفارش جدید", fontWeight = FontWeight.Bold)
-                }
-            }
-        },
-        modifier = modifier.fillMaxSize()
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("campaigns_screen")
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             // Header
             Column(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
@@ -130,7 +107,8 @@ fun CampaignsScreen(
                 )
             }
 
-            // Tab Row
+            // Tabs sit within the parent screen. Avoid a second Scaffold here:
+            // the app already owns the bottom navigation and system-bar insets.
             TabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -159,7 +137,8 @@ fun CampaignsScreen(
             if (filteredList.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .fillMaxWidth()
+                        .weight(1f)
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -183,8 +162,12 @@ fun CampaignsScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 16.dp)
+                        .testTag("campaigns_list"),
+                    // Keep the last card clear of the floating action button.
+                    contentPadding = PaddingValues(bottom = 112.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     items(filteredList, key = { it.id }) { campaign ->
@@ -196,6 +179,26 @@ fun CampaignsScreen(
                         )
                     }
                 }
+            }
+        }
+
+        FloatingActionButton(
+            onClick = onAddCampaign,
+            containerColor = SiteBinBlue,
+            contentColor = Color.White,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 16.dp)
+                .testTag("fab_add_campaign")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "سفارش جدید")
+                Text("سفارش جدید", fontWeight = FontWeight.Bold)
             }
         }
     }
