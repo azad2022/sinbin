@@ -16,7 +16,6 @@ import com.example.data.model.TransactionType
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ReferralStatus
-import com.google.firebase.messaging.FirebaseMessaging
 import com.example.notifications.SiteBinNotificationManager
 import com.example.data.model.ViewSession
 import com.example.data.backend.RateLimitException
@@ -107,11 +106,6 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     )
     val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled.asStateFlow()
 
-    private val _referralNotificationsEnabled = MutableStateFlow(
-        prefs.getBoolean("referral_notifications_enabled", true)
-    )
-    val referralNotificationsEnabled: StateFlow<Boolean> = _referralNotificationsEnabled.asStateFlow()
-
     val referralStatus: StateFlow<ReferralStatus?> = repository.referralStatus
     private val _isRefreshingReferralStatus = MutableStateFlow(false)
     val isRefreshingReferralStatus: StateFlow<Boolean> = _isRefreshingReferralStatus.asStateFlow()
@@ -120,9 +114,6 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     val referralStatusLoadFailed: StateFlow<Boolean> = _referralStatusLoadFailed.asStateFlow()
     private val _isRegisteringReferral = MutableStateFlow(false)
     val isRegisteringReferral: StateFlow<Boolean> = _isRegisteringReferral.asStateFlow()
-
-    private var referralTokenSyncInFlight = false
-    private var lastReferralTokenSyncAt = 0L
 
     private val _autoViewEnabled = MutableStateFlow(
         prefs.getBoolean("auto_view_enabled", false)
@@ -269,69 +260,6 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         else -> "کد دعوت ثبت نشد. لطفاً وضعیت حساب را تازه‌سازی کنید."
     }
 
-    fun setReferralNotificationsEnabled(enabled: Boolean) {
-        val preferenceChanged = _referralNotificationsEnabled.value != enabled
-        _referralNotificationsEnabled.value = enabled
-        prefs.edit().putBoolean("referral_notifications_enabled", enabled).apply()
-
-        viewModelScope.launch {
-            // Permission-result callbacks and switch interactions can report the
-            // same value. Skip duplicate preference writes but still refresh a
-            // token when enabled, which can repair a missing or stale FCM row.
-            if (preferenceChanged) {
-                repository.setReferralPushNotificationsEnabled(enabled)
-                    .onFailure {
-                        // The local preference remains authoritative for this
-                        // device's UI; server failure must not block referral state.
-                    }
-            }
-            if (enabled) {
-                lastReferralTokenSyncAt = 0L
-                syncReferralPushToken(force = true)
-            }
-        }
-    }
-
-    fun syncReferralPushToken(force: Boolean = false) {
-        if (!_referralNotificationsEnabled.value || !isAppInForeground ||
-            repository.serverState.value !is ServerInitializationState.Ready ||
-            !SiteBinNotificationManager.canPostNotifications(getApplication()) ||
-            referralTokenSyncInFlight
-        ) return
-
-        val now = SystemClock.elapsedRealtime()
-        if (!force && lastReferralTokenSyncAt > 0L &&
-            now - lastReferralTokenSyncAt < 5 * 60_000L
-        ) return
-        referralTokenSyncInFlight = true
-        lastReferralTokenSyncAt = now
-
-        try {
-            FirebaseMessaging.getInstance().token
-                .addOnSuccessListener { token ->
-                    viewModelScope.launch {
-                        try {
-                            if (token.isNotBlank()) {
-                                repository.registerReferralPushToken(token, enabled = true)
-                                    .onSuccess {
-                                        // This endpoint only delivers pending referral outbox items;
-                                        // it is not a periodic polling source.
-                                        repository.dispatchReferralNotifications()
-                                    }
-                            }
-                        } finally {
-                            referralTokenSyncInFlight = false
-                        }
-                    }
-                }
-                .addOnFailureListener {
-                    referralTokenSyncInFlight = false
-                }
-        } catch (_: Exception) {
-            referralTokenSyncInFlight = false
-        }
-    }
-
     init {
         viewModelScope.launch {
             while (repository.serverState.value !is ServerInitializationState.Ready) {
@@ -349,10 +277,6 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 .filter { it.type == TransactionType.COIN_TRANSFER_RECEIVED }
                 .forEach { seenIncomingTransferIds.add(it.id) }
             notificationBaselineReady = true
-
-            // Register the initial FCM token only after Supabase authentication
-            // and server identity initialization have completed.
-            syncReferralPushToken()
 
             // Realtime is the primary low-latency path. Polling is only a safety
             // reconciliation path: 60s when the socket is healthy, 15s if it is not.
@@ -586,7 +510,6 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
         if (!inForeground || repository.serverState.value !is ServerInitializationState.Ready) return
 
-        syncReferralPushToken()
         if (_currentScreen.value == AppScreen.SETTINGS) refreshReferralStatus()
 
         viewModelScope.launch {

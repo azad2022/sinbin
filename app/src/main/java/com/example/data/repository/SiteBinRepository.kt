@@ -217,35 +217,7 @@ class SiteBinRepository(
     suspend fun registerReferral(inviterHandle: String): Result<ReferralRegistrationResult> {
         val client = referralClient()
             ?: return Result.failure(IllegalStateException("Referral operations require the configured Supabase backend."))
-        val result = client.registerReferral(inviterHandle)
-        result.onSuccess { registration ->
-            if (registration.success) {
-                // Push delivery is a best-effort side effect; it must never roll
-                // back or misreport a successfully committed referral relationship.
-                registration.eventId?.let { eventId ->
-                    scope.launch { client.dispatchReferralNotifications(eventId) }
-                }
-            }
-        }
-        return result
-    }
-
-    suspend fun registerReferralPushToken(token: String, enabled: Boolean): Result<Unit> {
-        val client = referralClient()
-            ?: return Result.failure(IllegalStateException("Referral notifications require the configured Supabase backend."))
-        return client.registerReferralPushToken(token, enabled)
-    }
-
-    suspend fun setReferralPushNotificationsEnabled(enabled: Boolean): Result<Unit> {
-        val client = referralClient()
-            ?: return Result.failure(IllegalStateException("Referral notifications require the configured Supabase backend."))
-        return client.setReferralPushNotificationsEnabled(enabled)
-    }
-
-    suspend fun dispatchReferralNotifications(eventId: String? = null): Result<Unit> {
-        val client = referralClient()
-            ?: return Result.failure(IllegalStateException("Referral notifications require the configured Supabase backend."))
-        return client.dispatchReferralNotifications(eventId)
+        return client.registerReferral(inviterHandle)
     }
 
     suspend fun transferCoins(
