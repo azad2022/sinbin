@@ -173,6 +173,14 @@ jobs:
           grep -R --line-number --fixed-strings "windowSplashScreenAnimatedIcon" app/src/main/res/values-v31/themes.xml
           echo "Startup source, video identity and legacy loader removal verified"
 
+      - name: Verify referral-push removal and tier-two reward amount
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R --line-number -E 'FirebaseMessaging|send-referral-push|registerReferralPushToken|setReferralNotificationsEnabled|referralNotificationsEnabled|اعلان‌های زیرمجموعه‌ها|register_push_token|set_referral_push_notifications_enabled|claim_referral_notifications|referral_notification_outbox|referral_push_tokens' app/src/main
+          ! grep -n -E '۲۵٬۰۰۰|۲۵٬۵۰۰|25,000|25000' app/src/main/java/com/example/ui/screens/SiteBinHelpContent.kt docs/referral-system-deployment.md supabase/tests/sitebin_referral_rewards.sql
+          grep -Fq 'v_amount := 20000;' supabase/migrations/20261013114207_sitebin_remove_referral_push_and_adjust_rewards.sql
+
       - name: Unit tests
         run: gradle --no-daemon testDebugUnitTest
 

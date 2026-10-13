@@ -117,8 +117,6 @@ fun SettingsScreen(
     isRegisteringReferral: Boolean = false,
     onRegisterReferral: (String) -> Unit = {},
     onRefreshReferralStatus: () -> Unit = {},
-    referralNotificationsEnabled: Boolean = false,
-    onToggleReferralNotifications: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var referralCode by remember { mutableStateOf("") }
@@ -284,7 +282,8 @@ fun SettingsScreen(
                     )
                     AccountMetricsGrid(
                         account = account,
-                        activeCampaignsCount = activeCampaignsCount
+                        activeCampaignsCount = activeCampaignsCount,
+                        referralStatus = referralStatus
                     )
 
                     HorizontalDivider(
@@ -418,43 +417,7 @@ fun SettingsScreen(
                             )
                         }
 
-                        if (referralStatus != null) {
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
-                            )
-                            Text(
-                                text = "آمار زیرمجموعه‌های مستقیم شما",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                ReferralStatTile(
-                                    title = "دعوت مستقیم",
-                                    value = referralStatus.directInviteCount.toString(),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                ReferralStatTile(
-                                    title = "پاداش ۱۰۰ بازدید",
-                                    value = referralStatus.directTier100CompletedCount.toString(),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                ReferralStatTile(
-                                    title = "پاداش ۵۰۰ سایت",
-                                    value = referralStatus.directTier500CompletedCount.toString(),
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                            Text(
-                                text = "کل سکه‌های دریافتی از دعوت‌ها: " +
-                                    java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
-                                        .format(referralStatus.referralCoinsEarned),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+
                     }
                 }
             }
@@ -490,14 +453,6 @@ fun SettingsScreen(
                         subtitle = "اطلاع‌رسانی هنگام دریافت سکه",
                         checked = notificationsEnabled,
                         onCheckedChange = onToggleNotifications
-                    )
-
-                    SettingsToggleRow(
-                        icon = Icons.Default.Notifications,
-                        title = "اعلان‌های زیرمجموعه‌ها",
-                        subtitle = "هنگام ثبت دعوت جدید، به شما اطلاع داده شود",
-                        checked = referralNotificationsEnabled,
-                        onCheckedChange = onToggleReferralNotifications
                     )
 
                     SettingsToggleRow(
@@ -639,9 +594,14 @@ fun SettingsScreen(
 @Composable
 private fun AccountMetricsGrid(
     account: UserAccount,
-    activeCampaignsCount: Int
+    activeCampaignsCount: Int,
+    referralStatus: ReferralStatus?
 ) {
     val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
+    val directInviteCount = referralStatus?.directInviteCount?.let(formatter::format) ?: "—"
+    val tier100Count = referralStatus?.directTier100CompletedCount?.let(formatter::format) ?: "—"
+    val tier500Count = referralStatus?.directTier500CompletedCount?.let(formatter::format) ?: "—"
+    val referralCoins = referralStatus?.referralCoinsEarned?.let(formatter::format) ?: "—"
 
     Column(
         modifier = Modifier
@@ -660,14 +620,14 @@ private fun AccountMetricsGrid(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             MetricCard(
-                title = "بازدیدهای انجام‌شده",
+                title = "بازدید انجام‌شده",
                 value = formatter.format(account.completedViewsCount),
                 icon = Icons.Default.RemoveRedEye,
                 color = SiteBinBlue,
                 modifier = Modifier.weight(1f)
             )
             MetricCard(
-                title = "سفارش‌های فعال",
+                title = "سفارش فعال",
                 value = formatter.format(activeCampaignsCount),
                 icon = Icons.Default.Language,
                 color = SiteBinTeal,
@@ -684,6 +644,46 @@ private fun AccountMetricsGrid(
                 value = formatter.format(account.reservedCoins),
                 icon = Icons.Default.MonetizationOn,
                 color = SiteBinGold,
+                modifier = Modifier.weight(1f)
+            )
+            MetricCard(
+                title = "تعداد دعوت مستقیم",
+                value = directInviteCount,
+                icon = Icons.Default.AccountCircle,
+                color = SiteBinBlue,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            MetricCard(
+                title = "پاداش ۱۰۰ بازدید",
+                value = tier100Count,
+                icon = Icons.Default.MonetizationOn,
+                color = SiteBinSuccess,
+                modifier = Modifier.weight(1f)
+            )
+            MetricCard(
+                title = "پاداش ۵۰۰ سایت متفاوت",
+                value = tier500Count,
+                icon = Icons.Default.MonetizationOn,
+                color = SiteBinGold,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            MetricCard(
+                title = "کل پاداش دعوت",
+                value = referralCoins,
+                icon = Icons.Default.MonetizationOn,
+                color = SiteBinTeal,
                 modifier = Modifier.weight(1f)
             )
             MetricCard(
@@ -870,32 +870,6 @@ private fun ReferralProgressRow(
             progress = progress,
             modifier = Modifier.fillMaxWidth()
         )
-    }
-}
-
-@Composable
-private fun ReferralStatTile(
-    title: String,
-    value: String,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(
-                title,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
     }
 }
 

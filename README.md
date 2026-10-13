@@ -1321,7 +1321,6 @@ Current Gradle catalog includes the Android/Kotlin/Compose/Supabase transport st
 - Moshi 1.15.2
 - Coroutines 1.10.2
 - Play Services App Set 16.1.0
-- Firebase BOM 34.17.0
 
 Dependencies are centrally versioned in `gradle/libs.versions.toml`.
 

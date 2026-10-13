@@ -91,10 +91,6 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        if (intent.getBooleanExtra("sitebin_open_referral_settings", false)) {
-            viewModel.navigateTo(AppScreen.SETTINGS)
-        }
-
         enableEdgeToEdge()
 
         setContent {
@@ -105,14 +101,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onNewIntent(intent: android.content.Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        if (intent.getBooleanExtra("sitebin_open_referral_settings", false)) {
-            viewModel.navigateTo(AppScreen.SETTINGS)
-        }
-    }
-}
+
 
 @Composable
 fun MainAppContent(viewModel: SiteBinViewModel) {
@@ -133,7 +122,6 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     val isRefreshingReferralStatus by viewModel.isRefreshingReferralStatus.collectAsState()
     val referralStatusLoadFailed by viewModel.referralStatusLoadFailed.collectAsState()
     val isRegisteringReferral by viewModel.isRegisteringReferral.collectAsState()
-    val referralNotificationsEnabled by viewModel.referralNotificationsEnabled.collectAsState()
     val viewerState by viewModel.viewerState.collectAsState()
     val autoViewEnabled by viewModel.autoViewEnabled.collectAsState()
     val isUpdatingAutoView by viewModel.isUpdatingAutoView.collectAsState()
@@ -144,27 +132,10 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         viewModel.setNotificationsEnabled(granted)
-        if (granted) {
-            viewModel.syncReferralPushToken(force = true)
-        } else {
-            // Android's notification permission is shared by both notification
-            // categories. Keep the referral toggle consistent with a denial.
-            viewModel.setReferralNotificationsEnabled(false)
-        }
         prefs.edit().putBoolean("coin_transfer_notification_permission_asked", true).apply()
     }
 
     val notificationsEnabled by viewModel.notificationsEnabled.collectAsState()
-
-    val referralNotificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        prefs.edit().putBoolean("referral_notification_permission_asked", true).apply()
-        viewModel.setReferralNotificationsEnabled(granted)
-        if (!granted) {
-            viewModel.showMessage("برای دریافت اعلان زیرمجموعه‌ها، اجازه اعلان SiteBin را فعال کنید.")
-        }
-    }
 
     LaunchedEffect(currentScreen, notificationsEnabled) {
         if (
@@ -392,22 +363,6 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                 isRegisteringReferral = isRegisteringReferral,
                                 onRegisterReferral = viewModel::registerReferral,
                                 onRefreshReferralStatus = viewModel::refreshReferralStatus,
-                                referralNotificationsEnabled = referralNotificationsEnabled,
-                                onToggleReferralNotifications = { enabled ->
-                                    if (
-                                        enabled &&
-                                        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
-                                        ContextCompat.checkSelfPermission(
-                                            context,
-                                            Manifest.permission.POST_NOTIFICATIONS
-                                        ) != PackageManager.PERMISSION_GRANTED
-                                    ) {
-                                        prefs.edit().putBoolean("referral_notification_permission_asked", true).apply()
-                                        referralNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    } else {
-                                        viewModel.setReferralNotificationsEnabled(enabled)
-                                    }
-                                },
                                 autoViewEnabled = autoViewEnabled,
                                 isUpdatingAutoView = isUpdatingAutoView,
                                 onToggleAutoView = { enabled ->

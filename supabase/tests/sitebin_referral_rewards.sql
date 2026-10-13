@@ -171,13 +171,7 @@ BEGIN
     RAISE EXCEPTION 'TEST_FAILED: registered direct referral row is missing';
   END IF;
 
-  IF (SELECT pg_catalog.count(*) FROM private.referral_notification_outbox
-      WHERE referral_id = v_referral_id AND event_type = 'REFERRAL_REGISTERED'
-        AND actor_id = v_invitee AND recipient_id = v_inviter) <> 1 THEN
-    RAISE EXCEPTION 'TEST_FAILED: referral registration outbox event must be created once for the direct inviter';
-  END IF;
-
-  -- Registering again cannot change the direct inviter or make a second event.
+  -- Registering again cannot change the direct inviter or create a second relationship.
   UPDATE private.rate_limit_buckets
   SET ten_second_started_at = pg_catalog.clock_timestamp() - INTERVAL '11 seconds',
       ten_second_count = 0,
@@ -334,7 +328,7 @@ BEGIN
 
   -- Seed 498 synthetic distinct sites in addition to the actual first site,
   -- placing only this fixture at 499. The next unique-site completion must
-  -- atomically trigger the extra 25,000 coins for each direct party.
+  -- atomically trigger the extra 20,000 coins for each direct party.
   INSERT INTO private.referral_website_progress(
     referral_id, website_key, first_view_session_id, first_completed_at
   )
@@ -378,18 +372,18 @@ BEGIN
 
   SELECT available_coins INTO v_balance_inviter FROM public.profiles WHERE id = v_inviter;
   SELECT available_coins INTO v_balance_invitee FROM public.profiles WHERE id = v_invitee;
-  IF v_balance_inviter <> 25600 OR v_balance_invitee <> 26100 THEN
-    RAISE EXCEPTION 'TEST_FAILED: tier-2 must add 25,000 coins to the direct pair only; inviter %, invitee %',
+  IF v_balance_inviter <> 20600 OR v_balance_invitee <> 21100 THEN
+    RAISE EXCEPTION 'TEST_FAILED: tier-2 must add 20,000 coins to the direct pair only; inviter %, invitee %',
       v_balance_inviter, v_balance_invitee;
   END IF;
 
   SELECT pg_catalog.count(*) INTO v_ledger_inviter
   FROM private.referral_reward_grants
-  WHERE recipient_id = v_inviter AND amount = 25000 AND referral_id = v_referral_id
+  WHERE recipient_id = v_inviter AND amount = 20000 AND referral_id = v_referral_id
     AND milestone = 'WEBSITES_500';
   SELECT pg_catalog.count(*) INTO v_ledger_invitee
   FROM private.referral_reward_grants
-  WHERE recipient_id = v_invitee AND amount = 25000 AND referral_id = v_referral_id
+  WHERE recipient_id = v_invitee AND amount = 20000 AND referral_id = v_referral_id
     AND milestone = 'WEBSITES_500';
   IF v_ledger_inviter <> 1 OR v_ledger_invitee <> 1 THEN
     RAISE EXCEPTION 'TEST_FAILED: tier-2 reward grants are missing or duplicated';

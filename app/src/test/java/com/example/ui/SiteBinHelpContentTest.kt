@@ -50,11 +50,12 @@ class SiteBinHelpContentTest {
         val referralText = siteBinHelpSections.first { it.id == "referrals" }.paragraphs.joinToString(" ")
         assertTrue(referralText.contains("۱۰۰ بازدید معتبر"))
         assertTrue(referralText.contains("۵۰۰ وب‌سایت متفاوت"))
-        assertTrue(referralText.contains("۲۵٬۰۰۰ سکه"))
+        assertTrue(referralText.contains("۲۰٬۰۰۰ سکه"))
         assertTrue(referralText.contains("یک‌سطحی"))
         assertTrue(referralText.contains("قابل تغییر نیست"))
         assertTrue(referralText.contains("دامنهٔ ثبت‌پذیر"))
-        assertTrue(referralText.contains("اعلان‌های زیرمجموعه‌ها"))
+        assertTrue(referralText.contains("۲۰٬۵۰۰ سکه"))
+        assertTrue(referralText.contains("وضعیت حساب کاربری"))
 
 
         val coinsText = siteBinHelpSections.first { it.id == "coins" }.paragraphs.joinToString(" ")

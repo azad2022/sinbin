@@ -109,8 +109,7 @@ data class ReferralStatus(
 data class ReferralRegistrationResult(
     val success: Boolean,
     val code: String? = null,
-    val inviterHandle: String? = null,
-    val eventId: String? = null
+    val inviterHandle: String? = null
 )
 
 data class UserAccount(
