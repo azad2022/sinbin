@@ -422,7 +422,7 @@ private fun WeeklyLeaderboardCard(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(330.dp)
+                            .height(390.dp)
                             .testTag("weekly_leaderboard_podium")
                     ) {
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -528,12 +528,34 @@ private fun LeaderboardPodiumSlot(
         2 -> Color(0xFFDDE4EA)
         else -> Color(0xFFE38B49)
     }
+    // Taller proportions keep the bronze (third-place) step visibly distinct
+    // above the lower-rank panel, even on compact phone screens.
     val podiumHeight = when (displayRank) {
-        1 -> 152.dp
-        2 -> 120.dp
-        else -> 92.dp
+        1 -> 168.dp
+        2 -> 140.dp
+        else -> 116.dp
     }
     val podiumShape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 3.dp, bottomEnd = 3.dp)
+
+    val badgeTransition = rememberInfiniteTransition(label = "podium_badge_$displayRank")
+    val badgeScale by badgeTransition.animateFloat(
+        initialValue = 0.96f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1_250, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "podium_badge_scale"
+    )
+    val badgeTilt by badgeTransition.animateFloat(
+        initialValue = -2f,
+        targetValue = 2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1_600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "podium_badge_tilt"
+    )
 
     Column(
         modifier = modifier,
@@ -544,12 +566,18 @@ private fun LeaderboardPodiumSlot(
             Surface(
                 shape = CircleShape,
                 color = rankColor,
-                modifier = Modifier.size(if (displayRank == 1) 52.dp else 44.dp)
+                modifier = Modifier
+                    .size(if (displayRank == 1) 46.dp else 38.dp)
+                    .graphicsLayer {
+                        scaleX = badgeScale
+                        scaleY = badgeScale
+                        rotationZ = badgeTilt
+                    }
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = displayRank.toString(),
-                        fontSize = if (displayRank == 1) 25.sp else 22.sp,
+                        fontSize = if (displayRank == 1) 22.sp else 19.sp,
                         fontWeight = FontWeight.Black,
                         color = Color(0xFF132A39)
                     )
@@ -560,7 +588,7 @@ private fun LeaderboardPodiumSlot(
                 text = entry.userHandle,
                 modifier = Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.bodySmall,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = if (displayRank == 1) FontWeight.Bold else FontWeight.Medium,
                 color = Color.White.copy(alpha = 0.88f),
                 maxLines = 1,
@@ -577,7 +605,7 @@ private fun LeaderboardPodiumSlot(
                     Text(
                         text = formatter.format(entry.completedViews),
                         style = MaterialTheme.typography.headlineSmall,
-                        fontSize = if (displayRank == 1) 35.sp else 28.sp,
+                        fontSize = if (displayRank == 1) 25.sp else 22.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White,
                         maxLines = 1,
@@ -587,7 +615,7 @@ private fun LeaderboardPodiumSlot(
                         imageVector = Icons.Default.Visibility,
                         contentDescription = "${formatter.format(entry.completedViews)} بازدید موفق",
                         tint = Color(0xFF36D4C9),
-                        modifier = Modifier.size(21.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -610,8 +638,11 @@ private fun LeaderboardPodiumSlot(
                     )
                 )
                 .then(
-                    if (displayRank == 1) Modifier.border(2.dp, Color(0xFFFFC72C), podiumShape)
-                    else Modifier
+                    Modifier.border(
+                        width = if (displayRank == 1) 2.dp else 1.5.dp,
+                        color = rankColor,
+                        shape = podiumShape
+                    )
                 )
         )
     }
@@ -629,14 +660,14 @@ private fun LeaderboardLowerRankRow(
         color = if (isCurrentUser) Color(0xFF315C69) else Color(0xFF2B515F)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(9.dp)
         ) {
             Surface(
                 shape = CircleShape,
                 color = Color.White.copy(alpha = 0.12f),
-                modifier = Modifier.size(34.dp)
+                modifier = Modifier.size(28.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
@@ -665,6 +696,7 @@ private fun LeaderboardLowerRankRow(
                     Text(
                         text = formatter.format(entry.completedViews),
                         style = MaterialTheme.typography.titleMedium,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White,
                         maxLines = 1
@@ -673,7 +705,7 @@ private fun LeaderboardLowerRankRow(
                         imageVector = Icons.Default.Visibility,
                         contentDescription = "${formatter.format(entry.completedViews)} بازدید موفق",
                         tint = Color(0xFF36D4C9),
-                        modifier = Modifier.size(19.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
