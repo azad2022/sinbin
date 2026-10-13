@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -66,6 +67,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Stroke
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
@@ -140,7 +143,7 @@ fun SettingsScreen(
             )
         }
 
-        // Account Identity Card
+        // Account identity details
         item {
             Card(
                 shape = RoundedCornerShape(20.dp),
@@ -276,21 +279,34 @@ fun SettingsScreen(
                         )
                     }
 
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 2.dp),
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
-                    )
-                    AccountMetricsGrid(
-                        account = account,
-                        activeCampaignsCount = activeCampaignsCount,
-                        referralStatus = referralStatus
-                    )
+                }
+            }
+        }
 
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 2.dp),
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
-                    )
+        // Account status dashboard — presentation only; values remain server-provided.
+        item {
+            AccountMetricsGrid(
+                account = account,
+                activeCampaignsCount = activeCampaignsCount,
+                referralStatus = referralStatus
+            )
+        }
 
+        // Referral registration and progress remain independent from account metrics.
+        item {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
                             text = "دعوت دوستان و پاداش‌ها",
@@ -591,6 +607,16 @@ fun SettingsScreen(
 
 }
 
+private val AccountStatusHero = Color(0xFF203158)
+private val AccountStatusCard = Color(0xFF171D30)
+private val AccountStatusBorder = Color(0xFF2A3450)
+private val AccountStatusText = Color(0xFFF7F8FC)
+private val AccountStatusMuted = Color(0xFF9EA8BF)
+private val AccountStatusBlueAccent = Color(0xFF7CA4FF)
+private val AccountStatusMint = Color(0xFF2BD3A2)
+private val AccountStatusRingTrack = Color(0xFF344361)
+private val AccountStatusGold = Color(0xFFFFC341)
+
 @Composable
 private fun AccountMetricsGrid(
     account: UserAccount,
@@ -602,12 +628,13 @@ private fun AccountMetricsGrid(
     val tier100Count = referralStatus?.directTier100CompletedCount?.let(formatter::format) ?: "—"
     val tier500Count = referralStatus?.directTier500CompletedCount?.let(formatter::format) ?: "—"
     val referralCoins = referralStatus?.referralCoinsEarned?.let(formatter::format) ?: "—"
+    val trustScore = account.trustScore.toInt().coerceIn(0, 100)
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("account_status_metrics"),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(
             text = "وضعیت حساب کاربری",
@@ -615,135 +642,333 @@ private fun AccountMetricsGrid(
             fontWeight = FontWeight.Bold
         )
 
+        AccountStatusHeroCard(
+            reservedCoins = formatter.format(account.reservedCoins),
+            trustScore = trustScore
+        )
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            MetricCard(
+            AccountStatusMetricCard(
                 title = "بازدید انجام‌شده",
                 value = formatter.format(account.completedViewsCount),
-                icon = Icons.Default.RemoveRedEye,
-                color = SiteBinBlue,
                 modifier = Modifier.weight(1f)
             )
-            MetricCard(
+            AccountStatusMetricCard(
                 title = "سفارش فعال",
                 value = formatter.format(activeCampaignsCount),
-                icon = Icons.Default.Language,
-                color = SiteBinTeal,
                 modifier = Modifier.weight(1f)
             )
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            MetricCard(
-                title = "سکه رزرو شده",
-                value = formatter.format(account.reservedCoins),
-                icon = Icons.Default.MonetizationOn,
-                color = SiteBinGold,
-                modifier = Modifier.weight(1f)
-            )
-            MetricCard(
-                title = "تعداد دعوت مستقیم",
-                value = directInviteCount,
-                icon = Icons.Default.AccountCircle,
-                color = SiteBinBlue,
-                modifier = Modifier.weight(1f)
-            )
-        }
+        AccountStatusRewardsCard(
+            tier100Count = tier100Count,
+            tier500Count = tier500Count,
+            referralCoins = referralCoins
+        )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            MetricCard(
-                title = "پاداش ۱۰۰ بازدید",
-                value = tier100Count,
-                icon = Icons.Default.MonetizationOn,
-                color = SiteBinSuccess,
-                modifier = Modifier.weight(1f)
-            )
-            MetricCard(
-                title = "پاداش ۵۰۰ سایت متفاوت",
-                value = tier500Count,
-                icon = Icons.Default.MonetizationOn,
-                color = SiteBinGold,
-                modifier = Modifier.weight(1f)
-            )
-        }
+        AccountStatusDirectInvitesCard(directInviteCount = directInviteCount)
+    }
+}
 
+@Composable
+private fun AccountStatusHeroCard(
+    reservedCoins: String,
+    trustScore: Int
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("account_status_balance_card"),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = AccountStatusHero),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            MetricCard(
-                title = "کل پاداش دعوت",
-                value = referralCoins,
-                icon = Icons.Default.MonetizationOn,
-                color = SiteBinTeal,
-                modifier = Modifier.weight(1f)
-            )
-            MetricCard(
-                title = "امتیاز اعتماد",
-                value = "${account.trustScore.toInt()}%",
-                icon = Icons.Default.Shield,
-                color = SiteBinSuccess,
-                modifier = Modifier.weight(1f)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = AccountStatusGold,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.MonetizationOn,
+                                contentDescription = null,
+                                tint = AccountStatusHero,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "سکه رزرو شده",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AccountStatusMuted
+                    )
+                }
+                Text(
+                    text = reservedCoins,
+                    style = MaterialTheme.typography.headlineLarge.copy(fontSize = 40.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = AccountStatusText,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+
+            AccountStatusTrustRing(
+                score = trustScore,
+                modifier = Modifier.padding(start = 8.dp)
             )
         }
     }
 }
 
 @Composable
-private fun MetricCard(
+private fun AccountStatusTrustRing(
+    score: Int,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.size(86.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val ringWidth = 7.dp.toPx()
+            drawArc(
+                color = AccountStatusRingTrack,
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                style = Stroke(width = ringWidth)
+            )
+            if (score > 0) {
+                drawArc(
+                    color = AccountStatusMint,
+                    startAngle = -90f,
+                    sweepAngle = 360f * (score / 100f),
+                    useCenter = false,
+                    style = Stroke(width = ringWidth, cap = StrokeCap.Round)
+                )
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "$score%",
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 21.sp),
+                fontWeight = FontWeight.Bold,
+                color = AccountStatusText
+            )
+            Text(
+                text = "امتیاز اعتماد",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                color = AccountStatusMuted,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+    }
+}
+
+@Composable
+private fun AccountStatusMetricCard(
     title: String,
     value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    color: Color,
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.height(106.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        modifier = modifier.height(118.dp),
+        shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(1.dp, AccountStatusBorder),
+        colors = CardDefaults.cardColors(containerColor = AccountStatusCard),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(10.dp),
+                .padding(horizontal = 14.dp, vertical = 13.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = AccountStatusMuted,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Box(
+                modifier = Modifier
+                    .width(28.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(AccountStatusBlueAccent)
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.headlineMedium.copy(fontSize = 34.sp),
+                fontWeight = FontWeight.Bold,
+                color = AccountStatusText,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun AccountStatusRewardsCard(
+    tier100Count: String,
+    tier500Count: String,
+    referralCoins: String
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("account_status_rewards"),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, AccountStatusBorder),
+        colors = CardDefaults.cardColors(containerColor = AccountStatusCard),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
             Row(
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(18.dp)
-                )
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF12352F),
+                    modifier = Modifier.size(46.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.MonetizationOn,
+                            contentDescription = null,
+                            tint = AccountStatusMint,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = "پاداش‌ها",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = AccountStatusText
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            AccountStatusRewardRow(title = "پاداش ۱۰۰ بازدید", value = tier100Count)
+            HorizontalDivider(color = AccountStatusBorder)
+            AccountStatusRewardRow(title = "پاداش ۵۰۰ سایت متفاوت", value = tier500Count)
+            HorizontalDivider(color = AccountStatusBorder)
+            AccountStatusRewardRow(title = "کل پاداش دعوت", value = referralCoins)
+        }
+    }
+}
+
+@Composable
+private fun AccountStatusRewardRow(
+    title: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = AccountStatusMuted,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp),
+            fontWeight = FontWeight.Bold,
+            color = AccountStatusText,
+            maxLines = 1,
+            softWrap = false
+        )
+    }
+}
+
+@Composable
+private fun AccountStatusDirectInvitesCard(directInviteCount: String) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("account_status_direct_invites"),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, AccountStatusBorder),
+        colors = CardDefaults.cardColors(containerColor = AccountStatusCard),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF0D1428),
+                    modifier = Modifier.size(50.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = null,
+                            tint = AccountStatusBlueAccent,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = "تعداد دعوت مستقیم",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = AccountStatusMuted,
                     maxLines = 2,
-                    minLines = 2,
-                    modifier = Modifier.weight(1f),
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
             Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
+                text = directInviteCount,
+                style = MaterialTheme.typography.headlineMedium.copy(fontSize = 34.sp),
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = AccountStatusText,
                 maxLines = 1,
                 softWrap = false,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
