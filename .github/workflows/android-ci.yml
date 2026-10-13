@@ -168,7 +168,7 @@ jobs:
           grep -Fq '1 -> 168.dp' app/src/main/java/com/example/ui/screens/HomeScreen.kt
           grep -Fq '2 -> 140.dp' app/src/main/java/com/example/ui/screens/HomeScreen.kt
           grep -Fq 'else -> 116.dp' app/src/main/java/com/example/ui/screens/HomeScreen.kt
-          grep -Fq 'Modifier.size(if (displayRank == 1) 46.dp else 38.dp)' app/src/main/java/com/example/ui/screens/HomeScreen.kt
+          grep -Fq '.size(if (displayRank == 1) 46.dp else 38.dp)' app/src/main/java/com/example/ui/screens/HomeScreen.kt
           grep -Fq 'color = rankColor' app/src/main/java/com/example/ui/screens/HomeScreen.kt
           grep -Fq 'fontSize = if (displayRank == 1) 25.sp else 22.sp' app/src/main/java/com/example/ui/screens/HomeScreen.kt
           grep -Fq 'fontSize = 16.sp' app/src/main/java/com/example/ui/screens/HomeScreen.kt
