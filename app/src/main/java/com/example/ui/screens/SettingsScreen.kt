@@ -288,7 +288,8 @@ fun SettingsScreen(
             AccountMetricsGrid(
                 account = account,
                 activeCampaignsCount = activeCampaignsCount,
-                referralStatus = referralStatus
+                referralStatus = referralStatus,
+                isDarkTheme = isDarkTheme
             )
         }
 
@@ -607,22 +608,59 @@ fun SettingsScreen(
 
 }
 
-private val AccountStatusHero = Color(0xFF203158)
-private val AccountStatusCard = Color(0xFF171D30)
-private val AccountStatusBorder = Color(0xFF2A3450)
-private val AccountStatusText = Color(0xFFF7F8FC)
-private val AccountStatusMuted = Color(0xFF9EA8BF)
-private val AccountStatusBlueAccent = Color(0xFF7CA4FF)
-private val AccountStatusMint = Color(0xFF2BD3A2)
-private val AccountStatusRingTrack = Color(0xFF344361)
-private val AccountStatusGold = Color(0xFFFFC341)
+private data class AccountStatusPalette(
+    val hero: Color,
+    val card: Color,
+    val border: Color,
+    val text: Color,
+    val muted: Color,
+    val blueAccent: Color,
+    val mint: Color,
+    val ringTrack: Color,
+    val gold: Color,
+    val rewardIconBackground: Color,
+    val directInvitesIconBackground: Color
+)
+
+private fun accountStatusPalette(isDarkTheme: Boolean): AccountStatusPalette =
+    if (isDarkTheme) {
+        AccountStatusPalette(
+            hero = Color(0xFF203158),
+            card = Color(0xFF171D30),
+            border = Color(0xFF2A3450),
+            text = Color(0xFFF7F8FC),
+            muted = Color(0xFF9EA8BF),
+            blueAccent = Color(0xFF7CA4FF),
+            mint = Color(0xFF2BD3A2),
+            ringTrack = Color(0xFF344361),
+            gold = Color(0xFFFFC341),
+            rewardIconBackground = Color(0xFF12352F),
+            directInvitesIconBackground = Color(0xFF0D1428)
+        )
+    } else {
+        AccountStatusPalette(
+            hero = Color(0xFFFFFFFF),
+            card = Color(0xFFFFFFFF),
+            border = Color(0xFFE2E8F0),
+            text = Color(0xFF172033),
+            muted = Color(0xFF64748B),
+            blueAccent = Color(0xFF315FCB),
+            mint = Color(0xFF0F9D78),
+            ringTrack = Color(0xFFDCE4EF),
+            gold = Color(0xFFF5BE3D),
+            rewardIconBackground = Color(0xFFE8F8F1),
+            directInvitesIconBackground = Color(0xFFEEF4FF)
+        )
+    }
 
 @Composable
 private fun AccountMetricsGrid(
     account: UserAccount,
     activeCampaignsCount: Int,
-    referralStatus: ReferralStatus?
+    referralStatus: ReferralStatus?,
+    isDarkTheme: Boolean
 ) {
+    val palette = accountStatusPalette(isDarkTheme)
     val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
     val directInviteCount = referralStatus?.directInviteCount?.let(formatter::format) ?: "—"
     val tier100Count = referralStatus?.directTier100CompletedCount?.let(formatter::format) ?: "—"
@@ -644,7 +682,8 @@ private fun AccountMetricsGrid(
 
         AccountStatusHeroCard(
             reservedCoins = formatter.format(account.reservedCoins),
-            trustScore = trustScore
+            trustScore = trustScore,
+            palette = palette
         )
 
         Row(
@@ -654,11 +693,13 @@ private fun AccountMetricsGrid(
             AccountStatusMetricCard(
                 title = "بازدید انجام‌شده",
                 value = formatter.format(account.completedViewsCount),
+                palette = palette,
                 modifier = Modifier.weight(1f)
             )
             AccountStatusMetricCard(
                 title = "سفارش فعال",
                 value = formatter.format(activeCampaignsCount),
+                palette = palette,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -666,24 +707,29 @@ private fun AccountMetricsGrid(
         AccountStatusRewardsCard(
             tier100Count = tier100Count,
             tier500Count = tier500Count,
-            referralCoins = referralCoins
+            referralCoins = referralCoins,
+            palette = palette
         )
 
-        AccountStatusDirectInvitesCard(directInviteCount = directInviteCount)
+        AccountStatusDirectInvitesCard(
+            directInviteCount = directInviteCount,
+            palette = palette
+        )
     }
 }
 
 @Composable
 private fun AccountStatusHeroCard(
     reservedCoins: String,
-    trustScore: Int
+    trustScore: Int,
+    palette: AccountStatusPalette
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("account_status_balance_card"),
         shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = AccountStatusHero),
+        colors = CardDefaults.cardColors(containerColor = palette.hero),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
@@ -703,14 +749,14 @@ private fun AccountStatusHeroCard(
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = AccountStatusGold,
+                        color = palette.gold,
                         modifier = Modifier.size(34.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.MonetizationOn,
                                 contentDescription = null,
-                                tint = AccountStatusHero,
+                                tint = palette.text,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -718,14 +764,14 @@ private fun AccountStatusHeroCard(
                     Text(
                         text = "سکه رزرو شده",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AccountStatusMuted
+                        color = palette.muted
                     )
                 }
                 Text(
                     text = reservedCoins,
                     style = MaterialTheme.typography.headlineLarge.copy(fontSize = 40.sp),
                     fontWeight = FontWeight.Bold,
-                    color = AccountStatusText,
+                    color = palette.text,
                     maxLines = 1,
                     softWrap = false,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -734,6 +780,7 @@ private fun AccountStatusHeroCard(
 
             AccountStatusTrustRing(
                 score = trustScore,
+                palette = palette,
                 modifier = Modifier.padding(start = 8.dp)
             )
         }
@@ -743,6 +790,7 @@ private fun AccountStatusHeroCard(
 @Composable
 private fun AccountStatusTrustRing(
     score: Int,
+    palette: AccountStatusPalette,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -752,7 +800,7 @@ private fun AccountStatusTrustRing(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val ringWidth = 7.dp.toPx()
             drawArc(
-                color = AccountStatusRingTrack,
+                color = palette.ringTrack,
                 startAngle = -90f,
                 sweepAngle = 360f,
                 useCenter = false,
@@ -760,7 +808,7 @@ private fun AccountStatusTrustRing(
             )
             if (score > 0) {
                 drawArc(
-                    color = AccountStatusMint,
+                    color = palette.mint,
                     startAngle = -90f,
                     sweepAngle = 360f * (score / 100f),
                     useCenter = false,
@@ -773,12 +821,12 @@ private fun AccountStatusTrustRing(
                 text = "$score%",
                 style = MaterialTheme.typography.titleLarge.copy(fontSize = 21.sp),
                 fontWeight = FontWeight.Bold,
-                color = AccountStatusText
+                color = palette.text
             )
             Text(
                 text = "امتیاز اعتماد",
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                color = AccountStatusMuted,
+                color = palette.muted,
                 maxLines = 1,
                 softWrap = false
             )
@@ -790,13 +838,14 @@ private fun AccountStatusTrustRing(
 private fun AccountStatusMetricCard(
     title: String,
     value: String,
+    palette: AccountStatusPalette,
     modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier.height(118.dp),
         shape = RoundedCornerShape(22.dp),
-        border = BorderStroke(1.dp, AccountStatusBorder),
-        colors = CardDefaults.cardColors(containerColor = AccountStatusCard),
+        border = BorderStroke(1.dp, palette.border),
+        colors = CardDefaults.cardColors(containerColor = palette.card),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -808,7 +857,7 @@ private fun AccountStatusMetricCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
-                color = AccountStatusMuted,
+                color = palette.muted,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
@@ -817,13 +866,13 @@ private fun AccountStatusMetricCard(
                     .width(28.dp)
                     .height(4.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(AccountStatusBlueAccent)
+                    .background(palette.blueAccent)
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.headlineMedium.copy(fontSize = 34.sp),
                 fontWeight = FontWeight.Bold,
-                color = AccountStatusText,
+                color = palette.text,
                 maxLines = 1,
                 softWrap = false,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -836,15 +885,16 @@ private fun AccountStatusMetricCard(
 private fun AccountStatusRewardsCard(
     tier100Count: String,
     tier500Count: String,
-    referralCoins: String
+    referralCoins: String,
+    palette: AccountStatusPalette
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("account_status_rewards"),
         shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(1.dp, AccountStatusBorder),
-        colors = CardDefaults.cardColors(containerColor = AccountStatusCard),
+        border = BorderStroke(1.dp, palette.border),
+        colors = CardDefaults.cardColors(containerColor = palette.card),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -859,14 +909,14 @@ private fun AccountStatusRewardsCard(
             ) {
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF12352F),
+                    color = palette.rewardIconBackground,
                     modifier = Modifier.size(46.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.MonetizationOn,
                             contentDescription = null,
-                            tint = AccountStatusMint,
+                            tint = palette.mint,
                             modifier = Modifier.size(26.dp)
                         )
                     }
@@ -875,16 +925,16 @@ private fun AccountStatusRewardsCard(
                     text = "پاداش‌ها",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = AccountStatusText
+                    color = palette.text
                 )
             }
 
             Spacer(modifier = Modifier.height(4.dp))
-            AccountStatusRewardRow(title = "پاداش ۱۰۰ بازدید", value = tier100Count)
-            HorizontalDivider(color = AccountStatusBorder)
-            AccountStatusRewardRow(title = "پاداش ۵۰۰ سایت متفاوت", value = tier500Count)
-            HorizontalDivider(color = AccountStatusBorder)
-            AccountStatusRewardRow(title = "کل پاداش دعوت", value = referralCoins)
+            AccountStatusRewardRow(title = "پاداش ۱۰۰ بازدید", value = tier100Count, palette = palette)
+            HorizontalDivider(color = palette.border)
+            AccountStatusRewardRow(title = "پاداش ۵۰۰ سایت متفاوت", value = tier500Count, palette = palette)
+            HorizontalDivider(color = palette.border)
+            AccountStatusRewardRow(title = "کل پاداش دعوت", value = referralCoins, palette = palette)
         }
     }
 }
@@ -892,7 +942,8 @@ private fun AccountStatusRewardsCard(
 @Composable
 private fun AccountStatusRewardRow(
     title: String,
-    value: String
+    value: String,
+    palette: AccountStatusPalette
 ) {
     Row(
         modifier = Modifier
@@ -904,7 +955,7 @@ private fun AccountStatusRewardRow(
             text = title,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
-            color = AccountStatusMuted,
+            color = palette.muted,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
@@ -912,7 +963,7 @@ private fun AccountStatusRewardRow(
             text = value,
             style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp),
             fontWeight = FontWeight.Bold,
-            color = AccountStatusText,
+            color = palette.text,
             maxLines = 1,
             softWrap = false
         )
@@ -920,14 +971,17 @@ private fun AccountStatusRewardRow(
 }
 
 @Composable
-private fun AccountStatusDirectInvitesCard(directInviteCount: String) {
+private fun AccountStatusDirectInvitesCard(
+    directInviteCount: String,
+    palette: AccountStatusPalette
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("account_status_direct_invites"),
         shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(1.dp, AccountStatusBorder),
-        colors = CardDefaults.cardColors(containerColor = AccountStatusCard),
+        border = BorderStroke(1.dp, palette.border),
+        colors = CardDefaults.cardColors(containerColor = palette.card),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
@@ -940,18 +994,19 @@ private fun AccountStatusDirectInvitesCard(directInviteCount: String) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
+                palette = palette,
                 modifier = Modifier.weight(1f)
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = Color(0xFF0D1428),
+                    color = palette.directInvitesIconBackground,
                     modifier = Modifier.size(50.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.AccountCircle,
                             contentDescription = null,
-                            tint = AccountStatusBlueAccent,
+                            tint = palette.blueAccent,
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -959,7 +1014,7 @@ private fun AccountStatusDirectInvitesCard(directInviteCount: String) {
                 Text(
                     text = "تعداد دعوت مستقیم",
                     style = MaterialTheme.typography.bodyLarge,
-                    color = AccountStatusMuted,
+                    color = palette.muted,
                     maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
@@ -968,7 +1023,7 @@ private fun AccountStatusDirectInvitesCard(directInviteCount: String) {
                 text = directInviteCount,
                 style = MaterialTheme.typography.headlineMedium.copy(fontSize = 34.sp),
                 fontWeight = FontWeight.Bold,
-                color = AccountStatusText,
+                color = palette.text,
                 maxLines = 1,
                 softWrap = false,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
