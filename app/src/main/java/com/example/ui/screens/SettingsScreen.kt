@@ -994,7 +994,6 @@ private fun AccountStatusDirectInvitesCard(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                palette = palette,
                 modifier = Modifier.weight(1f)
             ) {
                 Surface(
