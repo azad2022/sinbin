@@ -610,6 +610,8 @@ fun SettingsScreen(
 
 private data class AccountStatusPalette(
     val hero: Color,
+    val heroBorder: Color,
+    val heroIconTint: Color,
     val card: Color,
     val border: Color,
     val text: Color,
@@ -626,6 +628,8 @@ private fun accountStatusPalette(isDarkTheme: Boolean): AccountStatusPalette =
     if (isDarkTheme) {
         AccountStatusPalette(
             hero = Color(0xFF203158),
+            heroBorder = Color.Transparent,
+            heroIconTint = Color(0xFF203158),
             card = Color(0xFF171D30),
             border = Color(0xFF2A3450),
             text = Color(0xFFF7F8FC),
@@ -640,6 +644,8 @@ private fun accountStatusPalette(isDarkTheme: Boolean): AccountStatusPalette =
     } else {
         AccountStatusPalette(
             hero = Color(0xFFFFFFFF),
+            heroBorder = Color(0xFFE2E8F0),
+            heroIconTint = Color(0xFF172033),
             card = Color(0xFFFFFFFF),
             border = Color(0xFFE2E8F0),
             text = Color(0xFF172033),
@@ -729,6 +735,7 @@ private fun AccountStatusHeroCard(
             .fillMaxWidth()
             .testTag("account_status_balance_card"),
         shape = RoundedCornerShape(28.dp),
+        border = BorderStroke(1.dp, palette.heroBorder),
         colors = CardDefaults.cardColors(containerColor = palette.hero),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
@@ -756,7 +763,7 @@ private fun AccountStatusHeroCard(
                             Icon(
                                 imageVector = Icons.Default.MonetizationOn,
                                 contentDescription = null,
-                                tint = palette.text,
+                                tint = palette.heroIconTint,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
