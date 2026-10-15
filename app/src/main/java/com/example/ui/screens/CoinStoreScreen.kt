@@ -159,11 +159,6 @@ fun CoinStoreScreen(
                                 fontWeight = FontWeight.Black,
                                 color = StoreInk
                             )
-                            Text(
-                                text = "۴ بسته",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = StoreMuted
-                            )
                         }
 
                         LazyColumn(
@@ -202,18 +197,6 @@ fun CoinStoreScreen(
                                         style = MaterialTheme.typography.titleLarge,
                                         fontWeight = FontWeight.Black,
                                         color = StoreInk
-                                    )
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(13.dp),
-                                    color = Color(0xFFF0EEFF)
-                                ) {
-                                    Text(
-                                        text = formatter.format(selectedProduct.coinAmount) + " سکه",
-                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = StoreVioletDeep
                                     )
                                 }
                             }
@@ -343,7 +326,8 @@ private fun CoinPackageOption(
         animationSpec = tween(180),
         label = "coin-package-border"
     )
-    val recommended = product.productId == "coins_50000"
+    val bestValue = product.productId == "coins_50000"
+    val bestSeller = product.productId == "coins_10000"
 
     Surface(
         modifier = Modifier
@@ -385,7 +369,21 @@ private fun CoinPackageOption(
                         fontWeight = FontWeight.Black,
                         color = StoreInk
                     )
-                    if (recommended) {
+                    if (bestSeller) {
+                        Surface(
+                            shape = RoundedCornerShape(7.dp),
+                            color = Color(0xFFE0F7EA)
+                        ) {
+                            Text(
+                                text = "پرفروش‌ترین",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF087443),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    if (bestValue) {
                         Surface(
                             shape = RoundedCornerShape(7.dp),
                             color = Color(0xFFE4DFFF)
