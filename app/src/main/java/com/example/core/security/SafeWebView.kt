@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.http.SslError
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import com.example.BuildConfig
 import android.view.View
@@ -14,6 +16,7 @@ import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -56,6 +59,8 @@ fun SafeWebView(
     var rendererTerminated by remember { mutableStateOf(false) }
     var currentPageStartedAt by remember { mutableStateOf(0L) }
     var contentReadyReported by remember { mutableStateOf(false) }
+    var pageLoadGeneration by remember { mutableStateOf(0) }
+    var mainFrameLoadFailed by remember { mutableStateOf(false) }
 
     val currentOnPageStarted by rememberUpdatedState(onPageStarted)
     val currentOnPageContentReady by rememberUpdatedState(onPageContentReady)
@@ -64,11 +69,20 @@ fun SafeWebView(
 
     val safeClient = remember {
         object : WebViewClient() {
+            private val mainHandler = Handler(Looper.getMainLooper())
+            private var pendingPublicChannelReadyCheck: Runnable? = null
+
+            private fun cancelPublicChannelReadyCheck() {
+                pendingPublicChannelReadyCheck?.let(mainHandler::removeCallbacks)
+                pendingPublicChannelReadyCheck = null
+            }
+
             private fun reportContentVisible(pageUrl: String?) {
-                if (contentReadyReported) return
+                if (contentReadyReported || mainFrameLoadFailed) return
                 if (pageUrl?.startsWith("https://", ignoreCase = true) != true) return
 
                 contentReadyReported = true
+                cancelPublicChannelReadyCheck()
                 val elapsedMs = if (currentPageStartedAt > 0L) {
                     SystemClock.elapsedRealtime() - currentPageStartedAt
                 } else {
@@ -84,6 +98,61 @@ fun SafeWebView(
                     )
                 }
                 currentOnPageContentReady()
+            }
+
+            /**
+             * Public channel pages can commit an empty JavaScript shell before the actual
+             * message is rendered. For supported Eitaa/Bale URLs, wait briefly for meaningful
+             * body text or visible media before starting the existing viewing timer. The WebView
+             * layout and navigation surface are unchanged.
+             */
+            private fun waitForPublicChannelContent(view: WebView?, pageUrl: String?) {
+                val targetView = view ?: return
+                cancelPublicChannelReadyCheck()
+                val generation = pageLoadGeneration
+                val startedAt = SystemClock.elapsedRealtime()
+                val readinessScript = """(function() {
+                    var body = document.body;
+                    if (!body) return false;
+                    var text = (body.innerText || '').replace(/\\s+/g, ' ').trim();
+                    var onlyLoading = /^(loading|please wait|در حال بارگذاری|لطفاً منتظر بمانید)[.!… ]*$/i.test(text);
+                    var media = Array.prototype.some.call(body.querySelectorAll('img,video,canvas'), function(el) {
+                        var rect = el.getBoundingClientRect();
+                        if (rect.width < 8 || rect.height < 8) return false;
+                        if (el.tagName === 'IMG') return el.complete && el.naturalWidth > 0;
+                        return true;
+                    });
+                    return !onlyLoading && (text.length >= 20 || media);
+                })()""".trimIndent()
+
+                lateinit var check: Runnable
+                check = object : Runnable {
+                    override fun run() {
+                        if (generation != pageLoadGeneration || contentReadyReported ||
+                            mainFrameLoadFailed || targetView !== webViewRef
+                        ) {
+                            if (pendingPublicChannelReadyCheck === this) pendingPublicChannelReadyCheck = null
+                            return
+                        }
+                        targetView.evaluateJavascript(readinessScript) { rawResult ->
+                            if (generation != pageLoadGeneration || contentReadyReported ||
+                                mainFrameLoadFailed || targetView !== webViewRef
+                            ) return@evaluateJavascript
+
+                            if (rawResult?.trim() == "true") {
+                                pendingPublicChannelReadyCheck = null
+                                reportContentVisible(pageUrl)
+                            } else if (SystemClock.elapsedRealtime() - startedAt >= 12_000L) {
+                                pendingPublicChannelReadyCheck = null
+                                currentOnErrorOccurred("محتوای عمومی ایتا یا بله در مهلت مجاز نمایش داده نشد.")
+                            } else {
+                                mainHandler.postDelayed(check, 350L)
+                            }
+                        }
+                    }
+                }
+                pendingPublicChannelReadyCheck = check
+                mainHandler.post(check)
             }
 
             override fun shouldOverrideUrlLoading(
@@ -112,6 +181,9 @@ fun SafeWebView(
 
             override fun onPageStarted(view: WebView?, pageUrl: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, pageUrl, favicon)
+                pageLoadGeneration += 1
+                cancelPublicChannelReadyCheck()
+                mainFrameLoadFailed = false
                 currentPageStartedAt = SystemClock.elapsedRealtime()
                 contentReadyReported = false
                 currentOnPageStarted()
@@ -119,15 +191,35 @@ fun SafeWebView(
 
             override fun onPageCommitVisible(view: WebView?, pageUrl: String?) {
                 super.onPageCommitVisible(view, pageUrl)
-                // The main frame is visibly committed; do not wait for every subresource.
+                // Social channel pages may still be an empty JavaScript shell at this point.
+                if (UrlSecurityPolicy.publicChannelPlatform(pageUrl) != null) return
+                // Existing website behavior remains unchanged for regular sites.
                 reportContentVisible(pageUrl)
             }
 
             override fun onPageFinished(view: WebView?, pageUrl: String?) {
                 super.onPageFinished(view, pageUrl)
-                // Compatibility fallback for WebView implementations that do not dispatch
-                // onPageCommitVisible reliably.
-                reportContentVisible(pageUrl)
+                if (UrlSecurityPolicy.publicChannelPlatform(pageUrl) != null) {
+                    waitForPublicChannelContent(view, pageUrl)
+                } else {
+                    // Compatibility fallback for regular sites whose implementation does not
+                    // dispatch onPageCommitVisible reliably.
+                    reportContentVisible(pageUrl)
+                }
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?
+            ) {
+                super.onReceivedHttpError(view, request, errorResponse)
+                if (request?.isForMainFrame == true && (errorResponse?.statusCode ?: 0) >= 400) {
+                    mainFrameLoadFailed = true
+                    contentReadyReported = false
+                    cancelPublicChannelReadyCheck()
+                    currentOnErrorOccurred("صفحه مقصد با خطای HTTP " + (errorResponse?.statusCode ?: 0) + " پاسخ داد.")
+                }
             }
 
             override fun onReceivedSslError(
@@ -136,6 +228,9 @@ fun SafeWebView(
                 error: SslError?
             ) {
                 // Strict SSL Enforcement: never proceed with invalid certs
+                mainFrameLoadFailed = true
+                contentReadyReported = false
+                cancelPublicChannelReadyCheck()
                 handler?.cancel()
                 currentOnErrorOccurred("گواهی امنیتی این وب‌سایت نامعتبر است (SSL Error).")
             }
@@ -147,6 +242,9 @@ fun SafeWebView(
             ) {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame == true) {
+                    mainFrameLoadFailed = true
+                    contentReadyReported = false
+                    cancelPublicChannelReadyCheck()
                     currentOnErrorOccurred("خطا در بارگذاری وب‌سایت. ممکن است سرور مقصد در دسترس نباشد.")
                 }
             }
@@ -164,6 +262,8 @@ fun SafeWebView(
                     terminatedView.destroy()
                 }
                 rendererTerminated = true
+                mainFrameLoadFailed = true
+                cancelPublicChannelReadyCheck()
                 contentReadyReported = false
                 if (BuildConfig.DEBUG) {
                     android.util.Log.w(
