@@ -114,7 +114,7 @@ fun SafeWebView(
                 val readinessScript = """(function() {
                     var body = document.body;
                     if (!body) return false;
-                    var text = (body.innerText || '').replace(/\\s+/g, ' ').trim();
+                    var text = (body.innerText || '').replace(/\s+/g, ' ').trim();
                     var onlyLoading = /^(loading|please wait|در حال بارگذاری|لطفاً منتظر بمانید)[.!… ]*$/i.test(text);
                     var media = Array.prototype.some.call(body.querySelectorAll('img,video,canvas'), function(el) {
                         var rect = el.getBoundingClientRect();
