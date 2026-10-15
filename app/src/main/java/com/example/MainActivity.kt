@@ -72,6 +72,7 @@ import com.example.ui.AppScreen
 import com.example.ui.SiteBinViewModel
 import com.example.ui.ViewerState
 import com.example.ui.screens.CampaignsScreen
+import com.example.ui.screens.CoinStoreScreen
 import com.example.ui.screens.CreateCampaignScreen
 import com.example.ui.screens.HelpGuideScreen
 import com.example.ui.screens.HomeScreen
@@ -178,7 +179,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
 
     // Reconcile non-consumed Bazaar receipts left by a process death or a network failure.
     LaunchedEffect(currentScreen, paymentClient) {
-        if (currentScreen == AppScreen.WALLET && paymentClient != null) {
+        if (currentScreen == AppScreen.COIN_STORE && paymentClient != null) {
             paymentClient.queryPurchasedProducts { queryResult ->
                 queryResult.onFailure { error ->
                     Log.w("SiteBinIAP", "Could not query pending Cafe Bazaar purchases.", error)
@@ -356,7 +357,17 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                 account = account,
                                 transactions = transactions,
                                 isTransferringCoins = viewModel.isTransferringCoins.collectAsState().value,
-                                isCoinStoreBusy = viewModel.isCoinStoreBusy.collectAsState().value,
+                                onOpenCoinStore = { viewModel.navigateTo(AppScreen.COIN_STORE) },
+                                onTransferCoins = { recipient, amount, onSuccess ->
+                                    viewModel.transferCoins(recipient, amount, onSuccess)
+                                }
+                            )
+                        }
+
+                        AppScreen.COIN_STORE -> {
+                            BackHandler { viewModel.navigateTo(AppScreen.WALLET) }
+                            CoinStoreScreen(
+                                isBusy = viewModel.isCoinStoreBusy.collectAsState().value,
                                 onBuyCoins = { productId ->
                                     val client = paymentClient
                                     val ownerActivity = activity
@@ -425,9 +436,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                         }
                                     }
                                 },
-                                onTransferCoins = { recipient, amount, onSuccess ->
-                                    viewModel.transferCoins(recipient, amount, onSuccess)
-                                }
+                                onBack = { viewModel.navigateTo(AppScreen.WALLET) }
                             )
                         }
 
@@ -787,11 +796,11 @@ fun SiteBinBottomBar(
 
         // Wallet
         NavigationBarItem(
-            selected = currentScreen == AppScreen.WALLET,
+            selected = currentScreen == AppScreen.WALLET || currentScreen == AppScreen.COIN_STORE,
             onClick = { onScreenSelected(AppScreen.WALLET) },
             icon = {
                 Icon(
-                    imageVector = if (currentScreen == AppScreen.WALLET) Icons.Filled.MonetizationOn else Icons.Outlined.MonetizationOn,
+                    imageVector = if (currentScreen == AppScreen.WALLET || currentScreen == AppScreen.COIN_STORE) Icons.Filled.MonetizationOn else Icons.Outlined.MonetizationOn,
                     contentDescription = "کیف پول"
                 )
             },
