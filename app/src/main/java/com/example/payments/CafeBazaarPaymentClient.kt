@@ -10,6 +10,7 @@ import ir.cafebazaar.poolakey.entity.PurchaseInfo
 import ir.cafebazaar.poolakey.request.PurchaseRequest
 import ir.cafebazaar.poolakey.security.SecurityCheck
 import java.util.concurrent.CancellationException
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -59,10 +60,9 @@ class CafeBazaarPaymentClient(context: Context) {
                 }
                 disconnected {
                     synchronized(this@CafeBazaarPaymentClient) {
-                        connected = false
-                        connecting = false
                         connection = null
                     }
+                    completeConnection(Result.failure(IOException("اتصال پرداخت کافه‌بازار قطع شد.")))
                 }
             }
             synchronized(this) {
@@ -77,6 +77,7 @@ class CafeBazaarPaymentClient(context: Context) {
         val callbacks = synchronized(this) {
             connected = result.isSuccess
             connecting = false
+            if (!result.isSuccess) connection = null
             val pending = connectionWaiters.toList()
             connectionWaiters.clear()
             pending
