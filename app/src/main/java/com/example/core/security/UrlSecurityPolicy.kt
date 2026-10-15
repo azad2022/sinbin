@@ -71,8 +71,8 @@ object UrlSecurityPolicy {
         if (uri.path.orEmpty().split('/').none { it.isNotBlank() }) return null
 
         return when (host) {
-            "eitaa.com" -> PublicChannelPlatform.EITAA
-            "ble.ir" -> PublicChannelPlatform.BALE
+            "eitaa.com", "www.eitaa.com", "web.eitaa.com" -> PublicChannelPlatform.EITAA
+            "ble.ir", "www.ble.ir", "web.bale.ai" -> PublicChannelPlatform.BALE
             else -> null
         }
     }
