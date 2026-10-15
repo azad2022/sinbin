@@ -1,4 +1,13 @@
 package com.example.ui.screens
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ShoppingBasket
+import androidx.compose.ui.graphics.graphicsLayer
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -405,13 +414,44 @@ private fun CoinStoreEntryCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val transition = rememberInfiniteTransition(label = "wallet-store-basket")
+    val basketOffsetY by transition.animateFloat(
+        initialValue = -2.5f,
+        targetValue = 2.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "basket-bounce"
+    )
+    val basketRotation by transition.animateFloat(
+        initialValue = -4f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_150, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "basket-sway"
+    )
+    val coinScale by transition.animateFloat(
+        initialValue = 0.84f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "basket-coin-pulse"
+    )
+
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            .clip(RoundedCornerShape(23.dp))
+            .clickable(onClick = onClick)
+            .testTag("wallet_coin_store_card"),
+        shape = RoundedCornerShape(23.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFCFBFF)),
+        border = BorderStroke(1.dp, Color(0xFFE6E0FF)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
@@ -419,27 +459,55 @@ private fun CoinStoreEntryCard(
                 .fillMaxWidth()
                 .background(
                     Brush.linearGradient(
-                        listOf(Color(0xFF172554), Color(0xFF1D4ED8), Color(0xFF0F766E))
+                        listOf(Color(0xFFFCFBFF), Color(0xFFF3F0FF), Color(0xFFF0FAF8))
                     )
                 )
-                .padding(horizontal = 18.dp, vertical = 17.dp),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(13.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = SiteBinGold.copy(alpha = 0.16f),
-                modifier = Modifier.size(52.dp)
+                shape = RoundedCornerShape(17.dp),
+                color = Color(0xFFE9E5FF),
+                modifier = Modifier.size(56.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = Icons.Default.MonetizationOn,
-                        contentDescription = null,
-                        tint = SiteBinGoldLight,
-                        modifier = Modifier.size(29.dp)
+                        imageVector = Icons.Filled.ShoppingBasket,
+                        contentDescription = "سبد خرید متحرک",
+                        tint = Color(0xFF5B50D6),
+                        modifier = Modifier
+                            .size(33.dp)
+                            .graphicsLayer {
+                                translationY = basketOffsetY
+                                rotationZ = basketRotation
+                            }
+                            .testTag("wallet_coin_store_basket_icon")
                     )
+                    Surface(
+                        shape = CircleShape,
+                        color = SiteBinGold,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(5.dp)
+                            .size(17.dp)
+                            .graphicsLayer {
+                                scaleX = coinScale
+                                scaleY = coinScale
+                            }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
+                    }
                 }
             }
+
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -448,25 +516,26 @@ private fun CoinStoreEntryCard(
                     text = "فروشگاه سکه",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
-                    color = Color.White
+                    color = Color(0xFF25224A)
                 )
                 Text(
-                    text = "بستهٔ مناسب خودت را انتخاب کن",
+                    text = "سکه‌های موردنیازت را انتخاب کن",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.78f)
+                    color = Color(0xFF6F708B)
                 )
             }
+
             Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color.White.copy(alpha = 0.12f)
+                shape = RoundedCornerShape(13.dp),
+                color = Color(0xFF5B50D6)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Text(
-                        text = "مشاهده",
+                        text = "ورود",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -475,7 +544,7 @@ private fun CoinStoreEntryCard(
                         imageVector = Icons.Default.ChevronLeft,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
             }

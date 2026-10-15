@@ -1,4 +1,10 @@
 package com.example.ui.screens
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.ui.graphics.graphicsLayer
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -6,7 +12,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,8 +32,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -47,7 +50,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
@@ -58,8 +60,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.R
 import com.example.data.model.CoinStoreProduct
-import com.example.ui.theme.SiteBinBlue
-import com.example.ui.theme.SiteBinGold
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -132,20 +132,6 @@ fun CoinStoreScreen(
                                     color = StoreMuted
                                 )
                             }
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFFF0EEFF),
-                                modifier = Modifier.size(42.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.MonetizationOn,
-                                        contentDescription = null,
-                                        tint = StoreViolet,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                            }
                             IconButton(
                                 onClick = onDismiss,
                                 enabled = !isBusy,
@@ -160,7 +146,6 @@ fun CoinStoreScreen(
                             }
                         }
 
-                        StoreHero()
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -280,24 +265,7 @@ fun CoinStoreScreen(
                                 }
                             }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = null,
-                                    tint = SiteBinBlue,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Text(
-                                    text = "اعتباردهی فقط پس از تأیید امن رسید توسط سرور",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = StoreMuted
-                                )
-                            }
+                            WalletPaymentHint()
                         }
                     }
                 }
@@ -307,77 +275,52 @@ fun CoinStoreScreen(
 }
 
 @Composable
-private fun StoreHero() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(23.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+private fun WalletPaymentHint() {
+    val transition = rememberInfiniteTransition(label = "coin-store-wallet-hint")
+    val walletOffsetY by transition.animateFloat(
+        initialValue = -1.8f,
+        targetValue = 1.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 760, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "wallet-hint-bounce"
+    )
+    val walletRotation by transition.animateFloat(
+        initialValue = -2.5f,
+        targetValue = 2.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_050, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "wallet-hint-sway"
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("coin_store_wallet_payment_hint"),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
+        Icon(
+            imageVector = Icons.Filled.AccountBalanceWallet,
+            contentDescription = "کیف پول متحرک",
+            tint = StoreGreen,
             modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        listOf(Color(0xFF10172F), Color(0xFF292D74), Color(0xFF164E63))
-                    )
-                )
-                .padding(horizontal = 15.dp, vertical = 15.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color.White.copy(alpha = 0.13f)
-                ) {
-                    Text(
-                        text = "SITEBIN  •  COIN STORE",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.4.sp
-                    )
+                .size(17.dp)
+                .graphicsLayer {
+                    translationY = walletOffsetY
+                    rotationZ = walletRotation
                 }
-                Text(
-                    text = "سکه بیشتر،\nفرصت بیشتر",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White,
-                    lineHeight = 28.sp
-                )
-                Text(
-                    text = "برای سفارش‌های بازدید آماده باش.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.82f)
-                )
-            }
-            Box(
-                modifier = Modifier.size(78.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = SiteBinGold.copy(alpha = 0.15f),
-                    modifier = Modifier.size(76.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Surface(
-                            shape = CircleShape,
-                            color = SiteBinGold.copy(alpha = 0.13f),
-                            modifier = Modifier.size(58.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(text = "🪙", fontSize = 35.sp)
-                            }
-                        }
-                    }
-                }
-            }
-        }
+                .testTag("coin_store_animated_wallet_icon")
+        )
+        Spacer(modifier = Modifier.width(7.dp))
+        Text(
+            text = "کیف پول شما بعد از پرداخت بصورت آنی شارژ میشود",
+            style = MaterialTheme.typography.labelSmall,
+            color = StoreMuted
+        )
     }
 }
 
@@ -417,14 +360,15 @@ private fun CoinPackageOption(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = if (recommended) Color(0xFFFFF0C2) else Color(0xFFF2F5FA),
-                modifier = Modifier.size(46.dp)
+            Box(
+                modifier = Modifier.size(36.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(text = if (product.coinAmount >= 20_000L) "🪙🪙" else "🪙", fontSize = 22.sp)
-                }
+                Text(
+                    text = "🪙",
+                    fontSize = 27.sp,
+                    modifier = Modifier.testTag("coin_store_single_coin_" + product.productId)
+                )
             }
             Column(
                 modifier = Modifier.weight(1f),
