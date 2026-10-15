@@ -43,7 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.CoinStoreProduct
 import com.example.ui.theme.SiteBinBlue
-import com.example.ui.theme.SiteBinGoldimport java.text.NumberFormat
+import com.example.ui.theme.SiteBinGold
+import java.text.NumberFormat
 import java.util.Locale
 
 @Composable
