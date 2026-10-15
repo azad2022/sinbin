@@ -88,12 +88,14 @@ fun WalletScreen(
         recipientHandle.trim().isNotBlank() &&
         parsedAmount in 1..account.availableCoins
 
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    Column(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         // Main Coin Balance Card
         item {
             Card(
@@ -204,10 +206,6 @@ fun WalletScreen(
         }
 
         item {
-            CoinStoreEntryCard(onClick = onOpenCoinStore)
-        }
-
-        item {
             TransferCoinsCard(
                 onClick = { showTransferDialog = true }
             )
@@ -240,6 +238,14 @@ fun WalletScreen(
         item {
             Spacer(modifier = Modifier.height(24.dp))
         }
+        }
+
+        CoinStoreEntryCard(
+            onClick = onOpenCoinStore,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        )
     }
 
     if (showTransferDialog) {
@@ -391,9 +397,12 @@ fun WalletScreen(
 
 
 @Composable
-private fun CoinStoreEntryCard(onClick: () -> Unit) {
+private fun CoinStoreEntryCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .clickable(onClick = onClick),
