@@ -343,7 +343,7 @@ private fun StoreHero() {
                     )
                 }
                 Text(
-                    text = "سکه بیشتر،\\nفرصت بیشتر",
+                    text = "سکه بیشتر،\nفرصت بیشتر",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
                     color = Color.White,
