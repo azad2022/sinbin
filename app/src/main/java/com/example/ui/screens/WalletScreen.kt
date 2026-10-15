@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Send
@@ -55,7 +56,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.model.CoinTransaction
-import com.example.data.model.CoinStoreProduct
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
 import com.example.ui.theme.SiteBinBlue
@@ -74,8 +74,7 @@ fun WalletScreen(
     account: UserAccount,
     transactions: List<CoinTransaction>,
     isTransferringCoins: Boolean = false,
-    isCoinStoreBusy: Boolean = false,
-    onBuyCoins: (String) -> Unit = {},
+    onOpenCoinStore: () -> Unit = {},
     onTransferCoins: (String, Long, () -> Unit) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
@@ -205,26 +204,7 @@ fun WalletScreen(
         }
 
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "خرید سکه",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "پرداخت از طریق کافه‌بازار؛ سکه فقط پس از تأیید سرور اضافه می‌شود.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        items(CoinStoreProduct.all, key = { it.productId }) { product ->
-            CoinStorePackageCard(
-                product = product,
-                isBusy = isCoinStoreBusy,
-                onBuy = { onBuyCoins(product.productId) }
-            )
+            CoinStoreEntryCard(onClick = onOpenCoinStore)
         }
 
         item {
@@ -411,35 +391,40 @@ fun WalletScreen(
 
 
 @Composable
-private fun CoinStorePackageCard(
-    product: CoinStoreProduct,
-    isBusy: Boolean,
-    onBuy: () -> Unit
-) {
-    val formatter = NumberFormat.getNumberInstance(Locale.US)
+private fun CoinStoreEntryCard(onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp)),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, SiteBinGold.copy(alpha = 0.25f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFF172554), Color(0xFF1D4ED8), Color(0xFF0F766E))
+                    )
+                )
+                .padding(horizontal = 18.dp, vertical = 17.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(13.dp)
         ) {
             Surface(
-                shape = CircleShape,
-                color = SiteBinGold.copy(alpha = 0.12f),
-                modifier = Modifier.size(46.dp)
+                shape = RoundedCornerShape(16.dp),
+                color = SiteBinGold.copy(alpha = 0.16f),
+                modifier = Modifier.size(52.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(text = "🪙", fontSize = 24.sp)
+                    Icon(
+                        imageVector = Icons.Default.MonetizationOn,
+                        contentDescription = null,
+                        tint = SiteBinGoldLight,
+                        modifier = Modifier.size(29.dp)
+                    )
                 }
             }
             Column(
@@ -447,27 +432,39 @@ private fun CoinStorePackageCard(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = formatter.format(product.coinAmount) + " سکه",
+                    text = "فروشگاه سکه",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
                 )
                 Text(
-                    text = formatter.format(product.priceRial) + " ریال",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "پرداخت یک‌باره",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "بستهٔ مناسب خودت را انتخاب کن",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.78f)
                 )
             }
-            Button(
-                onClick = onBuy,
-                enabled = !isBusy,
-                shape = RoundedCornerShape(12.dp)
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color.White.copy(alpha = 0.12f)
             ) {
-                Text("خرید")
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Text(
+                        text = "مشاهده",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ChevronLeft,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
