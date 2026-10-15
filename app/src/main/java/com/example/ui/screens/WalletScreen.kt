@@ -433,6 +433,15 @@ private fun CoinStoreEntryCard(
         ),
         label = "basket-sway"
     )
+    val basketScale by transition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "basket-scale-pulse"
+    )
     val coinScale by transition.animateFloat(
         initialValue = 0.84f,
         targetValue = 1.08f,
@@ -481,6 +490,8 @@ private fun CoinStoreEntryCard(
                             .graphicsLayer {
                                 translationY = basketOffsetY
                                 rotationZ = basketRotation
+                                scaleX = basketScale
+                                scaleY = basketScale
                             }
                             .testTag("wallet_coin_store_basket_icon")
                     )
@@ -519,7 +530,7 @@ private fun CoinStoreEntryCard(
                     color = Color(0xFF25224A)
                 )
                 Text(
-                    text = "سکه‌های موردنیازت را انتخاب کن",
+                    text = "خرید فوری از فروشگاه",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF6F708B)
                 )
