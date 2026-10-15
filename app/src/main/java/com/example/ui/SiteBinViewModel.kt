@@ -47,6 +47,7 @@ enum class AppScreen {
     CREATE_CAMPAIGN,
     CAMPAIGNS,
     WALLET,
+    COIN_STORE,
     SETTINGS,
     HELP
 }
