@@ -8,7 +8,7 @@ import ir.cafebazaar.poolakey.Payment
 import ir.cafebazaar.poolakey.config.PaymentConfiguration
 import ir.cafebazaar.poolakey.entity.PurchaseInfo
 import ir.cafebazaar.poolakey.request.PurchaseRequest
-import ir.cafebazaar.poolakey.security.SecurityCheck
+import ir.cafebazaar.poolakey.config.SecurityCheck
 import java.util.concurrent.CancellationException
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
