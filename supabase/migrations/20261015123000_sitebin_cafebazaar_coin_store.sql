@@ -219,6 +219,16 @@ BEGIN
         RAISE EXCEPTION 'INVALID_RECEIPT: Invalid receipt digest';
     END IF;
 
+    -- Lock the profile before purchase-intent/receipt rows. This lock order matches the
+    -- account-rebind path and avoids profile<->intent deadlocks during reinstalls.
+    SELECT * INTO v_profile
+    FROM public.profiles
+    WHERE id = p_user_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'PROFILE_NOT_FOUND: Purchase account no longer exists';
+    END IF;
+
     -- Serialize concurrent verification attempts. The same signed receipt can credit at most once.
     PERFORM pg_catalog.pg_advisory_xact_lock(
         pg_catalog.hashtextextended('sitebin-coin-token:' || p_purchase_token, 0)
@@ -287,14 +297,6 @@ BEGIN
     IF v_purchase_time < v_intent.created_at - INTERVAL '5 minutes'
        OR v_purchase_time > v_intent.expires_at + INTERVAL '15 minutes' THEN
         RAISE EXCEPTION 'PURCHASE_INTENT_EXPIRED: Receipt time is outside the order validity window';
-    END IF;
-
-    SELECT * INTO v_profile
-    FROM public.profiles
-    WHERE id = p_user_id
-    FOR UPDATE;
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'PROFILE_NOT_FOUND: Purchase account no longer exists';
     END IF;
 
     INSERT INTO private.coin_purchases (
