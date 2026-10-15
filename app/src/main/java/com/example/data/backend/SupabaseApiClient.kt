@@ -441,7 +441,9 @@ class SupabaseApiClient(
                 ?: return@withContext Result.failure(IOException("محصول رسید در فهرست مجاز نیست."))
             val coins = response.optLong("coins", -1L)
             val available = response.optLong("available_coins", -1L)
-            if (coins != expected.coinAmount || available < coins) {
+            // A previously credited receipt may be retried after the user has spent some coins.
+            // Validate a non-negative balance, not available >= original purchase amount.
+            if (coins != expected.coinAmount || available < 0L) {
                 return@withContext Result.failure(IOException("موجودی تأییدشده سرور با رسید پرداخت سازگار نیست."))
             }
 
