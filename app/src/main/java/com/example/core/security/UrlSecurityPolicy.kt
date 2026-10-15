@@ -9,6 +9,11 @@ sealed class PolicyResult {
     data class Controlled(val rawUrl: String, val reason: String) : PolicyResult()
 }
 
+enum class PublicChannelPlatform {
+    EITAA,
+    BALE
+}
+
 object UrlSecurityPolicy {
 
     private val BLOCKED_SCHEMES = setOf(
@@ -42,6 +47,38 @@ object UrlSecurityPolicy {
     private val BLOCKED_FILE_EXTENSIONS = setOf(
         ".apk", ".exe", ".dmg", ".bat", ".sh", ".zip", ".rar", ".7z", ".crx", ".msi"
     )
+
+    /**
+     * Identifies public channel/post URLs that SiteBin explicitly exercises in its
+     * Android WebView smoke tests. This does not bypass HTTPS, URL, or server preflight checks.
+     *
+     * Eitaa public post example: https://eitaa.com/s/eitaa/306
+     * Bale public channel/share example: https://ble.ir/s/irannewspaper
+     */
+    fun publicChannelPlatform(rawUrl: String?): PublicChannelPlatform? {
+        if (rawUrl.isNullOrBlank()) return null
+        val trimmed = rawUrl.trim()
+        val candidate = if (trimmed.startsWith("https://", ignoreCase = true)) {
+            trimmed
+        } else {
+            "https://$trimmed"
+        }
+        val uri = runCatching { URI(candidate) }.getOrNull() ?: return null
+        if (!uri.scheme.equals("https", ignoreCase = true) || uri.userInfo != null) return null
+
+        val host = uri.host?.lowercase(Locale.ROOT) ?: return null
+        // A root page is not a channel/post link; require at least one path segment.
+        if (uri.path.orEmpty().split('/').none { it.isNotBlank() }) return null
+
+        return when (host) {
+            "eitaa.com" -> PublicChannelPlatform.EITAA
+            "ble.ir" -> PublicChannelPlatform.BALE
+            else -> null
+        }
+    }
+
+    fun isSupportedPublicChannelUrl(rawUrl: String?): Boolean =
+        publicChannelPlatform(rawUrl) != null
 
     /**
      * Evaluates any incoming navigation URL against SiteBin's strict security policy.
