@@ -116,7 +116,11 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     }
 
     DisposableEffect(paymentClient) {
-        onDispose { paymentClient?.disconnect() }
+        onDispose {
+            paymentClient?.disconnect()
+            // Release a single-flight billing lock if Activity recreation interrupts callbacks.
+            viewModel.finishCoinStoreAction()
+        }
     }
     val prefs = remember { context.getSharedPreferences("sitebin_prefs", Context.MODE_PRIVATE) }
     var isOnboardingCompleted by remember {
