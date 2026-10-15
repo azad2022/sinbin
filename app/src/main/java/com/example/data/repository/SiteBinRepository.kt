@@ -9,6 +9,9 @@ import com.example.data.backend.DeviceEvidence
 import com.example.data.security.AndroidDeviceEvidenceProvider
 import com.example.data.backend.ServerAuthoritativeEngine
 import com.example.data.backend.RealtimeCapableEngine
+import com.example.data.backend.CoinPurchaseCapableEngine
+import com.example.data.model.CoinPurchaseIntent
+import com.example.data.model.CoinPurchaseConfirmation
 import com.example.data.model.AbuseReport
 import com.example.data.model.AutoViewActivationResult
 import com.example.data.model.AutoViewStatus
@@ -235,6 +238,30 @@ class SiteBinRepository(
         )
         if (result.isSuccess) {
             runCatching { refreshServerState() }
+        }
+        return result
+    }
+
+    suspend fun createCoinPurchaseIntent(productId: String): Result<CoinPurchaseIntent> {
+        val capability = engine as? CoinPurchaseCapableEngine
+            ?: return Result.failure(IllegalStateException("پرداخت واقعی کافه‌بازار در این محیط فعال نیست."))
+        return capability.createCoinPurchaseIntent(productId)
+    }
+
+    suspend fun verifyCoinPurchase(
+        originalJson: String,
+        dataSignature: String
+    ): Result<CoinPurchaseConfirmation> {
+        val capability = engine as? CoinPurchaseCapableEngine
+            ?: return Result.failure(IllegalStateException("تأیید واقعی پرداخت کافه‌بازار در این محیط فعال نیست."))
+
+        val currentUserId = _account.value.userId
+        val result = capability.verifyCoinPurchase(originalJson, dataSignature)
+        if (result.isSuccess) {
+            // The server has atomically credited the signed receipt. Re-read both sources
+            // of truth instead of incrementing the local balance optimistically.
+            engine.fetchAccount(currentUserId).onSuccess { _account.value = it }
+            engine.fetchTransactions(currentUserId).onSuccess { _transactions.value = it }
         }
         return result
     }

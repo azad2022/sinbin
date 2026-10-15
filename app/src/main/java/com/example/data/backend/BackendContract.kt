@@ -5,6 +5,8 @@ import com.example.data.model.AutoViewStatus
 import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
+import com.example.data.model.CoinPurchaseIntent
+import com.example.data.model.CoinPurchaseConfirmation
 import com.example.data.model.DurationOption
 import com.example.data.model.DailyBonusResult
 import com.example.data.model.WeeklyLeaderboardEntry
@@ -181,4 +183,18 @@ interface ServerAuthoritativeEngine {
 
     /** Resumes a paused campaign on the server */
     suspend fun resumeCampaign(campaignId: String, callerUserId: String? = null): Result<Boolean>
+}
+
+
+/**
+ * Optional capability implemented only by the real server-backed engine.
+ * Receipt verification and all coin credits remain server-authoritative.
+ */
+interface CoinPurchaseCapableEngine {
+    suspend fun createCoinPurchaseIntent(productId: String): Result<CoinPurchaseIntent>
+
+    suspend fun verifyCoinPurchase(
+        originalJson: String,
+        dataSignature: String
+    ): Result<CoinPurchaseConfirmation>
 }

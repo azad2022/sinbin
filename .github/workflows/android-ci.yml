@@ -27,6 +27,7 @@ jobs:
       - name: Validate campaign preflight Edge Function and strict TypeScript types
         run: |
           deno check --no-lock supabase/functions/campaign-url-preflight/index.ts
+          deno check --no-lock supabase/functions/verify-coin-purchase/index.ts
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5

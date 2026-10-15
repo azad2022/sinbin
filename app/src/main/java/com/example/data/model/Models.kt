@@ -46,7 +46,8 @@ enum class TransactionType(val labelFarsi: String, val isPositive: Boolean) {
     DAILY_BONUS("هدیه ورود روزانه", true),
     AUTO_VIEW_SUBSCRIPTION("فعال‌سازی بازدید خودکار", false),
     COIN_TRANSFER_SENT("انتقال سکه به کاربر دیگر", false),
-    COIN_TRANSFER_RECEIVED("دریافت سکه", true)
+    COIN_TRANSFER_RECEIVED("دریافت سکه", true),
+    COIN_PURCHASE("خرید سکه از کافه‌بازار", true)
 }
 
 data class CoinTransaction(
