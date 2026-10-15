@@ -1,6 +1,7 @@
 package com.example
 
 import com.example.core.security.PolicyResult
+import com.example.core.security.PublicChannelPlatform
 import com.example.core.security.UrlSecurityPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -27,6 +28,36 @@ class UrlSecurityPolicyTest {
         assertTrue(UrlSecurityPolicy.isReadyForPreflight("https://example.com"))
         assertTrue(UrlSecurityPolicy.isReadyForPreflight("https://example.ir/path"))
         assertTrue(UrlSecurityPolicy.isReadyForPreflight("https://sub.example.org/path?q=1"))
+    }
+
+    @Test
+    fun publicEitaaPostLinkIsSupportedWithoutChangingItsPath() {
+        val url = "https://eitaa.com/s/eitaa/306"
+        val result = UrlSecurityPolicy.evaluateUrl(url)
+
+        assertTrue("Eitaa public post should remain allowed by HTTPS policy", result is PolicyResult.Allowed)
+        assertEquals(PublicChannelPlatform.EITAA, UrlSecurityPolicy.publicChannelPlatform(url))
+        assertTrue(UrlSecurityPolicy.isReadyForPreflight(url))
+        assertEquals(url, UrlSecurityPolicy.normalizeUrl(url))
+    }
+
+    @Test
+    fun publicBaleShareLinkIsSupportedWithoutChangingItsPath() {
+        val url = "https://ble.ir/s/irannewspaper"
+        val result = UrlSecurityPolicy.evaluateUrl(url)
+
+        assertTrue("Bale public share page should remain allowed by HTTPS policy", result is PolicyResult.Allowed)
+        assertEquals(PublicChannelPlatform.BALE, UrlSecurityPolicy.publicChannelPlatform(url))
+        assertTrue(UrlSecurityPolicy.isReadyForPreflight(url))
+        assertEquals(url, UrlSecurityPolicy.normalizeUrl(url))
+    }
+
+    @Test
+    fun publicChannelDetectionRejectsLookalikeDomainsAndAppSchemes() {
+        assertEquals(null, UrlSecurityPolicy.publicChannelPlatform("https://eitaa.com.attacker.example/s/channel/1"))
+        assertEquals(null, UrlSecurityPolicy.publicChannelPlatform("https://ble.ir.attacker.example/s/channel/1"))
+        assertEquals(null, UrlSecurityPolicy.publicChannelPlatform("http://eitaa.com/s/channel/1"))
+        assertEquals(null, UrlSecurityPolicy.publicChannelPlatform("tg://resolve?domain=eitaa"))
     }
 
     @Test
