@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.model.CoinTransaction
+import com.example.data.model.CoinStoreProduct
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
 import com.example.ui.theme.SiteBinBlue
@@ -73,6 +74,8 @@ fun WalletScreen(
     account: UserAccount,
     transactions: List<CoinTransaction>,
     isTransferringCoins: Boolean = false,
+    isCoinStoreBusy: Boolean = false,
+    onBuyCoins: (String) -> Unit = {},
     onTransferCoins: (String, Long, () -> Unit) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
@@ -199,6 +202,29 @@ fun WalletScreen(
                     }
                 }
             }
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "خرید سکه",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "پرداخت از طریق کافه‌بازار؛ سکه فقط پس از تأیید سرور اضافه می‌شود.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        items(CoinStoreProduct.all, key = { it.productId }) { product ->
+            CoinStorePackageCard(
+                product = product,
+                isBusy = isCoinStoreBusy,
+                onBuy = { onBuyCoins(product.productId) }
+            )
         }
 
         item {
@@ -383,6 +409,70 @@ fun WalletScreen(
 
 }
 
+
+@Composable
+private fun CoinStorePackageCard(
+    product: CoinStoreProduct,
+    isBusy: Boolean,
+    onBuy: () -> Unit
+) {
+    val formatter = NumberFormat.getNumberInstance(Locale.US)
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, SiteBinGold.copy(alpha = 0.25f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = SiteBinGold.copy(alpha = 0.12f),
+                modifier = Modifier.size(46.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(text = "🪙", fontSize = 24.sp)
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = formatter.format(product.coinAmount) + " سکه",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = formatter.format(product.priceRial) + " ریال",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "پرداخت یک‌باره",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Button(
+                onClick = onBuy,
+                enabled = !isBusy,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("خرید")
+            }
+        }
+    }
+}
+
 @Composable
 private fun TransferCoinsCard(
     onClick: () -> Unit
@@ -464,6 +554,7 @@ private fun TransactionRow(tx: CoinTransaction) {
         TransactionType.AUTO_VIEW_SUBSCRIPTION -> Icons.Default.Autorenew to MaterialTheme.colorScheme.error
         TransactionType.COIN_TRANSFER_SENT -> Icons.Default.Savings to MaterialTheme.colorScheme.error
         TransactionType.COIN_TRANSFER_RECEIVED -> Icons.Default.CardGiftcard to SiteBinGold
+        TransactionType.COIN_PURCHASE -> Icons.Default.CardGiftcard to SiteBinSuccess
     }
 
     Card(
