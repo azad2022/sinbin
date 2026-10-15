@@ -53,7 +53,7 @@ REVOKE ALL ON TABLE private.coin_purchase_intents FROM PUBLIC, anon, authenticat
 
 CREATE TABLE IF NOT EXISTS private.coin_purchases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    intent_id UUID NOT NULL UNIQUE REFERENCES private.coin_purchase_intents(id) ON DELETE RESTRICT,
+    intent_id UUID NOT NULL UNIQUE REFERENCES private.coin_purchase_intents(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     product_id TEXT NOT NULL REFERENCES private.coin_store_catalog(product_id),
     coin_amount BIGINT NOT NULL CHECK (coin_amount > 0),
@@ -131,6 +131,12 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'PROFILE_NOT_FOUND: Account must be initialized before purchase';
     END IF;
+
+    UPDATE private.coin_purchase_intents
+    SET status = 'EXPIRED'
+    WHERE user_id = v_uid
+      AND status = 'PENDING'
+      AND expires_at <= v_now;
 
     SELECT pg_catalog.count(*)::INTEGER INTO v_recent_count
     FROM private.coin_purchase_intents
