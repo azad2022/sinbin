@@ -9,6 +9,9 @@ data class CoinStoreProduct(
     val coinAmount: Long,
     val priceRial: Long
 ) {
+    /** Display-only conversion: 10 Rial = 1 Toman. The server catalog remains authoritative. */
+    val priceToman: Long
+        get() = priceRial / 10L
     companion object {
         val all: List<CoinStoreProduct> = listOf(
             CoinStoreProduct("coins_5000", 5_000L, 2_990_000L),

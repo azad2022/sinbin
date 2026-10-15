@@ -127,6 +127,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     var isOnboardingCompleted by remember {
         mutableStateOf(prefs.getBoolean("onboarding_done", false))
     }
+    var showCoinStoreDialog by remember { mutableStateOf(false) }
 
     val serverState by viewModel.serverState.collectAsState()
     val currentScreen by viewModel.currentScreen.collectAsState()
@@ -142,8 +143,82 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     val viewerState by viewModel.viewerState.collectAsState()
     val autoViewEnabled by viewModel.autoViewEnabled.collectAsState()
     val isUpdatingAutoView by viewModel.isUpdatingAutoView.collectAsState()
+    val isCoinStoreBusy by viewModel.isCoinStoreBusy.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    fun startCoinPurchase(productId: String) {
+        val client = paymentClient
+        val ownerActivity = activity
+        if (client == null || ownerActivity == null) {
+            viewModel.showMessage("اتصال پرداخت کافه‌بازار در این محیط در دسترس نیست.")
+            return
+        }
+
+        viewModel.prepareCoinPurchase(productId) { payload ->
+            client.purchase(
+                registry = ownerActivity.activityResultRegistry,
+                productId = productId,
+                payload = payload
+            ) { purchaseResult ->
+                purchaseResult.fold(
+                    onSuccess = { purchaseInfo ->
+                        if (
+                            purchaseInfo.productId != productId ||
+                            purchaseInfo.payload != payload ||
+                            purchaseInfo.packageName != com.example.BuildConfig.APPLICATION_ID
+                        ) {
+                            viewModel.finishCoinStoreAction(
+                                "اطلاعات خرید با سفارش ایجادشده تطبیق ندارد؛ موجودی تغییر نکرد."
+                            )
+                            showCoinStoreDialog = false
+                        } else {
+                            viewModel.verifyCoinPurchase(
+                                originalJson = purchaseInfo.originalJson,
+                                dataSignature = purchaseInfo.dataSignature
+                            ) { verification ->
+                                verification.fold(
+                                    onSuccess = { confirmation ->
+                                        client.consumeProduct(purchaseInfo.purchaseToken) { consumeResult ->
+                                            if (consumeResult.isSuccess) {
+                                                viewModel.finishCoinStoreAction(
+                                                    "خرید موفق بود؛ " + confirmation.coinAmount + " سکه به حساب اضافه شد."
+                                                )
+                                            } else {
+                                                Log.w(
+                                                    "SiteBinIAP",
+                                                    "Coins were credited, but the Bazaar item could not be consumed; it will be reconciled on the next wallet visit.",
+                                                    consumeResult.exceptionOrNull()
+                                                )
+                                                viewModel.finishCoinStoreAction(
+                                                    "سکه به حساب اضافه شد؛ تکمیل نهایی رسید به تعویق افتاد و به‌صورت امن بازیابی می‌شود."
+                                                )
+                                            }
+                                            showCoinStoreDialog = false
+                                        }
+                                    },
+                                    onFailure = { error ->
+                                        Log.w("SiteBinIAP", "Server receipt verification failed.", error)
+                                        viewModel.finishCoinStoreAction(
+                                            "پرداخت هنوز تأیید سرور را نگرفته است؛ رسید مصرف نشده و برای بازیابی نگه داشته شد."
+                                        )
+                                        showCoinStoreDialog = false
+                                    }
+                                )
+                            }
+                        }
+                    },
+                    onFailure = { error ->
+                        val canceled = error is java.util.concurrent.CancellationException
+                        viewModel.finishCoinStoreAction(
+                            if (canceled) null else error.message ?: "خرید از کافه‌بازار ناموفق بود."
+                        )
+                        if (!canceled) showCoinStoreDialog = false
+                    }
+                )
+            }
+        }
+    }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -177,9 +252,13 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
         }
     }
 
-    // Reconcile non-consumed Bazaar receipts left by a process death or a network failure.
-    LaunchedEffect(currentScreen, paymentClient) {
-        if (currentScreen == AppScreen.COIN_STORE && paymentClient != null) {
+    LaunchedEffect(currentScreen) {
+        if (currentScreen != AppScreen.WALLET) showCoinStoreDialog = false
+    }
+
+    // Reconcile signed, unconsumed Cafe Bazaar receipts each time the store dialog opens.
+    LaunchedEffect(showCoinStoreDialog, currentScreen, paymentClient) {
+        if (showCoinStoreDialog && currentScreen == AppScreen.WALLET && paymentClient != null) {
             paymentClient.queryPurchasedProducts { queryResult ->
                 queryResult.onFailure { error ->
                     Log.w("SiteBinIAP", "Could not query pending Cafe Bazaar purchases.", error)
@@ -357,87 +436,18 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                 account = account,
                                 transactions = transactions,
                                 isTransferringCoins = viewModel.isTransferringCoins.collectAsState().value,
-                                onOpenCoinStore = { viewModel.navigateTo(AppScreen.COIN_STORE) },
+                                onOpenCoinStore = { showCoinStoreDialog = true },
                                 onTransferCoins = { recipient, amount, onSuccess ->
                                     viewModel.transferCoins(recipient, amount, onSuccess)
                                 }
                             )
-                        }
-
-                        AppScreen.COIN_STORE -> {
-                            BackHandler { viewModel.navigateTo(AppScreen.WALLET) }
-                            CoinStoreScreen(
-                                isBusy = viewModel.isCoinStoreBusy.collectAsState().value,
-                                onBuyCoins = { productId ->
-                                    val client = paymentClient
-                                    val ownerActivity = activity
-                                    if (client == null || ownerActivity == null) {
-                                        viewModel.showMessage("اتصال پرداخت کافه‌بازار در این محیط در دسترس نیست.")
-                                    } else {
-                                        viewModel.prepareCoinPurchase(productId) { payload ->
-                                            client.purchase(
-                                                registry = ownerActivity.activityResultRegistry,
-                                                productId = productId,
-                                                payload = payload
-                                            ) { purchaseResult ->
-                                                purchaseResult.fold(
-                                                    onSuccess = { purchaseInfo ->
-                                                        if (
-                                                            purchaseInfo.productId != productId ||
-                                                            purchaseInfo.payload != payload ||
-                                                            purchaseInfo.packageName != com.example.BuildConfig.APPLICATION_ID
-                                                        ) {
-                                                            viewModel.finishCoinStoreAction(
-                                                                "اطلاعات خرید با سفارش ایجادشده تطبیق ندارد؛ موجودی تغییر نکرد."
-                                                            )
-                                                        } else {
-                                                            viewModel.verifyCoinPurchase(
-                                                                originalJson = purchaseInfo.originalJson,
-                                                                dataSignature = purchaseInfo.dataSignature
-                                                            ) { verification ->
-                                                                verification.fold(
-                                                                    onSuccess = { confirmation ->
-                                                                        client.consumeProduct(purchaseInfo.purchaseToken) { consumeResult ->
-                                                                            if (consumeResult.isSuccess) {
-                                                                                viewModel.finishCoinStoreAction(
-                                                                                    "خرید موفق بود؛ ${confirmation.coinAmount} سکه به حساب اضافه شد."
-                                                                                )
-                                                                            } else {
-                                                                                Log.w(
-                                                                                    "SiteBinIAP",
-                                                                                    "Coins were credited, but the Bazaar item could not be consumed; it will be reconciled on the next wallet visit.",
-                                                                                    consumeResult.exceptionOrNull()
-                                                                                )
-                                                                                viewModel.finishCoinStoreAction(
-                                                                                    "سکه به حساب اضافه شد؛ تکمیل نهایی رسید به تعویق افتاد و به‌صورت امن بازیابی می‌شود."
-                                                                                )
-                                                                            }
-                                                                        }
-                                                                    },
-                                                                    onFailure = { error ->
-                                                                        Log.w("SiteBinIAP", "Server receipt verification failed.", error)
-                                                                        viewModel.finishCoinStoreAction(
-                                                                            "پرداخت هنوز تأیید سرور را نگرفته است؛ رسید مصرف نشده و برای بازیابی نگه داشته شد."
-                                                                        )
-                                                                    }
-                                                                )
-                                                            }
-                                                        }
-                                                    },
-                                                    onFailure = { error ->
-                                                        val canceled = error is java.util.concurrent.CancellationException
-                                                        viewModel.finishCoinStoreAction(
-                                                            if (canceled) null
-                                                            else error.message ?: "خرید از کافه‌بازار ناموفق بود."
-                                                        )
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                },
-                                onBack = { viewModel.navigateTo(AppScreen.WALLET) }
-                            )
+                            if (showCoinStoreDialog) {
+                                CoinStoreScreen(
+                                    isBusy = isCoinStoreBusy,
+                                    onBuyCoins = ::startCoinPurchase,
+                                    onDismiss = { if (!isCoinStoreBusy) showCoinStoreDialog = false }
+                                )
+                            }
                         }
 
                         AppScreen.HELP -> {
@@ -796,11 +806,11 @@ fun SiteBinBottomBar(
 
         // Wallet
         NavigationBarItem(
-            selected = currentScreen == AppScreen.WALLET || currentScreen == AppScreen.COIN_STORE,
+            selected = currentScreen == AppScreen.WALLET,
             onClick = { onScreenSelected(AppScreen.WALLET) },
             icon = {
                 Icon(
-                    imageVector = if (currentScreen == AppScreen.WALLET || currentScreen == AppScreen.COIN_STORE) Icons.Filled.MonetizationOn else Icons.Outlined.MonetizationOn,
+                    imageVector = if (currentScreen == AppScreen.WALLET) Icons.Filled.MonetizationOn else Icons.Outlined.MonetizationOn,
                     contentDescription = "کیف پول"
                 )
             },

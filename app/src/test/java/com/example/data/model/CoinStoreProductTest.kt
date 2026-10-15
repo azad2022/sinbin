@@ -25,6 +25,14 @@ class CoinStoreProductTest {
     }
 
     @Test
+    fun pricesAreConvertedToTomanForDisplay() {
+        assertEquals(
+            listOf(299_000L, 349_000L, 489_000L, 649_000L),
+            CoinStoreProduct.all.map { it.priceToman }
+        )
+    }
+
+    @Test
     fun unknownProductsAreRejected() {
         assertNotNull(CoinStoreProduct.find("coins_5000"))
         assertNull(CoinStoreProduct.find("coins_999999"))

@@ -68,6 +68,7 @@ import java.util.Date
 import java.util.Locale
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.testTag
 
 @Composable
 fun WalletScreen(
@@ -206,6 +207,15 @@ fun WalletScreen(
         }
 
         item {
+            CoinStoreEntryCard(
+                onClick = onOpenCoinStore,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("wallet_coin_store_card")
+            )
+        }
+
+        item {
             TransferCoinsCard(
                 onClick = { showTransferDialog = true }
             )
@@ -240,12 +250,6 @@ fun WalletScreen(
         }
         }
 
-        CoinStoreEntryCard(
-            onClick = onOpenCoinStore,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-        )
     }
 
     if (showTransferDialog) {
