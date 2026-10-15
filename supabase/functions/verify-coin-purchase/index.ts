@@ -22,7 +22,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function decodeBase64(value: string): Uint8Array {
+function decodeBase64(value: string): ArrayBuffer {
   const compact = value.replace(/\s/g, "");
   if (!compact || !/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
     throw new Error("INVALID_BASE64");
@@ -32,7 +32,7 @@ function decodeBase64(value: string): Uint8Array {
   for (let index = 0; index < binary.length; index += 1) {
     output[index] = binary.charCodeAt(index);
   }
-  return output;
+  return output.buffer;
 }
 
 function isBoundedString(value: unknown, maximumLength: number): value is string {
