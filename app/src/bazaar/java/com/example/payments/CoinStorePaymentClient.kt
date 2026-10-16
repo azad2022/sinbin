@@ -61,7 +61,7 @@ class CoinStorePaymentClient(private val activity: ComponentActivity) {
                     synchronized(this@CoinStorePaymentClient) {
                         connection = null
                     }
-                    completeConnection(Result.failure(IOException("اتصال پرداخت کافه‌بازار قطع شد.")))
+                    completeConnection(Result.failure(IOException("اتصال فروشگاه قطع شد.")))
                 }
             }
             synchronized(this) {
@@ -102,7 +102,7 @@ class CoinStorePaymentClient(private val activity: ComponentActivity) {
             connectionResult.fold(
                 onSuccess = {
                     val delivered = AtomicBoolean(false)
-                    fun finish(result: Result<PurchaseInfo>) {
+                    fun finish(result: Result<CoinStoreReceipt>) {
                         if (delivered.compareAndSet(false, true)) onResult(result)
                     }
                     try {
