@@ -778,19 +778,6 @@ fun SiteBinBottomBar(
             label = { Text("خانه", fontWeight = FontWeight.SemiBold) }
         )
 
-        // Earn / Viewer
-        NavigationBarItem(
-            selected = currentScreen == AppScreen.VIEWER,
-            onClick = onStartViewing,
-            icon = {
-                Icon(
-                    imageVector = if (currentScreen == AppScreen.VIEWER) Icons.Filled.Visibility else Icons.Outlined.Visibility,
-                    contentDescription = "بازدید"
-                )
-            },
-            label = { Text("بازدید", fontWeight = FontWeight.SemiBold) }
-        )
-
         // Campaigns
         NavigationBarItem(
             selected = currentScreen == AppScreen.CAMPAIGNS || currentScreen == AppScreen.CREATE_CAMPAIGN,
@@ -802,6 +789,19 @@ fun SiteBinBottomBar(
                 )
             },
             label = { Text("سفارش‌ها", fontWeight = FontWeight.SemiBold) }
+        )
+
+        // Earn / Viewer
+        NavigationBarItem(
+            selected = currentScreen == AppScreen.VIEWER,
+            onClick = onStartViewing,
+            icon = {
+                Icon(
+                    imageVector = if (currentScreen == AppScreen.VIEWER) Icons.Filled.Visibility else Icons.Outlined.Visibility,
+                    contentDescription = "بازدید"
+                )
+            },
+            label = { Text("بازدید", fontWeight = FontWeight.SemiBold) }
         )
 
         // Wallet
