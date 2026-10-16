@@ -6,6 +6,7 @@ import com.example.data.model.Campaign
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
 import com.example.data.model.CoinPurchaseIntent
+import com.example.data.model.CoinStoreProvider
 import com.example.data.model.CoinPurchaseConfirmation
 import com.example.data.model.DurationOption
 import com.example.data.model.DailyBonusResult
@@ -193,8 +194,29 @@ interface ServerAuthoritativeEngine {
 interface CoinPurchaseCapableEngine {
     suspend fun createCoinPurchaseIntent(productId: String): Result<CoinPurchaseIntent>
 
+    suspend fun createCoinPurchaseIntent(
+        productId: String,
+        storeProvider: CoinStoreProvider
+    ): Result<CoinPurchaseIntent> =
+        if (storeProvider == CoinStoreProvider.CAFEBAZAAR) {
+            createCoinPurchaseIntent(productId)
+        } else {
+            Result.failure(UnsupportedOperationException("این موتور پرداخت از فروشگاه انتخاب‌شده پشتیبانی نمی‌کند."))
+        }
+
     suspend fun verifyCoinPurchase(
         originalJson: String,
         dataSignature: String
     ): Result<CoinPurchaseConfirmation>
+
+    suspend fun verifyCoinPurchase(
+        originalJson: String,
+        dataSignature: String,
+        storeProvider: CoinStoreProvider
+    ): Result<CoinPurchaseConfirmation> =
+        if (storeProvider == CoinStoreProvider.CAFEBAZAAR) {
+            verifyCoinPurchase(originalJson, dataSignature)
+        } else {
+            Result.failure(UnsupportedOperationException("این موتور تأیید رسید فروشگاه انتخاب‌شده را پشتیبانی نمی‌کند."))
+        }
 }
