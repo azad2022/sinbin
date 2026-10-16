@@ -11,6 +11,7 @@ import com.example.data.backend.ServerAuthoritativeEngine
 import com.example.data.backend.RealtimeCapableEngine
 import com.example.data.backend.CoinPurchaseCapableEngine
 import com.example.data.model.CoinPurchaseIntent
+import com.example.data.model.CoinStoreProvider
 import com.example.data.model.CoinPurchaseConfirmation
 import com.example.data.model.AbuseReport
 import com.example.data.model.AutoViewActivationResult
@@ -242,21 +243,25 @@ class SiteBinRepository(
         return result
     }
 
-    suspend fun createCoinPurchaseIntent(productId: String): Result<CoinPurchaseIntent> {
+    suspend fun createCoinPurchaseIntent(
+        productId: String,
+        storeProvider: CoinStoreProvider = CoinStoreProvider.CAFEBAZAAR
+    ): Result<CoinPurchaseIntent> {
         val capability = engine as? CoinPurchaseCapableEngine
-            ?: return Result.failure(IllegalStateException("پرداخت واقعی کافه‌بازار در این محیط فعال نیست."))
-        return capability.createCoinPurchaseIntent(productId)
+            ?: return Result.failure(IllegalStateException("خرید سکه در این محیط فعال نیست."))
+        return capability.createCoinPurchaseIntent(productId, storeProvider)
     }
 
     suspend fun verifyCoinPurchase(
         originalJson: String,
-        dataSignature: String
+        dataSignature: String,
+        storeProvider: CoinStoreProvider = CoinStoreProvider.CAFEBAZAAR
     ): Result<CoinPurchaseConfirmation> {
         val capability = engine as? CoinPurchaseCapableEngine
-            ?: return Result.failure(IllegalStateException("تأیید واقعی پرداخت کافه‌بازار در این محیط فعال نیست."))
+            ?: return Result.failure(IllegalStateException("تأیید رسید خرید در این محیط فعال نیست."))
 
         val currentUserId = _account.value.userId
-        val result = capability.verifyCoinPurchase(originalJson, dataSignature)
+        val result = capability.verifyCoinPurchase(originalJson, dataSignature, storeProvider)
         if (result.isSuccess) {
             // The server has atomically credited the signed receipt. Re-read both sources
             // of truth instead of incrementing the local balance optimistically.
