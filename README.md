@@ -4,6 +4,29 @@ SiteBin is an Android application for reciprocal website traffic: users can act 
 
 > This document is the repository-level technical source of truth for architecture, identity continuity, signing/build rules, backend boundaries, security model, testing, and release procedure. When this document conflicts with the actual source, database schema, or CI artifact, the evidence from the running system wins and this README must be updated.
 
+
+## Release record — 2026-10-16 (Cafe Bazaar update #2)
+
+This entry records the second production update that the repository owner reported uploading to Cafe Bazaar. Upload/submission is recorded from owner confirmation; this entry does not claim marketplace approval or publication.
+
+| Item | Verified release record |
+|---|---|
+| Version name | `1.0.1` |
+| Version code | `9` |
+| Android application ID | `sitebin.azerakhsh.ir` |
+| APK filename | `sitebin.azerakhsh.apk` |
+| AAB filename | `sitebin.azerakhsh.aab` |
+| Release source commit | `e884ab98783299bf820df5befdcc936fc62875cf` |
+| CI workflow | [Run #453 — production artifacts](https://github.com/azad2022/sinbin/actions/runs/38883570984) |
+| GitHub Actions artifact | `sitebin-android-release` (artifact ID `12039016096`) |
+| APK SHA-256 | `caaed1b04c7e9da7fb7f0cf63bfc0f88fdc98350efa9060e2e5c604ae6d6e871` |
+| AAB SHA-256 | `76238e3a47e73fcfeeec2242f7a8ab9e7f3e302d06ab153290de9f4e0a4abc9a` |
+| Release signing identity | Unchanged; verified against the recorded production Release certificate SHA-256 in Section 1 |
+
+The Release CI job successfully built the APK and AAB, verified their signing certificates and package identity, generated checksums, and uploaded the artifact. This build included the Cafe Bazaar coin store and its Cafe Bazaar-specific receipt verification path. No Myket payment integration is included in this release.
+
+For future market-specific releases, preserve `applicationId`, the production Release signing identity, the Cafe Bazaar verifier, and the server-authoritative coin ledger. Integrate another market through a separate purchase-provider path and verification logic rather than replacing or weakening the Cafe Bazaar flow.
+
 ---
 
 ## 1. Non-negotiable application identity
