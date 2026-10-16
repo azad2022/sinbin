@@ -19,6 +19,28 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  // Store flavors deliberately isolate SDKs that ship duplicate legacy billing classes.
+  flavorDimensions += "store"
+  productFlavors {
+    create("bazaar") {
+      dimension = "store"
+      buildConfigField("String", "COIN_STORE_PROVIDER", "\"cafebazaar\"")
+      buildConfigField("String", "STORE_DISPLAY_NAME", "\"کافه‌بازار\"")
+      manifestPlaceholders["marketApplicationId"] = "com.farsitel.bazaar"
+      manifestPlaceholders["marketBindAddress"] = "ir.cafebazaar.pardakht.InAppBillingService.BIND"
+      manifestPlaceholders["marketPermission"] = "com.farsitel.bazaar.permission.PAY_THROUGH_BAZAAR"
+    }
+    create("myket") {
+      dimension = "store"
+      buildConfigField("String", "COIN_STORE_PROVIDER", "\"myket\"")
+      buildConfigField("String", "STORE_DISPLAY_NAME", "\"مایکت\"")
+      buildConfigField("String", "MYKET_RSA_PUBLIC_KEY", "\"MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCnCDddwvZDJFcxQPeBLu7wH0C2tYn9KyKCTxcNzMq2JBQdgIk7J7iNM/paiIdUbC/vBsxWhMXFX1sxnhIbgmzol/Td8Z+5Wl947TFl1Yi5gQT4T+RsJbQmchhKCbJ9BU1nyttbEN5Z/5AU5aRwUpeTJqDwK2HlmSXoy9qnUlse8QIDAQAB\"")
+      manifestPlaceholders["marketApplicationId"] = "ir.mservices.market"
+      manifestPlaceholders["marketBindAddress"] = "ir.mservices.market.InAppBillingService.BIND"
+      manifestPlaceholders["marketPermission"] = "ir.mservices.market.BILLING"
+    }
+  }
+
   val debugKeystorePath = providers.environmentVariable("DEBUG_KEYSTORE_PATH").orNull
   val debugSigningRequired = providers.environmentVariable("DEBUG_SIGNING_REQUIRED").orNull == "true"
   val debugTasksRequested = gradle.startParameter.taskNames.any { task ->
@@ -124,7 +146,8 @@ secrets {
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
-  implementation("com.github.cafebazaar.Poolakey:poolakey:2.2.0")
+  bazaarImplementation("com.github.cafebazaar.Poolakey:poolakey:2.2.0")
+  myketImplementation("com.github.myketstore:myket-billing-client:1.19")
   implementation(platform(libs.androidx.compose.bom))
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
