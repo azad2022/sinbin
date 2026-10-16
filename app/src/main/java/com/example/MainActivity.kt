@@ -757,8 +757,8 @@ private fun recoverPendingCoinPurchases(
                 }
             },
             onFailure = { error ->
-                Log.w("SiteBinIAP", "Pending Cafe Bazaar receipt could not be verified; it was not consumed.", error)
-                recoverPendingCoinPurchases(purchases, index + 1, paymentClient, viewModel)
+                Log.w("SiteBinIAP", "Pending store receipt could not be verified; it was not consumed.", error)
+                recoverPendingCoinPurchases(purchases, index + 1, paymentClient, viewModel, storeProvider)
             }
         )
     }
