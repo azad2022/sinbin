@@ -350,6 +350,12 @@ jobs:
             test -f "$source_apk"
             mv "$source_apk" "$target_apk"
           done
+          for flavor in bazaar myket; do
+            source_aab="app/build/outputs/bundle/${flavor}Release/app-${flavor}-release.aab"
+            target_aab="app/build/outputs/bundle/${flavor}Release/sitebin.azerakhsh.aab"
+            test -f "$source_aab"
+            mv "$source_aab" "$target_aab"
+          done
 
       - name: Verify release package and signing identity for both stores
         shell: bash
