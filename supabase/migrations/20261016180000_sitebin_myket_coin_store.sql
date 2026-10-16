@@ -224,7 +224,7 @@ BEGIN
         RAISE EXCEPTION 'PURCHASE_PROVIDER_MISMATCH: Order belongs to a different marketplace';
     END IF;
     -- EXPIRED describes a stale pending intent, not an invalid historical purchase.
-    -- The signed Bazaar purchase timestamp is separately bounded by expires_at + 15 minutes below.
+    -- The signed store purchase timestamp is separately bounded by expires_at + 15 minutes below.
     -- This lets the app safely recover a completed, unconsumed purchase after a network outage.
     IF v_intent.status NOT IN ('PENDING', 'EXPIRED') THEN
         RAISE EXCEPTION 'PURCHASE_NOT_PENDING: Order was already finalized';
