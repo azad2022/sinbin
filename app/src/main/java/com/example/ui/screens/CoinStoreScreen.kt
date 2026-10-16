@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -73,6 +74,8 @@ private val StoreMuted = Color(0xFF718096)
 @Composable
 fun CoinStoreScreen(
     isBusy: Boolean,
+    storeName: String = "کافه‌بازار",
+    isMyketStore: Boolean = false,
     onBuyCoins: (String) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
@@ -235,17 +238,28 @@ fun CoinStoreScreen(
                                         modifier = Modifier.size(34.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
-                                            androidx.compose.foundation.Image(
-                                                painter = painterResource(R.drawable.ic_cafebazaar_bag),
-                                                contentDescription = "نشان کافه‌بازار",
-                                                modifier = Modifier
-                                                    .padding(4.dp)
-                                                    .size(26.dp)
-                                            )
+                                            if (isMyketStore) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.ShoppingCart,
+                                                    contentDescription = "نشان مایکت",
+                                                    modifier = Modifier
+                                                        .padding(4.dp)
+                                                        .size(26.dp),
+                                                    tint = StoreVioletDeep
+                                                )
+                                            } else {
+                                                androidx.compose.foundation.Image(
+                                                    painter = painterResource(R.drawable.ic_cafebazaar_bag),
+                                                    contentDescription = "نشان کافه‌بازار",
+                                                    modifier = Modifier
+                                                        .padding(4.dp)
+                                                        .size(26.dp)
+                                                )
+                                            }
                                         }
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))
-                                    Text("خرید از کافه‌بازار", fontWeight = FontWeight.Black)
+                                    Text("خرید از $storeName", fontWeight = FontWeight.Black)
                                 }
                             }
 
