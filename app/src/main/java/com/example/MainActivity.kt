@@ -8,8 +8,8 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import com.example.data.model.CoinStoreProduct
-import com.example.payments.CafeBazaarPaymentClient
-import ir.cafebazaar.poolakey.entity.PurchaseInfo
+import com.example.data.model.CoinStoreProvider
+import com.example.payments.CoinStoreReceipt
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -112,8 +112,9 @@ class MainActivity : ComponentActivity() {
 fun MainAppContent(viewModel: SiteBinViewModel) {
     val context = LocalContext.current
     val activity = remember(context) { findComponentActivity(context) }
+    val storeProvider = remember { CoinStoreProvider.fromId(BuildConfig.COIN_STORE_PROVIDER) }
     val paymentClient = remember(activity) {
-        activity?.let { CafeBazaarPaymentClient(it) }
+        activity?.let { CoinStorePaymentClient(it) }
     }
 
     DisposableEffect(paymentClient) {
@@ -149,15 +150,13 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
 
     fun startCoinPurchase(productId: String) {
         val client = paymentClient
-        val ownerActivity = activity
-        if (client == null || ownerActivity == null) {
-            viewModel.showMessage("اتصال پرداخت کافه‌بازار در این محیط در دسترس نیست.")
+        if (client == null) {
+            viewModel.showMessage("اتصال پرداخت از طریق ${BuildConfig.STORE_DISPLAY_NAME} در این محیط در دسترس نیست.")
             return
         }
 
-        viewModel.prepareCoinPurchase(productId) { payload ->
+        viewModel.prepareCoinPurchase(productId, storeProvider) { payload ->
             client.purchase(
-                registry = ownerActivity.activityResultRegistry,
                 productId = productId,
                 payload = payload
             ) { purchaseResult ->
@@ -175,7 +174,8 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                         } else {
                             viewModel.verifyCoinPurchase(
                                 originalJson = purchaseInfo.originalJson,
-                                dataSignature = purchaseInfo.dataSignature
+                                dataSignature = purchaseInfo.dataSignature,
+                                storeProvider = storeProvider
                             ) { verification ->
                                 verification.fold(
                                     onSuccess = { confirmation ->
@@ -211,7 +211,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                     onFailure = { error ->
                         val canceled = error is java.util.concurrent.CancellationException
                         viewModel.finishCoinStoreAction(
-                            if (canceled) null else error.message ?: "خرید از کافه‌بازار ناموفق بود."
+                            if (canceled) null else error.message ?: "خرید از ${BuildConfig.STORE_DISPLAY_NAME} ناموفق بود."
                         )
                         if (!canceled) showCoinStoreDialog = false
                     }
@@ -256,12 +256,12 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
         if (currentScreen != AppScreen.WALLET) showCoinStoreDialog = false
     }
 
-    // Reconcile signed, unconsumed Cafe Bazaar receipts each time the store dialog opens.
+    // Reconcile signed, unconsumed receipts from the selected store each time the store dialog opens.
     LaunchedEffect(showCoinStoreDialog, currentScreen, paymentClient) {
         if (showCoinStoreDialog && currentScreen == AppScreen.WALLET && paymentClient != null) {
             paymentClient.queryPurchasedProducts { queryResult ->
                 queryResult.onFailure { error ->
-                    Log.w("SiteBinIAP", "Could not query pending Cafe Bazaar purchases.", error)
+                    Log.w("SiteBinIAP", "Could not query pending store purchases.", error)
                 }.onSuccess { purchases ->
                     val recoverable = purchases
                         .filter { CoinStoreProduct.find(it.productId) != null }
@@ -270,7 +270,8 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                         purchases = recoverable,
                         index = 0,
                         paymentClient = paymentClient,
-                        viewModel = viewModel
+                        viewModel = viewModel,
+                        storeProvider = storeProvider
                     )
                 }
             }
@@ -444,6 +445,8 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                             if (showCoinStoreDialog) {
                                 CoinStoreScreen(
                                     isBusy = isCoinStoreBusy,
+                                    storeName = BuildConfig.STORE_DISPLAY_NAME,
+                                    isMyketStore = storeProvider == CoinStoreProvider.MYKET,
                                     onBuyCoins = ::startCoinPurchase,
                                     onDismiss = { if (!isCoinStoreBusy) showCoinStoreDialog = false }
                                 )
@@ -724,17 +727,19 @@ private fun findComponentActivity(context: android.content.Context): ComponentAc
  * server has confirmed that it was atomically credited to this authenticated account.
  */
 private fun recoverPendingCoinPurchases(
-    purchases: List<PurchaseInfo>,
+    purchases: List<CoinStoreReceipt>,
     index: Int,
-    paymentClient: CafeBazaarPaymentClient,
-    viewModel: SiteBinViewModel
+    paymentClient: CoinStorePaymentClient,
+    viewModel: SiteBinViewModel,
+    storeProvider: CoinStoreProvider
 ) {
     if (index >= purchases.size) return
     val purchase = purchases[index]
 
     viewModel.recoverCoinPurchase(
         originalJson = purchase.originalJson,
-        dataSignature = purchase.dataSignature
+        dataSignature = purchase.dataSignature,
+        storeProvider = storeProvider
     ) { verification ->
         verification.fold(
             onSuccess = {
@@ -747,7 +752,7 @@ private fun recoverPendingCoinPurchases(
                         )
                     }
                     viewModel.finishCoinStoreAction()
-                    recoverPendingCoinPurchases(purchases, index + 1, paymentClient, viewModel)
+                    recoverPendingCoinPurchases(purchases, index + 1, paymentClient, viewModel, storeProvider)
                 }
             },
             onFailure = { error ->
