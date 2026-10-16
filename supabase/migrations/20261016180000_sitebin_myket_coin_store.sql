@@ -65,13 +65,11 @@ BEGIN
     SET status = 'EXPIRED'
     WHERE user_id = v_uid
       AND status = 'PENDING'
-      AND store_provider = p_store_provider
       AND expires_at <= v_now;
 
     SELECT pg_catalog.count(*)::INTEGER INTO v_recent_count
     FROM private.coin_purchase_intents
     WHERE user_id = v_uid
-      AND store_provider = p_store_provider
       AND created_at >= v_now - INTERVAL '10 minutes';
     IF v_recent_count >= 6 THEN
         RAISE EXCEPTION 'PURCHASE_RATE_LIMITED: Too many purchase attempts; try again later';
@@ -295,7 +293,7 @@ $function$;
 
 -- The original Cafe Bazaar RPC contracts remain available and still route to the exact
 -- legacy provider identity. The new Myket RPCs use the same catalog/ledger but a separate
--- intent namespace, verifier key, and provider-bound idempotency path.
+-- provider-tagged intent records, verifier key, and provider-bound finalization path.
 CREATE OR REPLACE FUNCTION public.create_coin_purchase_intent(p_product_id TEXT)
 RETURNS JSON
 LANGUAGE sql
