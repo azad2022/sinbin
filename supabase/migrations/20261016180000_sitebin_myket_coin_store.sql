@@ -378,3 +378,5 @@ GRANT EXECUTE ON FUNCTION public.finalize_myket_coin_purchase_from_verified_rece
     UUID, TEXT, TEXT, TEXT, TEXT, BIGINT, TEXT, TEXT
 ) TO service_role;
 
+-- Expose the new authenticated RPCs through PostgREST's function schema cache.
+NOTIFY pgrst, 'reload schema';
