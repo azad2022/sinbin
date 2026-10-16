@@ -52,8 +52,8 @@ object UrlSecurityPolicy {
      * Identifies public channel/post URLs that SiteBin explicitly exercises in its
      * Android WebView smoke tests. This does not bypass HTTPS, URL, or server preflight checks.
      *
-     * Eitaa public post example: https://eitaa.com/s/eitaa/306
-     * Bale public channel/share example: https://ble.ir/s/irannewspaper
+     * Eitaa public channel example: https://eitaa.com/eitaa
+     * Bale public post permalink example: https://ble.ir/info/518255782042081426/1649267389679
      */
     fun publicChannelPlatform(rawUrl: String?): PublicChannelPlatform? {
         if (rawUrl.isNullOrBlank()) return null
