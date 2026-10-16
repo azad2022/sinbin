@@ -164,7 +164,7 @@ fun CoinStoreScreen(
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f),
+                                .heightIn(max = maxDialogHeight * 0.56f),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(CoinStoreProduct.all, key = { it.productId }) { product ->
