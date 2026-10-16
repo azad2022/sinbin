@@ -1,4 +1,13 @@
 package com.example.ui.screens
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ShoppingBasket
+import androidx.compose.ui.graphics.graphicsLayer
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -26,6 +35,7 @@ import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Send
@@ -67,12 +77,14 @@ import java.util.Date
 import java.util.Locale
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.testTag
 
 @Composable
 fun WalletScreen(
     account: UserAccount,
     transactions: List<CoinTransaction>,
     isTransferringCoins: Boolean = false,
+    onOpenCoinStore: () -> Unit = {},
     onTransferCoins: (String, Long, () -> Unit) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
@@ -86,12 +98,14 @@ fun WalletScreen(
         recipientHandle.trim().isNotBlank() &&
         parsedAmount in 1..account.availableCoins
 
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    Column(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         // Main Coin Balance Card
         item {
             Card(
@@ -202,6 +216,15 @@ fun WalletScreen(
         }
 
         item {
+            CoinStoreEntryCard(
+                onClick = onOpenCoinStore,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("wallet_coin_store_card")
+            )
+        }
+
+        item {
             TransferCoinsCard(
                 onClick = { showTransferDialog = true }
             )
@@ -234,6 +257,8 @@ fun WalletScreen(
         item {
             Spacer(modifier = Modifier.height(24.dp))
         }
+        }
+
     }
 
     if (showTransferDialog) {
@@ -383,6 +408,161 @@ fun WalletScreen(
 
 }
 
+
+@Composable
+private fun CoinStoreEntryCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "wallet-store-basket")
+    val basketOffsetY by transition.animateFloat(
+        initialValue = -2.5f,
+        targetValue = 2.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "basket-bounce"
+    )
+    val basketRotation by transition.animateFloat(
+        initialValue = -4f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_150, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "basket-sway"
+    )
+    val basketScale by transition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "basket-scale-pulse"
+    )
+    val coinScale by transition.animateFloat(
+        initialValue = 0.84f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "basket-coin-pulse"
+    )
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(23.dp))
+            .clickable(onClick = onClick)
+            .testTag("wallet_coin_store_card"),
+        shape = RoundedCornerShape(23.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFCFBFF)),
+        border = BorderStroke(1.dp, Color(0xFFE6E0FF)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFFFCFBFF), Color(0xFFF3F0FF), Color(0xFFF0FAF8))
+                    )
+                )
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(17.dp),
+                color = Color(0xFFE9E5FF),
+                modifier = Modifier.size(56.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.ShoppingBasket,
+                        contentDescription = "سبد خرید متحرک",
+                        tint = Color(0xFF5B50D6),
+                        modifier = Modifier
+                            .size(33.dp)
+                            .graphicsLayer {
+                                translationY = basketOffsetY
+                                rotationZ = basketRotation
+                                scaleX = basketScale
+                                scaleY = basketScale
+                            }
+                            .testTag("wallet_coin_store_basket_icon")
+                    )
+                    Surface(
+                        shape = CircleShape,
+                        color = SiteBinGold,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(5.dp)
+                            .size(17.dp)
+                            .graphicsLayer {
+                                scaleX = coinScale
+                                scaleY = coinScale
+                            }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "فروشگاه سکه",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF25224A)
+                )
+                Text(
+                    text = "خرید فوری از فروشگاه",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF6F708B)
+                )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(13.dp),
+                color = Color(0xFF5B50D6)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Text(
+                        text = "ورود",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ChevronLeft,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun TransferCoinsCard(
     onClick: () -> Unit
@@ -464,6 +644,7 @@ private fun TransactionRow(tx: CoinTransaction) {
         TransactionType.AUTO_VIEW_SUBSCRIPTION -> Icons.Default.Autorenew to MaterialTheme.colorScheme.error
         TransactionType.COIN_TRANSFER_SENT -> Icons.Default.Savings to MaterialTheme.colorScheme.error
         TransactionType.COIN_TRANSFER_RECEIVED -> Icons.Default.CardGiftcard to SiteBinGold
+        TransactionType.COIN_PURCHASE -> Icons.Default.CardGiftcard to SiteBinSuccess
     }
 
     Card(

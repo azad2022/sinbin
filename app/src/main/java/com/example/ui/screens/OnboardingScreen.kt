@@ -25,6 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
@@ -84,6 +86,18 @@ internal val siteBinOnboardingSteps = listOf(
             title = "سایتت را رشد بده",
             subtitle = "سکه‌های دریافتی را برای جذب ترافیک، ارتقای رتبه سئو و بهبود تعامل وب‌سایت خودت مصرف کن.",
             icon = Icons.Default.RocketLaunch,
+            iconColor = SiteBinTeal
+        ),
+        OnboardingStep(
+            title = "وبسایت خود را با جستجوی کلمه کلیدی سئو کنید.",
+            subtitle = "کلمهٔ کلیدی مرتبط را انتخاب کن تا صفحهٔ مناسب سایتت از مسیر همان جست‌وجو بازدید بگیرد.",
+            icon = Icons.Default.Search,
+            iconColor = SiteBinBlue
+        ),
+        OnboardingStep(
+            title = "افزایش بازدید پست‌های ایتا و بله",
+            subtitle = "لینک پست عمومی ایتا یا صفحهٔ اشتراک‌گذاری عمومی بله را ثبت کن تا در مرورگر امن سایت‌بین نمایش داده شود.",
+            icon = Icons.Default.Forum,
             iconColor = SiteBinTeal
         ),
         OnboardingStep(

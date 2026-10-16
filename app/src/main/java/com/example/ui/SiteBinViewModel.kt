@@ -10,6 +10,8 @@ import com.example.core.security.UrlSecurityPolicy
 import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
+import com.example.data.model.CoinStoreProduct
+import com.example.data.model.CoinPurchaseConfirmation
 import com.example.data.model.DailyBonusResult
 import com.example.data.model.WeeklyLeaderboard
 import com.example.data.model.TransactionType
@@ -345,6 +347,9 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     private val _isTransferringCoins = MutableStateFlow(false)
     val isTransferringCoins: StateFlow<Boolean> = _isTransferringCoins.asStateFlow()
+
+    private val _isCoinStoreBusy = MutableStateFlow(false)
+    val isCoinStoreBusy: StateFlow<Boolean> = _isCoinStoreBusy.asStateFlow()
 
     private val seenIncomingTransferIds = linkedSetOf<String>()
     private var notificationBaselineReady = false
@@ -823,6 +828,88 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 endAction("create_campaign")
             }
         }
+    }
+
+    /**
+     * Creates an authoritative server order before showing Cafe Bazaar's billing UI.
+     * The single-flight lock remains held until finishCoinStoreAction is called.
+     */
+    fun prepareCoinPurchase(productId: String, onPayloadReady: (String) -> Unit) {
+        if (CoinStoreProduct.find(productId) == null) {
+            showMessage("بسته سکه معتبر نیست.")
+            return
+        }
+        if (_isCoinStoreBusy.value || !beginAction("coin_store_purchase")) {
+            showMessage("یک عملیات خرید در حال انجام است.")
+            return
+        }
+
+        _isCoinStoreBusy.value = true
+        viewModelScope.launch {
+            var handedOff = false
+            try {
+                val result = repository.createCoinPurchaseIntent(productId)
+                result.onSuccess { intent ->
+                    val expected = CoinStoreProduct.find(productId)
+                    if (expected == null || intent.productId != expected.productId ||
+                        intent.coinAmount != expected.coinAmount ||
+                        intent.payload.isBlank() ||
+                        intent.expiresAtMillis <= System.currentTimeMillis()
+                    ) {
+                        showMessage("اطلاعات سفارش با فهرست معتبر سکه‌ها تطبیق ندارد.")
+                    } else {
+                        handedOff = true
+                        onPayloadReady(intent.payload)
+                    }
+                }.onFailure { error ->
+                    showMessage(error.message ?: "ایجاد سفارش خرید ناموفق بود.")
+                }
+            } finally {
+                if (!handedOff) {
+                    _isCoinStoreBusy.value = false
+                    endAction("coin_store_purchase")
+                }
+            }
+        }
+    }
+
+    /**
+     * Verifies the Bazaar-signed JSON on the server. The caller must not consume a receipt
+     * until this returns success, and must finish the action after consumption/recovery.
+     */
+    fun verifyCoinPurchase(
+        originalJson: String,
+        dataSignature: String,
+        onResult: (Result<CoinPurchaseConfirmation>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = repository.verifyCoinPurchase(originalJson, dataSignature)
+            onResult(result)
+        }
+    }
+
+    /** Acquires the same single-flight lock for one unconsumed receipt found at startup. */
+    fun recoverCoinPurchase(
+        originalJson: String,
+        dataSignature: String,
+        onResult: (Result<CoinPurchaseConfirmation>) -> Unit
+    ) {
+        if (_isCoinStoreBusy.value || !beginAction("coin_store_purchase")) {
+            onResult(Result.failure(IllegalStateException("A coin purchase is already in progress.")))
+            return
+        }
+        _isCoinStoreBusy.value = true
+        viewModelScope.launch {
+            val result = repository.verifyCoinPurchase(originalJson, dataSignature)
+            if (result.isFailure) finishCoinStoreAction()
+            onResult(result)
+        }
+    }
+
+    fun finishCoinStoreAction(message: String? = null) {
+        _isCoinStoreBusy.value = false
+        endAction("coin_store_purchase")
+        if (!message.isNullOrBlank()) showMessage(message)
     }
 
     fun transferCoins(

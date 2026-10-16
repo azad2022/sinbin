@@ -65,12 +65,14 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.security.SafeWebView
+import com.example.core.security.UrlSecurityPolicy
 import com.example.ui.ViewerState
 import com.example.ui.theme.SiteBinGold
 import com.example.ui.theme.SiteBinSuccess
 import kotlinx.coroutines.delay
 
 internal const val VIEWER_PAGE_LOAD_TIMEOUT_MS = 6_000L
+internal const val VIEWER_PUBLIC_CHANNEL_PAGE_LOAD_TIMEOUT_MS = 15_000L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -133,10 +135,16 @@ fun ViewerScreen(
     // A slow destination must not keep the viewer waiting indefinitely. The session is
     // cancelled through the authoritative ViewModel path and the next site is requested.
     LaunchedEffect(currentSession?.id, isPageLoading) {
-        val loadingSessionId = currentSession?.id ?: return@LaunchedEffect
+        val loadingSession = currentSession ?: return@LaunchedEffect
+        val loadingSessionId = loadingSession.id
         if (!isPageLoading || viewerState is ViewerState.Completed) return@LaunchedEffect
+        val loadTimeoutMs = if (UrlSecurityPolicy.publicChannelPlatform(loadingSession.targetUrl) != null) {
+            VIEWER_PUBLIC_CHANNEL_PAGE_LOAD_TIMEOUT_MS
+        } else {
+            VIEWER_PAGE_LOAD_TIMEOUT_MS
+        }
 
-        delay(VIEWER_PAGE_LOAD_TIMEOUT_MS)
+        delay(loadTimeoutMs)
         if (
             isPageLoading &&
             currentSession?.id == loadingSessionId &&

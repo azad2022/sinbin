@@ -15,6 +15,9 @@ import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
+import com.example.data.model.CoinPurchaseIntent
+import com.example.data.model.CoinPurchaseConfirmation
+import com.example.data.model.CoinStoreProduct
 import com.example.data.model.DailyBonusResult
 import com.example.data.model.WeeklyLeaderboardEntry
 import com.example.data.model.DurationOption
@@ -90,7 +93,7 @@ class SupabaseApiClient(
     private val supabaseUrl: String,
     private val supabasePublishableKey: String,
     private val context: Context? = null
-) : ServerAuthoritativeEngine, RealtimeCapableEngine {
+) : ServerAuthoritativeEngine, RealtimeCapableEngine, CoinPurchaseCapableEngine {
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -364,6 +367,96 @@ class SupabaseApiClient(
             )
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    override suspend fun createCoinPurchaseIntent(productId: String): Result<CoinPurchaseIntent> =
+        withContext(Dispatchers.IO) {
+            try {
+                val expected = CoinStoreProduct.find(productId)
+                    ?: return@withContext Result.failure(IllegalArgumentException("بسته سکه معتبر نیست."))
+
+                val response = callRpc(
+                    "create_coin_purchase_intent",
+                    JSONObject().put("p_product_id", productId)
+                )
+                val payload = response.optString("payload", "").trim()
+                val returnedProduct = response.optString("product_id", "")
+                val returnedCoins = response.optLong("coin_amount", -1L)
+                val returnedPrice = response.optLong("price_rial", -1L)
+                val expiresAt = response.optLong("expires_at_ms", 0L)
+
+                val isUuid = payload.matches(
+                    Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
+                )
+                if (!isUuid || returnedProduct != expected.productId ||
+                    returnedCoins != expected.coinAmount || returnedPrice != expected.priceRial ||
+                    expiresAt <= System.currentTimeMillis()
+                ) {
+                    return@withContext Result.failure(
+                        IOException("پاسخ سفارش پرداخت با فهرست امن محصولات SiteBin تطبیق ندارد.")
+                    )
+                }
+
+                Result.success(
+                    CoinPurchaseIntent(
+                        payload = payload,
+                        productId = returnedProduct,
+                        coinAmount = returnedCoins,
+                        expiresAtMillis = expiresAt
+                    )
+                )
+            } catch (error: Exception) {
+                Result.failure(error)
+            }
+        }
+
+    override suspend fun verifyCoinPurchase(
+        originalJson: String,
+        dataSignature: String
+    ): Result<CoinPurchaseConfirmation> = withContext(Dispatchers.IO) {
+        try {
+            if (originalJson.isBlank() || originalJson.length > 16_384 ||
+                dataSignature.isBlank() || dataSignature.length > 8_192
+            ) {
+                return@withContext Result.failure(IllegalArgumentException("رسید پرداخت معتبر نیست."))
+            }
+
+            val response = callAuthenticatedEdgeFunction(
+                "verify-coin-purchase",
+                JSONObject().apply {
+                    put("originalJson", originalJson)
+                    put("dataSignature", dataSignature)
+                }
+            )
+
+            if (!response.optBoolean("success", false)) {
+                return@withContext Result.failure(
+                    IOException(response.optString("message").ifBlank { "سرور خرید را تأیید نکرد." })
+                )
+            }
+
+            val productId = response.optString("product_id", "")
+            val expected = CoinStoreProduct.find(productId)
+                ?: return@withContext Result.failure(IOException("محصول رسید در فهرست مجاز نیست."))
+            val coins = response.optLong("coins", -1L)
+            val available = response.optLong("available_coins", -1L)
+            // A previously credited receipt may be retried after the user has spent some coins.
+            // Validate a non-negative balance, not available >= original purchase amount.
+            if (coins != expected.coinAmount || available < 0L) {
+                return@withContext Result.failure(IOException("موجودی تأییدشده سرور با رسید پرداخت سازگار نیست."))
+            }
+
+            Result.success(
+                CoinPurchaseConfirmation(
+                    productId = productId,
+                    coinAmount = coins,
+                    availableCoins = available,
+                    alreadyProcessed = response.optBoolean("already_processed", false)
+                )
+            )
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -1193,6 +1286,39 @@ class SupabaseApiClient(
 
     override fun setRealtimeEventListener(listener: ((String) -> Unit)?) {
         realtimeListener = listener
+    }
+
+    private fun callAuthenticatedEdgeFunction(
+        functionName: String,
+        body: JSONObject,
+        isRetry: Boolean = false
+    ): JSONObject {
+        val token = getValidUserToken()
+        val request = Request.Builder()
+            .url("$supabaseUrl/functions/v1/$functionName")
+            .addHeader("apikey", supabasePublishableKey)
+            .addHeader("Authorization", "Bearer $token")
+            .addHeader("Content-Type", "application/json")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .build()
+        val response = httpClient.newCall(request).execute()
+        val raw = response.body?.string() ?: ""
+
+        if ((response.code == 401 || response.code == 403) && !isRetry) {
+            val refresh = currentRefreshToken
+            if (!refresh.isNullOrBlank() && refreshSession(refresh) != null) {
+                return callAuthenticatedEdgeFunction(functionName, body, isRetry = true)
+            }
+        }
+
+        val parsed = runCatching { JSONObject(raw) }.getOrNull()
+        if (!response.isSuccessful) {
+            val message = parsed?.optString("message")
+                ?.takeIf { it.isNotBlank() }
+                ?: "Server error " + response.code
+            throw IOException(functionName + " failed (HTTP " + response.code + "): " + message)
+        }
+        return parsed ?: throw IOException(functionName + " returned malformed JSON")
     }
 
     private fun callRpc(functionName: String, body: JSONObject): JSONObject {
