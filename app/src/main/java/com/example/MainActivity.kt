@@ -188,7 +188,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                             } else {
                                                 Log.w(
                                                     "SiteBinIAP",
-                                                    "Coins were credited, but the Bazaar item could not be consumed; it will be reconciled on the next wallet visit.",
+                                                    "Coins were credited, but the store item could not be consumed; it will be reconciled on the next wallet visit.",
                                                     consumeResult.exceptionOrNull()
                                                 )
                                                 viewModel.finishCoinStoreAction(
