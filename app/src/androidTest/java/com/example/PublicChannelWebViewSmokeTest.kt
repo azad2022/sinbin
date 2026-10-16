@@ -24,18 +24,18 @@ import java.util.concurrent.atomic.AtomicReference
 class PublicChannelWebViewSmokeTest {
 
     @Test
-    fun eitaaPublicPostRendersTheExpectedMessage() {
+    fun eitaaPublicChannelRendersTheExpectedMessage() {
         assertPublicPageRendersText(
-            url = "https://eitaa.com/s/eitaa/306",
+            url = "https://eitaa.com/eitaa",
             expectedText = "عرضه نسخه جدید اندروید"
         )
     }
 
     @Test
-    fun balePublicSharePageRendersTheExpectedPost() {
+    fun balePublicPostPermalinkRendersTheExpectedMessage() {
         assertPublicPageRendersText(
-            url = "https://ble.ir/s/irannewspaper",
-            expectedText = "محسنی اژه‌ای"
+            url = "https://ble.ir/info/518255782042081426/1649267389679",
+            expectedText = "دایره‌های کوچک"
         )
     }
 
