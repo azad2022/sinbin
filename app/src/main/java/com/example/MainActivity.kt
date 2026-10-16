@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import com.example.data.model.CoinStoreProduct
 import com.example.data.model.CoinStoreProvider
 import com.example.payments.CoinStoreReceipt
+import com.example.payments.CoinStorePaymentClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
