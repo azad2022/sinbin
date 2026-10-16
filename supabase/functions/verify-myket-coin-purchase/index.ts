@@ -183,6 +183,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       message.includes("PURCHASE_INTENT_EXPIRED") ||
       message.includes("PURCHASE_PRODUCT_MISMATCH") ||
       message.includes("PURCHASE_ACCOUNT_MISMATCH") ||
+      message.includes("PURCHASE_PROVIDER_MISMATCH") ||
       message.includes("PURCHASE_NOT_PENDING")
     ) {
       return jsonResponse({ code: "ORDER_NOT_VALID", message: "سفارش با رسید خرید تطبیق ندارد؛ موجودی تغییر نکرده است." }, 409);
