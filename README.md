@@ -38,6 +38,10 @@ The store integration is implemented as mutually exclusive Android product flavo
 
 Both variants intentionally keep the same `sitebin.azerakhsh.ir` application ID, standard APK filename, production Release certificate, shared coin catalog, and server-authoritative ledger. They are alternative distributions, not side-by-side installations. A receipt is bound to its provider in the database; the verifier for one marketplace cannot finalize the other marketplace's order.
 
+The release version on this branch is `1.0.2` / versionCode `10`, advancing from the Cafe Bazaar build `1.0.1` / versionCode `9`. Both variants must be signed with the existing production Release certificate.
+
+The project currently targets API level 36 (`targetSdk = 36`), which already exceeds the requested API level 34. Do not downgrade it to 34: API 36 preserves the requested minimum and aligns with current Google Play policy for app updates (API 36 required from August 31, 2026).
+
 The Myket variant uses the public RSA key supplied from the Myket developer panel for local SDK checks and an independent server-side signature check. This is public verification material, not a private signing key. The Cafe Bazaar key and verifier remain separate and unchanged.
 
 Before enabling real Myket purchases in an environment, apply migration `20261017160243_sitebin_myket_coin_store.sql` and deploy Edge Function `verify-myket-coin-purchase`. A migration or function file committed to Git is not proof it has been applied/deployed. The CI build verifies both variants' actual APK package names and signing fingerprints; a successful build alone does not prove a real marketplace payment has completed.
