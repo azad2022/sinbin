@@ -44,6 +44,16 @@ The project currently targets API level 36 (`targetSdk = 36`), which already exc
 
 The Myket variant uses the public RSA key supplied from the Myket developer panel for local SDK checks and an independent server-side signature check. This is public verification material, not a private signing key. The Cafe Bazaar key and verifier remain separate and unchanged.
 
+### Release build request — 2026-10-17
+
+- Version name: `1.0.2`
+- Version code: `10`
+- Application ID: `sitebin.azerakhsh.ir`
+- Target SDK: API 36 (above the requested API 34)
+- Build outputs requested: signed `bazaarRelease` and `myketRelease` APK/AAB artifacts.
+- Both variants must pass artifact-level package and production Release certificate verification before the release record is considered complete.
+- Artifact hashes and the successful CI run are to be recorded after the build and signature checks pass.
+
 Before enabling real Myket purchases in an environment, apply migration `20261017160243_sitebin_myket_coin_store.sql` and deploy Edge Function `verify-myket-coin-purchase`. A migration or function file committed to Git is not proof it has been applied/deployed. The CI build verifies both variants' actual APK package names and signing fingerprints; a successful build alone does not prove a real marketplace payment has completed.
 
 ---
