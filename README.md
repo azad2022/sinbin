@@ -40,7 +40,7 @@ Both variants intentionally keep the same `sitebin.azerakhsh.ir` application ID,
 
 The Myket variant uses the public RSA key supplied from the Myket developer panel for local SDK checks and an independent server-side signature check. This is public verification material, not a private signing key. The Cafe Bazaar key and verifier remain separate and unchanged.
 
-Before enabling real Myket purchases in an environment, apply migration `20261016180000_sitebin_myket_coin_store.sql` and deploy Edge Function `verify-myket-coin-purchase`. A migration or function file committed to Git is not proof it has been applied/deployed. The CI build verifies both variants' actual APK package names and signing fingerprints; a successful build alone does not prove a real marketplace payment has completed.
+Before enabling real Myket purchases in an environment, apply migration `20261017160243_sitebin_myket_coin_store.sql` and deploy Edge Function `verify-myket-coin-purchase`. A migration or function file committed to Git is not proof it has been applied/deployed. The CI build verifies both variants' actual APK package names and signing fingerprints; a successful build alone does not prove a real marketplace payment has completed.
 
 ---
 
