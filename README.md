@@ -59,12 +59,29 @@ The Myket variant uses the public RSA key supplied from the Myket developer pane
 | Cafe Bazaar Release AAB SHA-256 | `d8e6bfae680f71af90fcb3eb539ece46ff1893ac0d254a1dbdafc937388c5278` |
 | Release signing identity | Both APKs and both AABs verified against the unchanged production Release fingerprint |
 | Package identity | Both APKs verified as `sitebin.azerakhsh.ir` |
+| Marketplace publication status | Repository owner confirmed on 2026-10-17 that SiteBin 1.0.2 / versionCode `10` is available in both Cafe Bazaar and Myket |
 
 The Release job completed successfully. It built both production variants, verified the actual package names and Release certificates on both APKs, verified both AAB signatures/certificates, generated SHA-256 checksums, and uploaded the artifact.
 
 The production Supabase migration `20261017160243` is applied and verified. The Myket Edge Function `verify-myket-coin-purchase` is active with `verify_jwt=true`. The pre-existing Cafe Bazaar verifier and RPC contract remain in place, and historical purchases remain tagged as Cafe Bazaar.
 
-A real Myket transaction, including its receipt recovery/consume cycle, still requires a Myket test account and physical device. Marketplace approval/publication is not implied by a successful build.
+On 2026-10-17, the repository owner confirmed that the downloaded Myket build and its payment gateway were manually checked and the app worked without observed issues; the owner also confirmed that both SiteBin variants are now available in Cafe Bazaar and Myket. This is an owner-confirmed publication and smoke-test record. A separately documented test matrix for interrupted payments, receipt recovery, duplicate callbacks, and consume/retry edge cases is not recorded here, so future payment changes must test those cases on a physical device/test account where supported.
+
+### Marketplace publication and future-maintenance rules — 2026-10-17
+
+The repository owner confirms that SiteBin version `1.0.2` / `versionCode 10` is currently available in both Iranian app stores: Cafe Bazaar and Myket. These are two marketplace-specific builds of the same SiteBin product, not two functionally separate applications. The intended user experience, campaigns, wallet, coin rules, account continuity, and server-authoritative backend are shared; the intentional implementation difference is the payment SDK and the corresponding receipt-verification route.
+
+Keep these constraints for every future update:
+
+- **Build the correct flavor for each store.** Cafe Bazaar uses `bazaar`, Poolakey, and `verify-coin-purchase`. Myket uses `myket`, Myket Billing Client 1.19, and `verify-myket-coin-purchase`. Build separately with `:app:assembleBazaarRelease` / `:app:bundleBazaarRelease` and `:app:assembleMyketRelease` / `:app:bundleMyketRelease`.
+- **Never package both billing SDKs into one APK.** They contain overlapping Android billing namespace/classes. Keep provider-specific code in the respective flavor source sets and put shared product behavior in common source only when it truly applies to both stores.
+- **Preserve the Android update identity.** Both flavors intentionally use application ID `sitebin.azerakhsh.ir`, the standard output filename `sitebin.azerakhsh.apk`, and the same production Release signing certificate. They are alternative distribution routes and are not intended to be installed side-by-side. Do not change the package ID or Release key to differentiate stores.
+- **Keep receipt processing provider-aware.** The selected store provider must follow the purchase intent through receipt creation, server verification, finalization, and recovery. Do not route a Myket receipt through the Cafe Bazaar verifier or weaken provider checks to make a purchase succeed.
+- **Do not regress Cafe Bazaar while maintaining Myket.** Preserve the existing Cafe Bazaar verifier/RPC contract and historical purchase records. The common coin catalog and server-authoritative ledger remain shared. Retain cross-provider replay protection and verify that each provider can finalize only its own purchase intent.
+- **Release both flavors as a matched product update.** Normally keep `versionName` and `versionCode` aligned across both stores, increase `versionCode` for each production update, and submit the matching signed APK/AAB to each marketplace. If a store must intentionally stay on a different version, document that exception.
+- **Verify artifacts, not just Gradle/source configuration.** CI must independently verify each built APK's actual package ID and Release certificate and each AAB's signature/certificate, and record artifact hashes. Regression testing should cover both store-specific payment paths as well as shared app behavior.
+
+When changing payments, first determine whether the change is common business behavior or store-specific billing behavior. Keep the common server-authoritative coin economy unchanged unless the change intentionally requires a reviewed backend migration; a marketplace-specific fix should normally remain isolated to that flavor and its matching verifier.
 
 ---
 
