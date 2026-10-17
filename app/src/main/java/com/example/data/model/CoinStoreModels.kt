@@ -1,5 +1,16 @@
 package com.example.data.model
 
+enum class CoinStoreProvider(val id: String) {
+    CAFEBAZAAR("cafebazaar"),
+    MYKET("myket");
+
+    companion object {
+        fun fromId(value: String): CoinStoreProvider =
+            values().firstOrNull { it.id == value }
+                ?: throw IllegalStateException("Unsupported coin store provider: $value")
+    }
+}
+
 /**
  * Product amounts/prices shown by the client. The server maintains its own private catalog
  * and never trusts these client values when crediting coins.

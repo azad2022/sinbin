@@ -3,6 +3,7 @@ package com.example.data.model
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class CoinStoreProductTest {
@@ -30,6 +31,15 @@ class CoinStoreProductTest {
             listOf(299_000L, 349_000L, 489_000L, 649_000L),
             CoinStoreProduct.all.map { it.priceToman }
         )
+    }
+
+    @Test
+    fun supportedStoreIdsAreExplicitAndUnknownStoresFailClosed() {
+        assertEquals(CoinStoreProvider.CAFEBAZAAR, CoinStoreProvider.fromId("cafebazaar"))
+        assertEquals(CoinStoreProvider.MYKET, CoinStoreProvider.fromId("myket"))
+        assertThrows(IllegalStateException::class.java) {
+            CoinStoreProvider.fromId("unknown-market")
+        }
     }
 
     @Test

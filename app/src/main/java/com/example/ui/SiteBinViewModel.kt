@@ -11,6 +11,7 @@ import com.example.data.model.Campaign
 import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinStoreProduct
+import com.example.data.model.CoinStoreProvider
 import com.example.data.model.CoinPurchaseConfirmation
 import com.example.data.model.DailyBonusResult
 import com.example.data.model.WeeklyLeaderboard
@@ -831,10 +832,14 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Creates an authoritative server order before showing Cafe Bazaar's billing UI.
+     * Creates an authoritative server order before showing the selected store's billing UI.
      * The single-flight lock remains held until finishCoinStoreAction is called.
      */
-    fun prepareCoinPurchase(productId: String, onPayloadReady: (String) -> Unit) {
+    fun prepareCoinPurchase(
+        productId: String,
+        storeProvider: CoinStoreProvider = CoinStoreProvider.CAFEBAZAAR,
+        onPayloadReady: (String) -> Unit
+    ) {
         if (CoinStoreProduct.find(productId) == null) {
             showMessage("بسته سکه معتبر نیست.")
             return
@@ -848,7 +853,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             var handedOff = false
             try {
-                val result = repository.createCoinPurchaseIntent(productId)
+                val result = repository.createCoinPurchaseIntent(productId, storeProvider)
                 result.onSuccess { intent ->
                     val expected = CoinStoreProduct.find(productId)
                     if (expected == null || intent.productId != expected.productId ||
@@ -874,16 +879,17 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Verifies the Bazaar-signed JSON on the server. The caller must not consume a receipt
+     * Verifies the selected store's signed JSON on the server. The caller must not consume a receipt
      * until this returns success, and must finish the action after consumption/recovery.
      */
     fun verifyCoinPurchase(
         originalJson: String,
         dataSignature: String,
+        storeProvider: CoinStoreProvider = CoinStoreProvider.CAFEBAZAAR,
         onResult: (Result<CoinPurchaseConfirmation>) -> Unit
     ) {
         viewModelScope.launch {
-            val result = repository.verifyCoinPurchase(originalJson, dataSignature)
+            val result = repository.verifyCoinPurchase(originalJson, dataSignature, storeProvider)
             onResult(result)
         }
     }
@@ -892,6 +898,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     fun recoverCoinPurchase(
         originalJson: String,
         dataSignature: String,
+        storeProvider: CoinStoreProvider = CoinStoreProvider.CAFEBAZAAR,
         onResult: (Result<CoinPurchaseConfirmation>) -> Unit
     ) {
         if (_isCoinStoreBusy.value || !beginAction("coin_store_purchase")) {
@@ -900,7 +907,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         }
         _isCoinStoreBusy.value = true
         viewModelScope.launch {
-            val result = repository.verifyCoinPurchase(originalJson, dataSignature)
+            val result = repository.verifyCoinPurchase(originalJson, dataSignature, storeProvider)
             if (result.isFailure) finishCoinStoreAction()
             onResult(result)
         }

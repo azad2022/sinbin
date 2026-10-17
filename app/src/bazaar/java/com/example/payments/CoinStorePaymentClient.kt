@@ -1,7 +1,6 @@
 package com.example.payments
 
-import android.content.Context
-import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.ComponentActivity
 import com.example.data.model.CoinStoreProduct
 import ir.cafebazaar.poolakey.Connection
 import ir.cafebazaar.poolakey.Payment
@@ -15,11 +14,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Thin Poolakey wrapper. Financial credit is never granted by this class; it only returns
- * Cafe Bazaar-signed receipt data to the authenticated server for verification.
+ * store-signed receipt data to the authenticated server for verification.
  */
-class CafeBazaarPaymentClient(context: Context) {
+class CoinStorePaymentClient(private val activity: ComponentActivity) {
     private val payment = Payment(
-        context = context,
+        context = activity,
         config = PaymentConfiguration(
             localSecurityCheck = SecurityCheck.Enable(rsaPublicKey = RSA_PUBLIC_KEY)
         )
@@ -59,10 +58,10 @@ class CafeBazaarPaymentClient(context: Context) {
                     completeConnection(Result.failure(throwable))
                 }
                 disconnected {
-                    synchronized(this@CafeBazaarPaymentClient) {
+                    synchronized(this@CoinStorePaymentClient) {
                         connection = null
                     }
-                    completeConnection(Result.failure(IOException("اتصال پرداخت کافه‌بازار قطع شد.")))
+                    completeConnection(Result.failure(IOException("اتصال فروشگاه قطع شد.")))
                 }
             }
             synchronized(this) {
@@ -86,10 +85,9 @@ class CafeBazaarPaymentClient(context: Context) {
     }
 
     fun purchase(
-        registry: ActivityResultRegistry,
         productId: String,
         payload: String,
-        onResult: (Result<PurchaseInfo>) -> Unit
+        onResult: (Result<CoinStoreReceipt>) -> Unit
     ) {
         if (CoinStoreProduct.find(productId) == null) {
             onResult(Result.failure(IllegalArgumentException("شناسه بسته سکه معتبر نیست.")))
@@ -104,19 +102,19 @@ class CafeBazaarPaymentClient(context: Context) {
             connectionResult.fold(
                 onSuccess = {
                     val delivered = AtomicBoolean(false)
-                    fun finish(result: Result<PurchaseInfo>) {
+                    fun finish(result: Result<CoinStoreReceipt>) {
                         if (delivered.compareAndSet(false, true)) onResult(result)
                     }
                     try {
                         payment.purchaseProduct(
-                            registry = registry,
+                            registry = activity.activityResultRegistry,
                             request = PurchaseRequest(
                                 productId = productId,
                                 payload = payload
                             )
                         ) {
                             purchaseSucceed { purchaseInfo ->
-                                finish(Result.success(purchaseInfo))
+                                finish(Result.success(purchaseInfo.toCoinStoreReceipt()))
                             }
                             purchaseCanceled {
                                 finish(Result.failure(CancellationException("خرید توسط کاربر لغو شد.")))
@@ -137,13 +135,13 @@ class CafeBazaarPaymentClient(context: Context) {
         }
     }
 
-    fun queryPurchasedProducts(onResult: (Result<List<PurchaseInfo>>) -> Unit) {
+    fun queryPurchasedProducts(onResult: (Result<List<CoinStoreReceipt>>) -> Unit) {
         ensureConnected { connectionResult ->
             connectionResult.fold(
                 onSuccess = {
                     try {
                         payment.getPurchasedProducts {
-                            querySucceed { purchases -> onResult(Result.success(purchases)) }
+                            querySucceed { purchases -> onResult(Result.success(purchases.map { it.toCoinStoreReceipt() })) }
                             queryFailed { throwable -> onResult(Result.failure(throwable)) }
                         }
                     } catch (throwable: Throwable) {
@@ -176,6 +174,15 @@ class CafeBazaarPaymentClient(context: Context) {
             )
         }
     }
+
+    private fun PurchaseInfo.toCoinStoreReceipt(): CoinStoreReceipt = CoinStoreReceipt(
+        productId = productId,
+        payload = payload,
+        packageName = packageName,
+        originalJson = originalJson,
+        dataSignature = dataSignature,
+        purchaseToken = purchaseToken
+    )
 
     fun disconnect() {
         val current = synchronized(this) {

@@ -27,6 +27,25 @@ The Release CI job successfully built the APK and AAB, verified their signing ce
 
 For future market-specific releases, preserve `applicationId`, the production Release signing identity, the Cafe Bazaar verifier, and the server-authoritative coin ledger. Integrate another market through a separate purchase-provider path and verification logic rather than replacing or weakening the Cafe Bazaar flow.
 
+### Store-specific coin-purchase variants
+
+The store integration is implemented as mutually exclusive Android product flavors because the legacy Cafe Bazaar and Myket billing SDKs both ship classes under the same Android billing namespace. The two SDKs must never be packaged into the same APK.
+
+| Variant | Gradle task | Payment SDK | Receipt verifier |
+|---|---|---|---|
+| Cafe Bazaar | `:app:assembleBazaarRelease` / `:app:bundleBazaarRelease` | Poolakey (Bazaar only) | `verify-coin-purchase` |
+| Myket | `:app:assembleMyketRelease` / `:app:bundleMyketRelease` | Myket Billing Client 1.19 (Myket only) | `verify-myket-coin-purchase` |
+
+Both variants intentionally keep the same `sitebin.azerakhsh.ir` application ID, standard APK filename, production Release certificate, shared coin catalog, and server-authoritative ledger. They are alternative distributions, not side-by-side installations. A receipt is bound to its provider in the database; the verifier for one marketplace cannot finalize the other marketplace's order.
+
+The release version on this branch is `1.0.2` / versionCode `10`, advancing from the Cafe Bazaar build `1.0.1` / versionCode `9`. Both variants must be signed with the existing production Release certificate.
+
+The project currently targets API level 36 (`targetSdk = 36`), which already exceeds the requested API level 34. Do not downgrade it to 34: API 36 preserves the requested minimum and aligns with current Google Play policy for app updates (API 36 required from August 31, 2026).
+
+The Myket variant uses the public RSA key supplied from the Myket developer panel for local SDK checks and an independent server-side signature check. This is public verification material, not a private signing key. The Cafe Bazaar key and verifier remain separate and unchanged.
+
+Before enabling real Myket purchases in an environment, apply migration `20261017160243_sitebin_myket_coin_store.sql` and deploy Edge Function `verify-myket-coin-purchase`. A migration or function file committed to Git is not proof it has been applied/deployed. The CI build verifies both variants' actual APK package names and signing fingerprints; a successful build alone does not prove a real marketplace payment has completed.
+
 ---
 
 ## 1. Non-negotiable application identity
@@ -732,12 +751,14 @@ Every push/PR runs:
 4. stable Debug signing key restore
 5. fail-closed check if the key is missing
 6. Gradle
-7. Supabase smoke tests
-8. Unit tests
-9. `assembleDebug`
-10. APK filename normalization
-11. package + Debug certificate verification
-12. artifact upload
+7. Supabase smoke tests and strict TypeScript checks for both receipt verifiers
+8. Unit tests for both store flavors
+9. Connected Android tests for both store flavors
+10. Build `bazaarDebug` and `myketDebug` APKs
+11. Verify bundled startup video bytes in both APKs
+12. Normalize each APK filename
+13. Verify package and Debug certificate identity in each actual APK
+14. artifact upload
 
 Required Debug applicationId:
 
@@ -755,7 +776,7 @@ The required GitHub repository secret is:
 
 `DEBUG_KEYSTORE_BASE64`
 
-CI materializes the secret as `~/.android/debug.keystore`, verifies the keystore certificate fingerprint before building, then verifies the actual APK certificate and package after `assembleDebug`.
+CI materializes the secret as `~/.android/debug.keystore`, verifies the keystore certificate fingerprint before building, then verifies the actual APK certificate and package after building both `bazaarDebug` and `myketDebug` variants.
 
 There is no cache fallback. Missing or invalid signing material is a hard failure rather than permission to generate a new Debug identity.
 
@@ -787,12 +808,9 @@ The Gradle environment variables are:
 
 Missing Release signing configuration is a hard failure.
 
-The Release job builds:
+The Release job builds APK and AAB artifacts for both `bazaarRelease` and `myketRelease`.
 
-- APK
-- AAB
-
-Release verification must prove:
+Release verification must prove for each store variant:
 
 - APK cryptographic signature is valid.
 - APK certificate equals the official Release certificate.

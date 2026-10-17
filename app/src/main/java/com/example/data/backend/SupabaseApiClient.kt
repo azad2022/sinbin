@@ -16,6 +16,7 @@ import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
 import com.example.data.model.CoinPurchaseIntent
+import com.example.data.model.CoinStoreProvider
 import com.example.data.model.CoinPurchaseConfirmation
 import com.example.data.model.CoinStoreProduct
 import com.example.data.model.DailyBonusResult
@@ -371,49 +372,65 @@ class SupabaseApiClient(
     }
 
     override suspend fun createCoinPurchaseIntent(productId: String): Result<CoinPurchaseIntent> =
-        withContext(Dispatchers.IO) {
-            try {
-                val expected = CoinStoreProduct.find(productId)
-                    ?: return@withContext Result.failure(IllegalArgumentException("بسته سکه معتبر نیست."))
+        createCoinPurchaseIntent(productId, CoinStoreProvider.CAFEBAZAAR)
 
-                val response = callRpc(
-                    "create_coin_purchase_intent",
-                    JSONObject().put("p_product_id", productId)
-                )
-                val payload = response.optString("payload", "").trim()
-                val returnedProduct = response.optString("product_id", "")
-                val returnedCoins = response.optLong("coin_amount", -1L)
-                val returnedPrice = response.optLong("price_rial", -1L)
-                val expiresAt = response.optLong("expires_at_ms", 0L)
+    override suspend fun createCoinPurchaseIntent(
+        productId: String,
+        storeProvider: CoinStoreProvider
+    ): Result<CoinPurchaseIntent> = withContext(Dispatchers.IO) {
+        try {
+            val expected = CoinStoreProduct.find(productId)
+                ?: return@withContext Result.failure(IllegalArgumentException("بسته سکه معتبر نیست."))
 
-                val isUuid = payload.matches(
-                    Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
-                )
-                if (!isUuid || returnedProduct != expected.productId ||
-                    returnedCoins != expected.coinAmount || returnedPrice != expected.priceRial ||
-                    expiresAt <= System.currentTimeMillis()
-                ) {
-                    return@withContext Result.failure(
-                        IOException("پاسخ سفارش پرداخت با فهرست امن محصولات SiteBin تطبیق ندارد.")
-                    )
-                }
-
-                Result.success(
-                    CoinPurchaseIntent(
-                        payload = payload,
-                        productId = returnedProduct,
-                        coinAmount = returnedCoins,
-                        expiresAtMillis = expiresAt
-                    )
-                )
-            } catch (error: Exception) {
-                Result.failure(error)
+            val rpcName = when (storeProvider) {
+                CoinStoreProvider.CAFEBAZAAR -> "create_coin_purchase_intent"
+                CoinStoreProvider.MYKET -> "create_myket_coin_purchase_intent"
             }
+            val response = callRpc(
+                rpcName,
+                JSONObject().put("p_product_id", productId)
+            )
+            val payload = response.optString("payload", "").trim()
+            val returnedProduct = response.optString("product_id", "")
+            val returnedCoins = response.optLong("coin_amount", -1L)
+            val returnedPrice = response.optLong("price_rial", -1L)
+            val expiresAt = response.optLong("expires_at_ms", 0L)
+
+            val isUuid = payload.matches(
+                Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
+            )
+            if (!isUuid || returnedProduct != expected.productId ||
+                returnedCoins != expected.coinAmount || returnedPrice != expected.priceRial ||
+                expiresAt <= System.currentTimeMillis()
+            ) {
+                return@withContext Result.failure(
+                    IOException("پاسخ سفارش پرداخت با فهرست امن محصولات SiteBin تطبیق ندارد.")
+                )
+            }
+
+            Result.success(
+                CoinPurchaseIntent(
+                    payload = payload,
+                    productId = returnedProduct,
+                    coinAmount = returnedCoins,
+                    expiresAtMillis = expiresAt
+                )
+            )
+        } catch (error: Exception) {
+            Result.failure(error)
         }
+    }
 
     override suspend fun verifyCoinPurchase(
         originalJson: String,
         dataSignature: String
+    ): Result<CoinPurchaseConfirmation> =
+        verifyCoinPurchase(originalJson, dataSignature, CoinStoreProvider.CAFEBAZAAR)
+
+    override suspend fun verifyCoinPurchase(
+        originalJson: String,
+        dataSignature: String,
+        storeProvider: CoinStoreProvider
     ): Result<CoinPurchaseConfirmation> = withContext(Dispatchers.IO) {
         try {
             if (originalJson.isBlank() || originalJson.length > 16_384 ||
@@ -422,8 +439,12 @@ class SupabaseApiClient(
                 return@withContext Result.failure(IllegalArgumentException("رسید پرداخت معتبر نیست."))
             }
 
+            val functionName = when (storeProvider) {
+                CoinStoreProvider.CAFEBAZAAR -> "verify-coin-purchase"
+                CoinStoreProvider.MYKET -> "verify-myket-coin-purchase"
+            }
             val response = callAuthenticatedEdgeFunction(
-                "verify-coin-purchase",
+                functionName,
                 JSONObject().apply {
                     put("originalJson", originalJson)
                     put("dataSignature", dataSignature)
