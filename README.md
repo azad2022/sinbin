@@ -44,17 +44,27 @@ The project currently targets API level 36 (`targetSdk = 36`), which already exc
 
 The Myket variant uses the public RSA key supplied from the Myket developer panel for local SDK checks and an independent server-side signature check. This is public verification material, not a private signing key. The Cafe Bazaar key and verifier remain separate and unchanged.
 
-### Release build request — 2026-10-17
+### Release artifact record — 2026-10-17 (SiteBin 1.0.2)
 
-- Version name: `1.0.2`
-- Version code: `10`
-- Application ID: `sitebin.azerakhsh.ir`
-- Target SDK: API 36 (above the requested API 34)
-- Build outputs requested: signed `bazaarRelease` and `myketRelease` APK/AAB artifacts.
-- Both variants must pass artifact-level package and production Release certificate verification before the release record is considered complete.
-- Artifact hashes and the successful CI run are to be recorded after the build and signature checks pass.
+| Item | Verified value |
+|---|---|
+| Version name / code | `1.0.2` / `10` |
+| Application ID | `sitebin.azerakhsh.ir` |
+| Target SDK | API 36; above the requested API 34 |
+| CI run | [Run #463 — signed Release artifacts](https://github.com/azad2022/sinbin/actions/runs/39048171557) |
+| GitHub Actions artifact | `sitebin-android-release` (artifact ID `12106582982`) |
+| Myket Release APK SHA-256 | `15dca031808154dbddd0a3154fbad3785cc090f153f76ffdcb840c6ec364702a` |
+| Cafe Bazaar Release APK SHA-256 | `ce8cbf55353c08097a537ca0665ac5588d7e6fb264eaacb4dca890275207019c` |
+| Myket Release AAB SHA-256 | `a9c73ef3f39fef7ca183cc2e687287c89f84bcc2bf918ceb0fe09a6d9425eea5` |
+| Cafe Bazaar Release AAB SHA-256 | `d8e6bfae680f71af90fcb3eb539ece46ff1893ac0d254a1dbdafc937388c5278` |
+| Release signing identity | Both APKs and both AABs verified against the unchanged production Release fingerprint |
+| Package identity | Both APKs verified as `sitebin.azerakhsh.ir` |
 
-Before enabling real Myket purchases in an environment, apply migration `20261017160243_sitebin_myket_coin_store.sql` and deploy Edge Function `verify-myket-coin-purchase`. A migration or function file committed to Git is not proof it has been applied/deployed. The CI build verifies both variants' actual APK package names and signing fingerprints; a successful build alone does not prove a real marketplace payment has completed.
+The Release job completed successfully. It built both production variants, verified the actual package names and Release certificates on both APKs, verified both AAB signatures/certificates, generated SHA-256 checksums, and uploaded the artifact.
+
+The production Supabase migration `20261017160243` is applied and verified. The Myket Edge Function `verify-myket-coin-purchase` is active with `verify_jwt=true`. The pre-existing Cafe Bazaar verifier and RPC contract remain in place, and historical purchases remain tagged as Cafe Bazaar.
+
+A real Myket transaction, including its receipt recovery/consume cycle, still requires a Myket test account and physical device. Marketplace approval/publication is not implied by a successful build.
 
 ---
 
