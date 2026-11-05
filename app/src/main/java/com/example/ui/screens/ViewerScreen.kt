@@ -108,6 +108,7 @@ fun ViewerScreen(
     var pageErrorMsg by remember { mutableStateOf<String?>(null) }
     var isPageLoading by remember { mutableStateOf(true) }
     var reloadAttempt by remember { mutableStateOf(0) }
+    var autoSkipTriggeredSessionId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(viewerState, autoViewEnabled, autoAdvanceCancelled) {
         if (viewerState is ViewerState.Completed && autoViewEnabled && !autoAdvanceCancelled) {
@@ -122,14 +123,42 @@ fun ViewerScreen(
         is ViewerState.Loading -> viewerState.session
         is ViewerState.Viewing -> viewerState.session
         is ViewerState.Completed -> viewerState.session
+        is ViewerState.Error -> viewerState.session
         else -> null
     }
+    val displayErrorMessage = pageErrorMsg ?: (viewerState as? ViewerState.Error)?.message
 
-    // Reset the retry counter for every new authoritative viewing session and
-    // explicitly put the loading overlay back into the loading state.
+    // Reset transient WebView state for every new authoritative viewing session.
     LaunchedEffect(currentSession?.id) {
         reloadAttempt = 0
+        pageErrorMsg = null
+        autoSkipTriggeredSessionId = null
         isPageLoading = currentSession != null
+    }
+
+    // Auto View must treat an unrecoverable page failure like an unviewable site:
+    // cancel that session and request the next one instead of waiting for manual input.
+    // Limit this to one automatic skip per session; backend failures remain visible and
+    // require a deliberate retry rather than creating an infinite request loop.
+    LaunchedEffect(currentSession?.id, displayErrorMessage, autoViewEnabled) {
+        val failedSessionId = currentSession?.id ?: return@LaunchedEffect
+        val failure = displayErrorMessage ?: return@LaunchedEffect
+        if (!autoViewEnabled || autoSkipTriggeredSessionId == failedSessionId) {
+            return@LaunchedEffect
+        }
+
+        delay(900L)
+        val currentFailure = pageErrorMsg ?: (viewerState as? ViewerState.Error)?.message
+        if (
+            currentSession?.id == failedSessionId &&
+            currentFailure == failure &&
+            autoViewEnabled &&
+            autoSkipTriggeredSessionId != failedSessionId
+        ) {
+            autoSkipTriggeredSessionId = failedSessionId
+            pageErrorMsg = null
+            onSkip()
+        }
     }
 
     // A slow destination must not keep the viewer waiting indefinitely. The session is
@@ -291,7 +320,7 @@ fun ViewerScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            if (currentSession != null) {
+            if (currentSession != null && viewerState !is ViewerState.Error) {
                 SafeWebView(
                     url = currentSession.targetUrl,
                     contentKey = currentSession.id + ":" + reloadAttempt,
@@ -341,7 +370,7 @@ fun ViewerScreen(
             }
 
             // Error Overlay
-            if (pageErrorMsg != null) {
+            if (displayErrorMessage != null) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -365,7 +394,7 @@ fun ViewerScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = pageErrorMsg ?: "",
+                            text = displayErrorMessage ?: "",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -375,9 +404,15 @@ fun ViewerScreen(
                             }
                             Button(
                                 onClick = {
-                                    pageErrorMsg = null
-                                    isPageLoading = true
-                                    reloadAttempt += 1
+                                    if (pageErrorMsg != null) {
+                                        pageErrorMsg = null
+                                        isPageLoading = true
+                                        reloadAttempt += 1
+                                    } else {
+                                        // The WebView was already torn down after a
+                                        // server-side failure; retry the skip/next-session path.
+                                        onSkip()
+                                    }
                                 }
                             ) {
                                 Text("تلاش مجدد")
