@@ -4,6 +4,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.remember
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.core.security.SafeWebView
@@ -149,13 +150,15 @@ class PublicChannelWebViewSmokeTest {
         try {
             scenario.onActivity { activity ->
                 activity.setContent {
-                    val session = ViewSession(
-                        campaignId = "ci-webview-smoke-test",
-                        targetUrl = url,
-                        domain = url.substringAfter("://").substringBefore("/"),
-                        requiredDurationSeconds = 5,
-                        rewardCoins = 0L
-                    )
+                    val session = remember(url) {
+                        ViewSession(
+                            campaignId = "ci-webview-smoke-test",
+                            targetUrl = url,
+                            domain = url.substringAfter("://").substringBefore("/"),
+                            requiredDurationSeconds = 5,
+                            rewardCoins = 0L
+                        )
+                    }
 
                     ViewerScreen(
                         viewerState = ViewerState.Loading(session),
