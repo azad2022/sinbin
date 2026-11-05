@@ -2,7 +2,7 @@ package com.example.core.security
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
-import android.net.Uri
+import java.net.URI
 import android.net.http.SslError
 import android.os.Build
 import android.os.Handler
@@ -37,6 +37,34 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+
+/**
+ * Classifies an SSL callback as belonging to the top-level document only when its
+ * URL matches the WebView's current document URL. Missing/malformed values fail
+ * closed so the caller reports the failure rather than risking an untrusted page.
+ */
+internal fun isMainFrameSslErrorUrl(currentUrl: String?, failingUrl: String?): Boolean {
+    if (currentUrl.isNullOrBlank() || failingUrl.isNullOrBlank()) return true
+
+    return runCatching {
+        val current = URI(currentUrl).normalize()
+        val failing = URI(failingUrl).normalize()
+
+        fun effectivePort(uri: URI): Int = when {
+            uri.port >= 0 -> uri.port
+            uri.scheme.equals("https", ignoreCase = true) -> 443
+            uri.scheme.equals("http", ignoreCase = true) -> 80
+            else -> -1
+        }
+
+        current.scheme.equals(failing.scheme, ignoreCase = true) &&
+            current.host.equals(failing.host, ignoreCase = true) &&
+            effectivePort(current) == effectivePort(failing) &&
+            current.rawPath.orEmpty().trimEnd('/') == failing.rawPath.orEmpty().trimEnd('/') &&
+            current.rawQuery == failing.rawQuery &&
+            current.rawUserInfo == failing.rawUserInfo
+    }.getOrDefault(true)
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -83,29 +111,8 @@ fun SafeWebView(
              * iframe, stylesheet, or the main document. Only a failure for the current
              * top-level URL should fail the complete viewing session.
              */
-            private fun isMainFrameSslError(view: WebView?, error: SslError?): Boolean {
-                val failingUrl = error?.url?.takeIf { it.isNotBlank() } ?: return true
-                val currentUrl = view?.url?.takeIf { it.isNotBlank() } ?: return true
-
-                return runCatching {
-                    val failing = Uri.parse(failingUrl)
-                    val current = Uri.parse(currentUrl)
-
-                    fun effectivePort(uri: Uri): Int = when {
-                        uri.port >= 0 -> uri.port
-                        uri.scheme.equals("https", ignoreCase = true) -> 443
-                        uri.scheme.equals("http", ignoreCase = true) -> 80
-                        else -> -1
-                    }
-
-                    failing.scheme.equals(current.scheme, ignoreCase = true) &&
-                        failing.host.equals(current.host, ignoreCase = true) &&
-                        effectivePort(failing) == effectivePort(current) &&
-                        failing.encodedPath.orEmpty().trimEnd('/') ==
-                            current.encodedPath.orEmpty().trimEnd('/') &&
-                        failing.encodedQuery == current.encodedQuery
-                }.getOrDefault(true)
-            }
+            private fun isMainFrameSslError(view: WebView?, error: SslError?): Boolean =
+                isMainFrameSslErrorUrl(view?.url, error?.url)
 
             private fun reportMainFrameFailure(message: String) {
                 if (mainFrameLoadFailed) return
@@ -271,7 +278,7 @@ fun SafeWebView(
                 if (!isMainFrameSslError(view, error)) {
                     if (BuildConfig.DEBUG) {
                         val resourceHost = runCatching {
-                            Uri.parse(error?.url.orEmpty()).host ?: "unknown"
+                            URI(error?.url.orEmpty()).host ?: "unknown"
                         }.getOrDefault("unknown")
                         android.util.Log.w(
                             "SiteBinWebView",
