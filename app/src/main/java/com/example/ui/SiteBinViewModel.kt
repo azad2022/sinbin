@@ -576,7 +576,20 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 if (activeSession != null) {
                     var cancelFailure: Throwable? = null
                     for (attempt in 0..2) {
+                        if (
+                            skipGeneration != viewerFlowGeneration ||
+                            _currentScreen.value != AppScreen.VIEWER
+                        ) {
+                            return@launch
+                        }
+
                         val cancelResult = repository.cancelViewSession(activeSession.id)
+                        if (
+                            skipGeneration != viewerFlowGeneration ||
+                            _currentScreen.value != AppScreen.VIEWER
+                        ) {
+                            return@launch
+                        }
                         if (cancelResult.isSuccess) {
                             cancelFailure = null
                             break
@@ -603,6 +616,13 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                         }
                         return@launch
                     }
+                }
+
+                if (
+                    skipGeneration != viewerFlowGeneration ||
+                    _currentScreen.value != AppScreen.VIEWER
+                ) {
+                    return@launch
                 }
 
                 var nextResult = repository.getNextViewSession()
