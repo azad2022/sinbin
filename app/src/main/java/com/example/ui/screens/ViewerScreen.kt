@@ -399,7 +399,12 @@ fun ViewerScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            OutlinedButton(onClick = onSkip) {
+                            OutlinedButton(
+                                onClick = {
+                                    pageErrorMsg = null
+                                    onSkip()
+                                }
+                            ) {
                                 Text("رد کردن سایت")
                             }
                             Button(
