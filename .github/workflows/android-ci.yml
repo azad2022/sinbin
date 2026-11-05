@@ -194,7 +194,10 @@ jobs:
             echo "Installing Android emulator system image (attempt $attempt/3)"
             if sdkmanager --sdk_root="$ANDROID_HOME" --install --channel=0 "$package" &&
               test -s "$image_dir/source.properties" &&
-              grep -Fq "Pkg.Path=$package" "$image_dir/source.properties"; then
+              test -s "$image_dir/system.img" &&
+              grep -Fxq "AndroidVersion.ApiLevel=35" "$image_dir/source.properties" &&
+              grep -Fxq "SystemImage.Abi=x86_64" "$image_dir/source.properties" &&
+              grep -Fxq "SystemImage.TagId=google_apis" "$image_dir/source.properties"; then
               echo "Android emulator system image installed and verified."
               exit 0
             fi
