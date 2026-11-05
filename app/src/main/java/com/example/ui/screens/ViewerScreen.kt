@@ -140,18 +140,20 @@ fun ViewerScreen(
     // cancel that session and request the next one instead of waiting for manual input.
     // Limit this to one automatic skip per session; backend failures remain visible and
     // require a deliberate retry rather than creating an infinite request loop.
-    LaunchedEffect(currentSession?.id, displayErrorMessage, autoViewEnabled) {
+    LaunchedEffect(currentSession?.id, pageErrorMsg, autoViewEnabled) {
         val failedSessionId = currentSession?.id ?: return@LaunchedEffect
-        val failure = displayErrorMessage ?: return@LaunchedEffect
+        // Only a WebView document/load failure should auto-skip. A server-side
+        // content-ready or completion error needs its own recovery path and must
+        // not be silently interpreted as an invalid website.
+        val failure = pageErrorMsg ?: return@LaunchedEffect
         if (!autoViewEnabled || autoSkipTriggeredSessionId == failedSessionId) {
             return@LaunchedEffect
         }
 
         delay(900L)
-        val currentFailure = pageErrorMsg ?: (viewerState as? ViewerState.Error)?.message
         if (
             currentSession?.id == failedSessionId &&
-            currentFailure == failure &&
+            pageErrorMsg == failure &&
             autoViewEnabled &&
             autoSkipTriggeredSessionId != failedSessionId
         ) {
