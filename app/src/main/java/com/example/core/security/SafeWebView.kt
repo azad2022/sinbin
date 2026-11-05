@@ -57,8 +57,21 @@ internal fun isMainFrameSslErrorUrl(currentUrl: String?, failingUrl: String?): B
             else -> -1
         }
 
-        current.scheme.equals(failing.scheme, ignoreCase = true) &&
-            current.host.equals(failing.host, ignoreCase = true) &&
+        val currentHost = current.host
+        val failingHost = failing.host
+        val sameHost = when {
+            currentHost != null && failingHost != null ->
+                currentHost.equals(failingHost, ignoreCase = true)
+            currentHost == null && failingHost == null &&
+                !current.rawAuthority.isNullOrBlank() && !failing.rawAuthority.isNullOrBlank() ->
+                current.rawAuthority.equals(failing.rawAuthority, ignoreCase = true)
+            else -> false
+        }
+
+        current.isAbsolute &&
+            failing.isAbsolute &&
+            current.scheme.equals(failing.scheme, ignoreCase = true) &&
+            sameHost &&
             effectivePort(current) == effectivePort(failing) &&
             current.rawPath.orEmpty().trimEnd('/') == failing.rawPath.orEmpty().trimEnd('/') &&
             current.rawQuery == failing.rawQuery &&
