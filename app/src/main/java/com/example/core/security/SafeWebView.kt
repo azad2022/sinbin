@@ -2,6 +2,7 @@ package com.example.core.security
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
 import android.os.Handler
@@ -77,6 +78,43 @@ fun SafeWebView(
                 pendingPublicChannelReadyCheck = null
             }
 
+            /**
+             * SSL callbacks are resource-scoped: Android may invoke this for an image,
+             * iframe, stylesheet, or the main document. Only a failure for the current
+             * top-level URL should fail the complete viewing session.
+             */
+            private fun isMainFrameSslError(view: WebView?, error: SslError?): Boolean {
+                val failingUrl = error?.url?.takeIf { it.isNotBlank() } ?: return true
+                val currentUrl = view?.url?.takeIf { it.isNotBlank() } ?: return true
+
+                return runCatching {
+                    val failing = Uri.parse(failingUrl)
+                    val current = Uri.parse(currentUrl)
+
+                    fun effectivePort(uri: Uri): Int = when {
+                        uri.port >= 0 -> uri.port
+                        uri.scheme.equals("https", ignoreCase = true) -> 443
+                        uri.scheme.equals("http", ignoreCase = true) -> 80
+                        else -> -1
+                    }
+
+                    failing.scheme.equals(current.scheme, ignoreCase = true) &&
+                        failing.host.equals(current.host, ignoreCase = true) &&
+                        effectivePort(failing) == effectivePort(current) &&
+                        failing.encodedPath.orEmpty().trimEnd('/') ==
+                            current.encodedPath.orEmpty().trimEnd('/') &&
+                        failing.encodedQuery == current.encodedQuery
+                }.getOrDefault(true)
+            }
+
+            private fun reportMainFrameFailure(message: String) {
+                if (mainFrameLoadFailed) return
+                mainFrameLoadFailed = true
+                contentReadyReported = false
+                cancelPublicChannelReadyCheck()
+                currentOnErrorOccurred(message)
+            }
+
             private fun reportContentVisible(pageUrl: String?) {
                 if (contentReadyReported || mainFrameLoadFailed) return
                 if (pageUrl?.startsWith("https://", ignoreCase = true) != true) return
@@ -144,7 +182,7 @@ fun SafeWebView(
                                 reportContentVisible(pageUrl)
                             } else if (SystemClock.elapsedRealtime() - startedAt >= 12_000L) {
                                 pendingPublicChannelReadyCheck = null
-                                currentOnErrorOccurred("محتوای عمومی ایتا یا بله در مهلت مجاز نمایش داده نشد.")
+                                reportMainFrameFailure("محتوای عمومی ایتا یا بله در مهلت مجاز نمایش داده نشد.")
                             } else {
                                 mainHandler.postDelayed(check, 350L)
                             }
@@ -215,10 +253,9 @@ fun SafeWebView(
             ) {
                 super.onReceivedHttpError(view, request, errorResponse)
                 if (request?.isForMainFrame == true && (errorResponse?.statusCode ?: 0) >= 400) {
-                    mainFrameLoadFailed = true
-                    contentReadyReported = false
-                    cancelPublicChannelReadyCheck()
-                    currentOnErrorOccurred("صفحه مقصد با خطای HTTP " + (errorResponse?.statusCode ?: 0) + " پاسخ داد.")
+                    reportMainFrameFailure(
+                        "صفحه مقصد با خطای HTTP " + (errorResponse?.statusCode ?: 0) + " پاسخ داد."
+                    )
                 }
             }
 
@@ -227,12 +264,24 @@ fun SafeWebView(
                 handler: SslErrorHandler?,
                 error: SslError?
             ) {
-                // Strict SSL Enforcement: never proceed with invalid certs
-                mainFrameLoadFailed = true
-                contentReadyReported = false
-                cancelPublicChannelReadyCheck()
+                // Security invariant: never proceed past an invalid certificate.
+                // The callback may refer to a subresource, not the main document.
                 handler?.cancel()
-                currentOnErrorOccurred("گواهی امنیتی این وب‌سایت نامعتبر است (SSL Error).")
+
+                if (!isMainFrameSslError(view, error)) {
+                    if (BuildConfig.DEBUG) {
+                        val resourceHost = runCatching {
+                            Uri.parse(error?.url.orEmpty()).host ?: "unknown"
+                        }.getOrDefault("unknown")
+                        android.util.Log.w(
+                            "SiteBinWebView",
+                            "Rejected SSL subresource without failing page; host=$resourceHost"
+                        )
+                    }
+                    return
+                }
+
+                reportMainFrameFailure("گواهی امنیتی صفحه اصلی این وب‌سایت نامعتبر است (SSL Error).")
             }
 
             override fun onReceivedError(
@@ -242,10 +291,9 @@ fun SafeWebView(
             ) {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame == true) {
-                    mainFrameLoadFailed = true
-                    contentReadyReported = false
-                    cancelPublicChannelReadyCheck()
-                    currentOnErrorOccurred("خطا در بارگذاری وب‌سایت. ممکن است سرور مقصد در دسترس نباشد.")
+                    reportMainFrameFailure(
+                        "خطا در بارگذاری وب‌سایت. ممکن است سرور مقصد در دسترس نباشد."
+                    )
                 }
             }
 
