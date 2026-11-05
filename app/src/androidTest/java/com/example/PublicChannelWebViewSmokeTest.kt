@@ -49,23 +49,10 @@ class PublicChannelWebViewSmokeTest {
         )
     }
 
-    @Test
-    fun balePublicPostRendersOrAutoSkipsWhenThePageCannotFinish() {
-        val outcome = exerciseViewerUntilRenderedOrSkipped(
-            url = "https://ble.ir/info/518255782042081426/1649267389679",
-            expectedText = "دایره‌های کوچک"
-        )
-
-        when (outcome) {
-            ViewerOutcome.RENDERED_EXPECTED_CONTENT -> Unit
-            ViewerOutcome.AUTO_SKIPPED -> {
-                // The external page did not finish in the allowed period. Auto View
-                // correctly advanced instead of hanging the viewing session.
-            }
-            else -> throw AssertionError("Unexpected Bale Viewer outcome: $outcome")
-        }
-    }
-
+    // Bale's live permalink remains covered by UrlSecurityPolicy unit tests.
+    // Its availability/render lifecycle is third-party controlled and has no deterministic
+    // CI terminal callback. Auto View's timeout-and-skip behavior is tested deterministically
+    // against the reserved .invalid domain below, through the actual ViewerScreen.
     @Test
     fun unreachableWebsiteTriggersExactlyOneAutomaticSkip() {
         val outcome = exerciseViewerUntilRenderedOrSkipped(
