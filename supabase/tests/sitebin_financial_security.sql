@@ -16,6 +16,12 @@ DECLARE
     v_campaign_id uuid;
     v_before_available bigint;
     v_before_reserved bigint;
+    v_after_available bigint;
+    v_after_reserved bigint;
+    v_ip_url text := 'https://127.0.0.1/';
+    v_ip_domain text := '127.0.0.1';
+    v_ip_token text := 's2-financial-ip-' || substr(md5(clock_timestamp()::text),1,24);
+    v_ip_token_hash text := encode(extensions.digest(v_ip_token, 'sha256'), 'hex');
 BEGIN
     INSERT INTO auth.users(
         id, aud, role, email, email_confirmed_at,
@@ -72,7 +78,7 @@ BEGIN
     );
     PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
-    -- URL validation happens before a valid campaign can be created.
+    -- Without a server-side HTTPS preflight token, an HTTP URL is rejected at the preflight gate.
     BEGIN
         PERFORM public.create_campaign(
             'http://example.com',
@@ -86,18 +92,31 @@ BEGIN
         RAISE EXCEPTION 'FINANCIAL_FAIL: HTTP destination unexpectedly accepted';
     EXCEPTION
         WHEN OTHERS THEN
-            IF position('INVALID_URL:' IN SQLERRM) = 0 THEN RAISE; END IF;
+            IF position('PREFLIGHT_REQUIRED:' IN SQLERRM) = 0 THEN RAISE; END IF;
     END;
+
+    -- A valid preflight token lets URL validation reach the authoritative
+    -- private-IP guard instead of failing earlier at the preflight boundary.
+    INSERT INTO private.campaign_preflight_tokens(
+        token_hash, user_id, source_url, normalized_url, domain, final_url,
+        http_status, redirect_count, response_ms, content_type, content_length,
+        viewer_compatibility, quality_score, diagnostics, created_at, expires_at
+    ) VALUES (
+        v_ip_token_hash, v_uid, v_ip_url, v_ip_url, v_ip_domain, v_ip_url,
+        200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+        jsonb_build_object('referral_site_key', v_ip_domain),
+        clock_timestamp(), clock_timestamp() + INTERVAL '10 minutes'
+    );
 
     BEGIN
         PERFORM public.create_campaign(
-            'https://127.0.0.1',
-            'https://127.0.0.1',
-            '127.0.0.1',
+            v_ip_url,
+            v_ip_url,
+            v_ip_domain,
             5,
             1,
             NULL,
-            NULL
+            v_ip_token
         );
         RAISE EXCEPTION 'FINANCIAL_FAIL: private IPv4 destination unexpectedly accepted';
     EXCEPTION

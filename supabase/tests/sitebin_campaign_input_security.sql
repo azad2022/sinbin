@@ -12,6 +12,10 @@ DECLARE
   v_after bigint;
   v_token text := 'sitebin-input-security-token-' || substr(md5(clock_timestamp()::text),1,24);
   v_token_hash text;
+  v_keyword_token text := 'sitebin-input-keyword-' || substr(md5(clock_timestamp()::text || random()::text),1,24);
+  v_keyword_token_hash text;
+  v_ip_token text := 'sitebin-input-ip-' || substr(md5(clock_timestamp()::text || random()::text),1,24);
+  v_ip_token_hash text;
 BEGIN
   INSERT INTO auth.users(
     id, aud, role, email, email_confirmed_at,
@@ -53,6 +57,19 @@ BEGIN
   );
   PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
+  v_keyword_token_hash := encode(extensions.digest(v_keyword_token, 'sha256'), 'hex');
+  INSERT INTO private.campaign_preflight_tokens(
+    token_hash, user_id, source_url, normalized_url, domain, final_url,
+    http_status, redirect_count, response_ms, content_type, content_length,
+    viewer_compatibility, quality_score, diagnostics, created_at, expires_at
+  ) VALUES (
+    v_keyword_token_hash, v_uid,
+    'https://example.com/', 'https://example.com/', 'example.com', 'https://example.com/',
+    200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+    jsonb_build_object('referral_site_key', 'example.com'),
+    clock_timestamp(), clock_timestamp() + interval '10 minutes'
+  );
+
   BEGIN
     PERFORM public.create_campaign(
       'https://example.com/',
@@ -61,13 +78,26 @@ BEGIN
       5,
       1,
       repeat('A',26),
-      NULL
+      v_keyword_token
     );
     RAISE EXCEPTION 'TEST_FAILED: 26-character keyword accepted';
   EXCEPTION
     WHEN OTHERS THEN
       IF position('INVALID_KEYWORD:' IN SQLERRM) <> 1 THEN RAISE; END IF;
   END;
+
+  v_ip_token_hash := encode(extensions.digest(v_ip_token, 'sha256'), 'hex');
+  INSERT INTO private.campaign_preflight_tokens(
+    token_hash, user_id, source_url, normalized_url, domain, final_url,
+    http_status, redirect_count, response_ms, content_type, content_length,
+    viewer_compatibility, quality_score, diagnostics, created_at, expires_at
+  ) VALUES (
+    v_ip_token_hash, v_uid,
+    'https://2130706433/', 'https://2130706433/', '2130706433', 'https://2130706433/',
+    200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+    jsonb_build_object('referral_site_key', '2130706433'),
+    clock_timestamp(), clock_timestamp() + interval '10 minutes'
+  );
 
   BEGIN
     PERFORM public.create_campaign(
@@ -77,7 +107,7 @@ BEGIN
       5,
       1,
       NULL,
-      NULL
+      v_ip_token
     );
     RAISE EXCEPTION 'TEST_FAILED: decimal IP obfuscation accepted';
   EXCEPTION

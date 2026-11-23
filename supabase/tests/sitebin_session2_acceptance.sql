@@ -28,7 +28,7 @@ AS $restore$
     SELECT
         p_day,
         p.user_id,
-        p.user_handle,
+        profile.user_handle,
         p.completed_views,
         pg_catalog.clock_timestamp()
     FROM _s2_rank_fixture p
