@@ -124,7 +124,7 @@ if [[ "$ACTIVE_COUNT" != "1" ]]; then
 fi
 if [[ -n "$RACE_A" ]]; then cancel_session "$VIEWER_A" "$RACE_A" >/dev/null; fi
 if [[ -n "$RACE_B" ]]; then cancel_session "$VIEWER_B" "$RACE_B" >/dev/null; fi
-sql "UPDATE public.campaigns SET status = 'ACTIVE' WHERE id IN ('$CAMPAIGN_2', '$CAMPAIGN_3');" >/dev/null
+# Keep campaigns 2/3 paused so the completion retry deterministically targets campaign 1.
 
 # 3. Duplicate concurrent completion of one session must consume once.
 COMPLETE_ID="$(request_session "$VIEWER_A")"
@@ -147,6 +147,7 @@ if [[ "$COMPLETED_VIEWS" != "1" || "$LEDGER_COUNT" != "1" ]]; then
   echo "FAIL: concurrent completion consumed campaign/reward more than once" >&2
   exit 1
 fi
+sql "UPDATE public.campaigns SET status = 'ACTIVE' WHERE id IN ('$CAMPAIGN_2', '$CAMPAIGN_3');" >/dev/null
 
 # 4. Concurrent complete/cancel must settle into exactly one terminal assignment state.
 RACE_SESSION="$(request_session "$VIEWER_B")"
