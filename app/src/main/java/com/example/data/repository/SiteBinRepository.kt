@@ -45,6 +45,33 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
+internal fun buildRolling30Leaderboard(
+    allRows: List<Rolling30LeaderboardEntry>,
+    currentUserHandle: String
+): Rolling30Leaderboard {
+    val rows = allRows.sortedBy { it.rank }
+    val current = rows.firstOrNull {
+        it.userHandle.equals(currentUserHandle.trim(), ignoreCase = true)
+    }
+    val previous = if (current != null && current.rank > 1) {
+        rows.firstOrNull { it.rank == current.rank - 1 }
+    } else {
+        null
+    }
+    val gap = if (current != null && current.rank > 1 && previous != null) {
+        (previous.completedViews - current.completedViews + 1).coerceAtLeast(1)
+    } else {
+        null
+    }
+
+    return Rolling30Leaderboard(
+        entries = rows.take(5),
+        currentUserRank = current?.rank,
+        currentUserViews = current?.completedViews ?: 0,
+        viewsToNextRank = gap
+    )
+}
+
 sealed interface ServerInitializationState {
     data object Initializing : ServerInitializationState
     data object Ready : ServerInitializationState
@@ -322,29 +349,9 @@ class SiteBinRepository(
     }
 
     suspend fun refreshRolling30Leaderboard(): Result<Unit> {
-        val currentHandle = _account.value.userHandle.trim()
+        val currentHandle = _account.value.userHandle
         return engine.fetchRolling30Leaderboard().onSuccess { allRows ->
-            val rows = allRows.sortedBy { it.rank }
-            val current = rows.firstOrNull {
-                it.userHandle.equals(currentHandle, ignoreCase = true)
-            }
-            val previous = if (current != null && current.rank > 1) {
-                rows.firstOrNull { it.rank == current.rank - 1 }
-            } else {
-                null
-            }
-            val gap = if (current != null && current.rank > 1 && previous != null) {
-                (previous.completedViews - current.completedViews + 1).coerceAtLeast(1)
-            } else {
-                null
-            }
-
-            _rolling30Leaderboard.value = Rolling30Leaderboard(
-                entries = rows.take(5),
-                currentUserRank = current?.rank,
-                currentUserViews = current?.completedViews ?: 0,
-                viewsToNextRank = gap
-            )
+            _rolling30Leaderboard.value = buildRolling30Leaderboard(allRows, currentHandle)
         }.map { Unit }
     }
 
