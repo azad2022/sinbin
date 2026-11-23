@@ -147,7 +147,7 @@ if [[ "$COMPLETED_VIEWS" != "1" || "$LEDGER_COUNT" != "1" ]]; then
   echo "FAIL: concurrent completion consumed campaign/reward more than once" >&2
   exit 1
 fi
-sql "UPDATE public.campaigns SET status = 'ACTIVE' WHERE id IN ('$CAMPAIGN_2', '$CAMPAIGN_3');" >/dev/null
+sql "UPDATE public.campaigns SET status = 'ACTIVE' WHERE id = '$CAMPAIGN_2'; UPDATE public.campaigns SET status = 'PAUSED' WHERE id = '$CAMPAIGN_3';" >/dev/null
 
 # 4. Concurrent complete/cancel must settle into exactly one terminal assignment state.
 RACE_SESSION="$(request_session "$VIEWER_B")"
@@ -172,7 +172,7 @@ case "$TERMINAL_STATE" in
     exit 1
     ;;
 esac
-sql "UPDATE public.campaigns SET status = 'PAUSED' WHERE id = '$CAMPAIGN_2';" >/dev/null
+sql "UPDATE public.campaigns SET status = 'PAUSED' WHERE id = '$CAMPAIGN_2' AND status = 'ACTIVE'; UPDATE public.campaigns SET status = 'ACTIVE' WHERE id = '$CAMPAIGN_3';" >/dev/null
 
 # 5. Expiration racing completion must expire the old session and free its slot.
 EXPIRED_ID="$(request_session "$VIEWER_A")"
