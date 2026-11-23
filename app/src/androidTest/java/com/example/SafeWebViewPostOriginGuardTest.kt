@@ -1,7 +1,7 @@
 package com.example
 
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.WebViewCompat
@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicReference
 class SafeWebViewPostOriginGuardTest {
 
     @Test
-    fun directAndSubmitterOverriddenCrossOriginPostFormsAreBlocked() {
+    fun directSubmitterAndInheritedBaseTargetCrossOriginPostFormsAreBlocked() {
         assumeTrue(
             "The emulator WebView must support document-start JavaScript.",
             WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
@@ -30,29 +30,24 @@ class SafeWebViewPostOriginGuardTest {
         val context = instrumentation.targetContext
         val completed = CountDownLatch(1)
         val result = AtomicReference<String?>(null)
+        val bridge = object {
+            @JavascriptInterface
+            fun report(value: String) {
+                result.set(value)
+                completed.countDown()
+            }
+        }
         lateinit var webView: WebView
 
         instrumentation.runOnMainSync {
             webView = WebView(context).apply {
                 settings.javaScriptEnabled = true
+                addJavascriptInterface(bridge, "SiteBinGuardTestBridge")
                 WebViewCompat.addDocumentStartJavaScript(
                     this,
                     buildMainFrameFormOriginGuard("https://sitebin.test/"),
                     setOf("*")
                 )
-                webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        view?.evaluateJavascript(
-                            "location.origin + '|' + " +
-                                "document.body.getAttribute('data-direct-submit-blocked') + '|' + " +
-                                "document.body.getAttribute('data-submitter-override-blocked') + '|' + " +
-                                "document.body.getAttribute('data-base-target-blocked')"
-                        ) { value ->
-                            result.set(value)
-                            completed.countDown()
-                        }
-                    }
-                }
 
                 val html = """
                     <!doctype html>
@@ -65,14 +60,20 @@ class SafeWebViewPostOriginGuardTest {
                         directForm.action = 'https://attacker.invalid/direct';
                         document.body.appendChild(directForm);
                         directForm.submit();
-                        document.body.setAttribute('data-direct-submit-blocked', String(location.origin === 'https://sitebin.test'));
+                        document.body.setAttribute(
+                            'data-direct-submit-blocked',
+                            String(location.origin === 'https://sitebin.test')
+                        );
 
                         const submitterForm = document.createElement('form');
                         submitterForm.method = 'POST';
                         submitterForm.action = 'https://sitebin.test/same-origin-default';
                         const submitter = document.createElement('button');
                         submitter.type = 'submit';
-                        submitter.setAttribute('formaction', 'https://attacker.invalid/submitter-override');
+                        submitter.setAttribute(
+                            'formaction',
+                            'https://attacker.invalid/submitter-override'
+                        );
                         submitterForm.appendChild(submitter);
                         document.body.appendChild(submitterForm);
 
@@ -81,7 +82,10 @@ class SafeWebViewPostOriginGuardTest {
                             submitEventReachedPage = true;
                         }, false);
                         submitterForm.requestSubmit(submitter);
-                        document.body.setAttribute('data-submitter-override-blocked', String(!submitEventReachedPage));
+                        document.body.setAttribute(
+                            'data-submitter-override-blocked',
+                            String(!submitEventReachedPage)
+                        );
 
                         const frame = document.createElement('iframe');
                         frame.addEventListener('load', function () {
@@ -106,6 +110,19 @@ class SafeWebViewPostOriginGuardTest {
                             '<form id="base-target-form" method="POST" action="https://attacker.invalid/base-target">' +
                             '<button id="base-target-submit" type="submit">Send</button></form></body></html>';
                         document.body.appendChild(frame);
+
+                        const reportWhenAllCasesFinish = setInterval(function () {
+                            const direct = document.body.getAttribute('data-direct-submit-blocked');
+                            const submitterResult = document.body.getAttribute('data-submitter-override-blocked');
+                            const baseTarget = document.body.getAttribute('data-base-target-blocked');
+                            if (direct !== null && submitterResult !== null && baseTarget !== null) {
+                                clearInterval(reportWhenAllCasesFinish);
+                                window.SiteBinGuardTestBridge.report(
+                                    location.origin + '|' + direct + '|' +
+                                    submitterResult + '|' + baseTarget
+                                );
+                            }
+                        }, 25);
                     </script>
                     </body>
                     </html>
@@ -123,11 +140,11 @@ class SafeWebViewPostOriginGuardTest {
 
         try {
             assertTrue(
-                "WebView did not finish the local test page.",
+                "WebView did not complete all three form-origin cases.",
                 completed.await(10, TimeUnit.SECONDS)
             )
             assertEquals(
-                "\\"https://sitebin.test|true|true|true\\"",
+                "https://sitebin.test|true|true|true",
                 result.get()
             )
         } finally {
