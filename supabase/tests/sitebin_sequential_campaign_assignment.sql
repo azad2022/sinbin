@@ -440,9 +440,14 @@ BEGIN
     SELECT completed_views INTO v_before_views
     FROM public.campaigns WHERE id = v_campaign_id;
 
-    SELECT completed_views INTO v_before_daily
-    FROM public.daily_view_leaderboard
-    WHERE leaderboard_date = v_day AND user_id = v_viewer;
+    -- Compare the reconciled leaderboard to its authoritative source, not
+    -- the synthetic rank score used earlier to construct the allocation fixture.
+    SELECT pg_catalog.count(*)::INTEGER INTO v_before_daily
+    FROM public.view_sessions
+    WHERE viewer_id = v_viewer
+      AND status = 'COMPLETED'
+      AND completed_at >= (v_day::TIMESTAMP AT TIME ZONE 'UTC')
+      AND completed_at < ((v_day + 1)::TIMESTAMP AT TIME ZONE 'UTC');
 
     UPDATE public.view_sessions
     SET content_ready_at = pg_catalog.clock_timestamp() - INTERVAL '10 seconds',
