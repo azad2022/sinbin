@@ -19,6 +19,10 @@ CREATE INDEX IF NOT EXISTS idx_view_sessions_campaign_active_expiry
     ON public.view_sessions (campaign_id, expires_at)
     WHERE status IN ('INITIALIZED', 'CONTENT_READY');
 
+CREATE INDEX IF NOT EXISTS idx_view_sessions_active_expiry
+    ON public.view_sessions (expires_at)
+    WHERE status IN ('INITIALIZED', 'CONTENT_READY');
+
 CREATE TABLE IF NOT EXISTS public.viewer_daily_cursor (
     viewer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     day_utc DATE NOT NULL,
@@ -39,9 +43,9 @@ CREATE TABLE IF NOT EXISTS public.special_campaign_assignments (
     session_id UUID NOT NULL UNIQUE
         REFERENCES public.view_sessions(id) ON DELETE CASCADE,
     viewer_id UUID NOT NULL
-        REFERENCES public.profiles(id) ON DELETE RESTRICT,
+        REFERENCES public.profiles(id) ON DELETE CASCADE,
     campaign_owner_id UUID NOT NULL
-        REFERENCES public.profiles(id) ON DELETE RESTRICT,
+        REFERENCES public.profiles(id) ON DELETE CASCADE,
     campaign_id UUID NOT NULL
         REFERENCES public.campaigns(id) ON DELETE CASCADE,
     assigned_position BIGINT NOT NULL CHECK (assigned_position > 0),
@@ -91,6 +95,9 @@ SELECT
     completed_views,
     updated_at
 FROM public.daily_view_leaderboard;
+
+CREATE INDEX IF NOT EXISTS idx_daily_view_leaderboard_date_rank_user_id
+    ON public.daily_view_leaderboard (leaderboard_date, completed_views DESC, user_id ASC);
 
 REVOKE ALL ON public.daily_view_leaderboard_public FROM PUBLIC, anon;
 GRANT SELECT ON public.daily_view_leaderboard_public TO authenticated;
@@ -254,11 +261,11 @@ BEGIN
         pg_catalog.hashtext('view_session_req_' || v_uid::TEXT)
     );
 
-    -- Expire this viewer's stale reservations before checking the one-active-session invariant.
+    -- Expire all stale reservations before taking any campaign lock. This preserves
+    -- the session -> campaign lock order used by completion and releases assignment state.
     UPDATE public.view_sessions
     SET status = 'EXPIRED'
-    WHERE viewer_id = v_uid
-      AND status IN ('INITIALIZED', 'CONTENT_READY')
+    WHERE status IN ('INITIALIZED', 'CONTENT_READY')
       AND expires_at <= pg_catalog.clock_timestamp();
 
     SELECT
@@ -1061,6 +1068,7 @@ BEGIN
             WHEN last_selected_owner_id = p_old_uid THEN p_new_uid
             ELSE last_selected_owner_id
         END,
+        visited_owner_ids = pg_catalog.array_replace(visited_owner_ids, p_old_uid, p_new_uid),
         updated_at = pg_catalog.clock_timestamp()
     WHERE viewer_id = p_old_uid;
 
