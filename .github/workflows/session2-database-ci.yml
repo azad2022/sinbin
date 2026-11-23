@@ -176,6 +176,23 @@ jobs:
           supabase migration up --local --include-all
           supabase migration list --local
 
+      - name: Replay historical migrations through keyword resolver before URL preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for migration in "$SITEBIN_LATER_MIGRATIONS"/*.sql; do
+            filename="${migration##*/}"
+            version="${filename%%_*}"
+            if [[ "$version" < "20261005112713" ]]; then
+              mv "$migration" supabase/migrations/
+            fi
+          done
+          # The demo campaigns predate the URL-preflight trigger. Replay the
+          # prerequisite schema through keyword resolution first, then seed
+          # those CI-only campaigns before the preflight trigger is installed.
+          supabase migration up --local --include-all
+
       - name: Seed the historical demo campaign pool in disposable database only
         shell: bash
         run: |
