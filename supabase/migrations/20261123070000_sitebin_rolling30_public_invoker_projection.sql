@@ -97,12 +97,25 @@ $function$;
 REVOKE ALL ON FUNCTION private.sync_completed_view_leaderboard_event()
     FROM PUBLIC, anon, authenticated;
 
-DROP TRIGGER IF EXISTS trg_sync_completed_view_leaderboard_events
+DROP TRIGGER IF EXISTS trg_sync_completed_view_leaderboard_events_insert
+    ON public.view_sessions;
+DROP TRIGGER IF EXISTS trg_sync_completed_view_leaderboard_events_update
+    ON public.view_sessions;
+DROP TRIGGER IF EXISTS trg_sync_completed_view_leaderboard_events_delete
     ON public.view_sessions;
 
-CREATE TRIGGER trg_sync_completed_view_leaderboard_events
-AFTER INSERT OR UPDATE OF status, viewer_id, completed_at OR DELETE
-ON public.view_sessions
+CREATE TRIGGER trg_sync_completed_view_leaderboard_events_insert
+AFTER INSERT ON public.view_sessions
+FOR EACH ROW
+EXECUTE FUNCTION private.sync_completed_view_leaderboard_event();
+
+CREATE TRIGGER trg_sync_completed_view_leaderboard_events_update
+AFTER UPDATE OF status, viewer_id, completed_at ON public.view_sessions
+FOR EACH ROW
+EXECUTE FUNCTION private.sync_completed_view_leaderboard_event();
+
+CREATE TRIGGER trg_sync_completed_view_leaderboard_events_delete
+AFTER DELETE ON public.view_sessions
 FOR EACH ROW
 EXECUTE FUNCTION private.sync_completed_view_leaderboard_event();
 
