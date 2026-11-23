@@ -8,6 +8,8 @@ DO $$
 DECLARE
   v_tag text := substr(md5(clock_timestamp()::text || random()::text), 1, 12);
   v_uid uuid;
+  v_history_150 uuid := gen_random_uuid();
+  v_history_300 uuid := gen_random_uuid();
   v_existing_150 uuid;
   v_existing_300 uuid;
   v_profile json;
@@ -45,6 +47,57 @@ BEGIN
 
     INSERT INTO tmp_sitebin_test_users(id) VALUES(v_uid);
   END LOOP;
+
+  -- Seed isolated historical 150-coin and 300-coin users inside this
+  -- transaction. The test must not require real Production welcome-grant rows.
+  INSERT INTO auth.users(
+    id, aud, role, email, email_confirmed_at,
+    created_at, updated_at, is_sso_user, is_anonymous
+  )
+  VALUES
+    (
+      v_history_150, 'authenticated', 'authenticated',
+      'sitebin_history_150_' || v_tag || '@sitebin.internal',
+      clock_timestamp(), clock_timestamp(), clock_timestamp(), false, false
+    ),
+    (
+      v_history_300, 'authenticated', 'authenticated',
+      'sitebin_history_300_' || v_tag || '@sitebin.internal',
+      clock_timestamp(), clock_timestamp(), clock_timestamp(), false, false
+    );
+
+  INSERT INTO public.profiles(
+    id, user_handle, app_install_id, available_coins, reserved_coins,
+    lifetime_earned, lifetime_spent, trust_score, completed_views_count,
+    received_views_count, welcome_bonus_claimed, created_at, updated_at
+  )
+  VALUES
+    (
+      v_history_150, 'history150_' || v_tag, 'history150_inst_' || v_tag,
+      150, 0, 150, 0, 100, 0, 0, true, clock_timestamp(), clock_timestamp()
+    ),
+    (
+      v_history_300, 'history300_' || v_tag, 'history300_inst_' || v_tag,
+      300, 0, 300, 0, 100, 0, 0, true, clock_timestamp(), clock_timestamp()
+    );
+
+  INSERT INTO public.welcome_bonus_grants(user_id, install_id, amount, granted_at)
+  VALUES
+    (v_history_150, 'history150_inst_' || v_tag, 150, clock_timestamp() - INTERVAL '180 days'),
+    (v_history_300, 'history300_inst_' || v_tag, 300, clock_timestamp() - INTERVAL '170 days');
+
+  INSERT INTO public.coin_ledger(
+    user_id, amount, transaction_type, description, reference_id, idempotency_key, created_at
+  )
+  VALUES
+    (
+      v_history_150, 150, 'WELCOME_REWARD', 'Historical 150-coin fixture',
+      'history150_' || v_tag, 'history150_' || v_tag, clock_timestamp() - INTERVAL '180 days'
+    ),
+    (
+      v_history_300, 300, 'WELCOME_REWARD', 'Historical 300-coin fixture',
+      'history300_' || v_tag, 'history300_' || v_tag, clock_timestamp() - INTERVAL '170 days'
+    );
 
   -- Test 1: first claim is exactly 300 coins.
   SELECT id INTO v_uid FROM tmp_sitebin_test_users ORDER BY id LIMIT 1;
