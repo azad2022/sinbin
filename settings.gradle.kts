@@ -12,7 +12,9 @@ pluginManagement {
   }
 }
 
-plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0" }
+// CI and supported developer environments provide JDK 17 directly.
+// This project declares no Gradle Java/Kotlin toolchains, so remote Foojay
+// toolchain provisioning is unnecessary during settings evaluation.
 
 dependencyResolutionManagement {
   repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
