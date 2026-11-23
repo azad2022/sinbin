@@ -630,8 +630,7 @@ BEGIN
         pg_catalog.clock_timestamp() - INTERVAL '29 days',
         pg_catalog.clock_timestamp() - INTERVAL '29 days' + INTERVAL '1 second',
         pg_catalog.clock_timestamp() - INTERVAL '29 days',
-        pg_catalog.clock_timestamp() - INTERVAL '29 days'
-    RETURNING id INTO v_session_id;
+        pg_catalog.clock_timestamp() - INTERVAL '29 days';
 
     SELECT completed_views INTO v_rolling_count
     FROM public.rolling_30d_view_leaderboard_public
@@ -714,7 +713,7 @@ BEGIN
     )
     SELECT
         (SELECT campaign_id FROM _s2_campaigns WHERE purpose = 'fallback' LIMIT 1),
-        v_uid, 5, 3,
+        v_tie_a, 5, 3,
         'COMPLETED',
         pg_catalog.clock_timestamp() - INTERVAL '10 seconds',
         pg_catalog.clock_timestamp() - INTERVAL '9 seconds',
