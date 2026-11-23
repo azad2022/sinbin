@@ -42,6 +42,8 @@ DECLARE
     v_assigned_position BIGINT;
     v_canceled BOOLEAN;
     v_completed BOOLEAN;
+    v_signal_ready BOOLEAN;
+    v_status TEXT;
     v_request_position BIGINT;
     v_cursor public.viewer_daily_cursor%ROWTYPE;
     v_before_views INTEGER;
@@ -412,16 +414,16 @@ BEGIN
     SET expires_at = pg_catalog.clock_timestamp() - INTERVAL '1 second'
     WHERE id = v_session_id;
 
-    v_retry_result := public.signal_content_ready(v_session_id);
+    v_signal_ready := public.signal_content_ready(v_session_id);
     SELECT status INTO v_status FROM public.view_sessions WHERE id = v_session_id;
     SELECT canceled INTO v_canceled
     FROM public.special_campaign_assignments
     WHERE session_id = v_session_id;
 
-    IF v_retry_result IS TRUE OR v_status IS DISTINCT FROM 'EXPIRED'
+    IF v_signal_ready IS TRUE OR v_status IS DISTINCT FROM 'EXPIRED'
        OR v_canceled IS DISTINCT FROM TRUE THEN
         RAISE EXCEPTION 'TEST_FAILED: expired content-ready signal result=%, status=%, assignment_canceled=%, expires_at=%',
-            v_retry_result,
+            v_signal_ready,
             v_status,
             v_canceled,
             (SELECT expires_at FROM public.view_sessions WHERE id = v_session_id);
