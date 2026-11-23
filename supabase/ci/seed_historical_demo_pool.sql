@@ -13,6 +13,9 @@ DECLARE
     v_owner UUID;
     v_domain TEXT;
     v_url TEXT;
+    v_normalized_url TEXT;
+    v_token_hash TEXT;
+    v_now TIMESTAMPTZ;
     v_campaign_id UUID;
 BEGIN
     FOREACH v_owner IN ARRAY ARRAY[
@@ -26,11 +29,80 @@ BEGIN
                 ELSE 'https://wikipedia.org'
             END;
 
+            v_normalized_url := CASE v_domain
+                WHEN 'solmint.ir' THEN 'https://solmint.ir/'
+                WHEN 'cafebazaar.ir' THEN v_url
+                ELSE 'https://wikipedia.org/'
+            END;
+
             IF NOT EXISTS (
                 SELECT 1
                 FROM public.campaigns
                 WHERE owner_id = v_owner AND domain = v_domain
             ) THEN
+                -- The production campaign guard requires a consumed server
+                -- preflight token with referral metadata. Recreate that exact
+                -- prerequisite as deterministic CI-only fixture data.
+                v_now := pg_catalog.clock_timestamp();
+                v_token_hash := pg_catalog.encode(
+                    extensions.digest(
+                        'sitebin-ci-demo-pool:' || v_owner::text || ':' || v_domain,
+                        'sha256'
+                    ),
+                    'hex'
+                );
+
+                INSERT INTO private.campaign_preflight_tokens(
+                    token_hash,
+                    user_id,
+                    source_url,
+                    normalized_url,
+                    domain,
+                    final_url,
+                    http_status,
+                    redirect_count,
+                    response_ms,
+                    content_type,
+                    content_length,
+                    viewer_compatibility,
+                    quality_score,
+                    diagnostics,
+                    created_at,
+                    expires_at,
+                    consumed_at,
+                    referral_site_key
+                )
+                VALUES(
+                    v_token_hash,
+                    v_owner,
+                    v_url,
+                    v_normalized_url,
+                    v_domain,
+                    v_url,
+                    200,
+                    0,
+                    1,
+                    'text/html',
+                    1024,
+                    'COMPATIBLE',
+                    100,
+                    pg_catalog.jsonb_build_object('referral_site_key', v_domain),
+                    v_now,
+                    v_now + INTERVAL '10 minutes',
+                    v_now,
+                    v_domain
+                )
+                ON CONFLICT (token_hash) DO UPDATE
+                SET user_id = EXCLUDED.user_id,
+                    source_url = EXCLUDED.source_url,
+                    normalized_url = EXCLUDED.normalized_url,
+                    domain = EXCLUDED.domain,
+                    final_url = EXCLUDED.final_url,
+                    diagnostics = EXCLUDED.diagnostics,
+                    expires_at = EXCLUDED.expires_at,
+                    consumed_at = EXCLUDED.consumed_at,
+                    referral_site_key = EXCLUDED.referral_site_key;
+
                 PERFORM 1
                 FROM public.profiles
                 WHERE id = v_owner
@@ -60,11 +132,7 @@ BEGIN
                 VALUES(
                     v_owner,
                     v_url,
-                    CASE v_domain
-                        WHEN 'solmint.ir' THEN 'https://solmint.ir/'
-                        WHEN 'cafebazaar.ir' THEN v_url
-                        ELSE 'https://wikipedia.org/'
-                    END,
+                    v_normalized_url,
                     v_domain,
                     5,
                     5,
