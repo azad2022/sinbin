@@ -180,6 +180,10 @@ jobs:
             exit 1
           fi
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/restore_applied_20261009024000.sql
+          # Return the unchanged historical file to the CLI's migration directory:
+          # migration repair validates that the version has a matching filename.
+          mv "$historical_migration" supabase/migrations/
+          test -s supabase/migrations/20261009024000_sitebin_daily_bonus_requires_completed_view.sql
           # This version is already Applied in Production. Record that state
           # only in the disposable local ledger; do not replay its historical
           # DO-block patch or modify the historical migration file.
