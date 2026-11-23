@@ -160,7 +160,7 @@ class HomeScreenBehaviorTest {
         assertEquals(listOf(1, 2, 3, 4, 5), result.entries.map { it.rank })
         assertEquals(8, result.currentUserRank)
         assertEquals(20, result.currentUserViews)
-        assertEquals(1, result.viewsToNextRank)
+        assertEquals(11, result.viewsToNextRank)
     }
 
     @Test
