@@ -20,7 +20,7 @@ import com.example.data.model.CoinStoreProvider
 import com.example.data.model.CoinPurchaseConfirmation
 import com.example.data.model.CoinStoreProduct
 import com.example.data.model.DailyBonusResult
-import com.example.data.model.WeeklyLeaderboardEntry
+import com.example.data.model.Rolling30LeaderboardEntry
 import com.example.data.model.DurationOption
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
@@ -517,19 +517,11 @@ class SupabaseApiClient(
         }
     }
 
-    override suspend fun fetchWeeklyLeaderboard(weekStart: String): Result<List<WeeklyLeaderboardEntry>> = withContext(Dispatchers.IO) {
+    override suspend fun fetchRolling30Leaderboard(): Result<List<Rolling30LeaderboardEntry>> = withContext(Dispatchers.IO) {
         try {
-            val cleanWeekStart = weekStart.trim()
-            if (!cleanWeekStart.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$"))) {
-                return@withContext Result.failure(
-                    IllegalArgumentException("INVALID_WEEK_START: Leaderboard week start must be yyyy-MM-dd")
-                )
-            }
-
             val token = getValidUserToken()
-            val url = supabaseUrl + "/rest/v1/weekly_view_leaderboard_public" +
-                "?week_start=eq." + cleanWeekStart +
-                "&select=rank,user_handle,completed_views" +
+            val url = supabaseUrl + "/rest/v1/rolling_30d_view_leaderboard_public" +
+                "?select=rank,user_handle,completed_views" +
                 "&order=rank.asc"
 
             val request = Request.Builder()
@@ -543,12 +535,12 @@ class SupabaseApiClient(
             val raw = response.body?.string() ?: ""
             if (!response.isSuccessful) {
                 return@withContext Result.failure(
-                    IOException("Failed to fetch weekly leaderboard: HTTP " + response.code)
+                    IOException("Failed to fetch rolling 30-day leaderboard: HTTP " + response.code)
                 )
             }
 
             val array = JSONArray(raw)
-            val entries = mutableListOf<WeeklyLeaderboardEntry>()
+            val entries = mutableListOf<Rolling30LeaderboardEntry>()
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
                 val rank = item.optInt("rank", 0)
@@ -557,7 +549,7 @@ class SupabaseApiClient(
 
                 if (rank > 0 && handle.isNotBlank() && views > 0) {
                     entries.add(
-                        WeeklyLeaderboardEntry(
+                        Rolling30LeaderboardEntry(
                             rank = rank,
                             userHandle = handle,
                             completedViews = views
