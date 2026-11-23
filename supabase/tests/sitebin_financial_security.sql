@@ -6,22 +6,39 @@ BEGIN;
 
 DO $$
 DECLARE
-    v_uid uuid;
+    v_tag text := substr(md5(clock_timestamp()::text || random()::text), 1, 10);
+    v_uid uuid := gen_random_uuid();
     v_before_available bigint;
     v_before_reserved bigint;
     v_create json;
     v_campaign record;
     v_campaign_id uuid;
 BEGIN
-    SELECT id, available_coins, reserved_coins
-      INTO v_uid, v_before_available, v_before_reserved
-    FROM public.profiles
-    ORDER BY id
-    LIMIT 1;
+    INSERT INTO auth.users(
+        id, aud, role, email, email_confirmed_at,
+        created_at, updated_at, is_sso_user, is_anonymous
+    )
+    VALUES(
+        v_uid, 'authenticated', 'authenticated',
+        's2_financial_' || v_tag || '@sitebin.internal',
+        clock_timestamp(), clock_timestamp(), clock_timestamp(), false, false
+    );
 
-    IF v_uid IS NULL THEN
-        RAISE EXCEPTION 'TEST_SETUP_FAILED: no profile exists';
-    END IF;
+    INSERT INTO public.profiles(
+        id, user_handle, app_install_id, available_coins, reserved_coins,
+        lifetime_earned, lifetime_spent, trust_score, completed_views_count,
+        received_views_count, welcome_bonus_claimed, created_at, updated_at
+    )
+    VALUES(
+        v_uid, 's2_fin_' || v_tag, 's2_fin_inst_' || v_tag,
+        1000, 0, 1000, 0, 100, 0, 0, true,
+        clock_timestamp(), clock_timestamp()
+    );
+
+    SELECT available_coins, reserved_coins
+      INTO v_before_available, v_before_reserved
+    FROM public.profiles
+    WHERE id = v_uid;
 
     -- Anonymous users use the authenticated Postgres role, so the server must
     -- explicitly reject them for financial SiteBin operations.
@@ -34,6 +51,7 @@ BEGIN
         )::text,
         true
     );
+    PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
     BEGIN
         PERFORM public.request_view_session();
@@ -54,6 +72,7 @@ BEGIN
         )::text,
         true
     );
+    PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
     -- RPC-level destination validation.
     BEGIN
