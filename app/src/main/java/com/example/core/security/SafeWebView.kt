@@ -12,6 +12,7 @@ import android.os.SystemClock
 import com.example.BuildConfig
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
@@ -551,11 +552,22 @@ fun SafeWebView(
                         )
                         return@apply
                     }
-                    documentStartScriptHandler = WebViewCompat.addDocumentStartJavaScript(
-                        this,
-                        buildMainFrameFormOriginGuard(origin.serialized),
-                        setOf("*")
-                    )
+                    try {
+                        documentStartScriptHandler = WebViewCompat.addDocumentStartJavaScript(
+                            this,
+                            buildMainFrameFormOriginGuard(origin.serialized),
+                            setOf("*")
+                        )
+                    } catch (error: Exception) {
+                        mainFrameLoadFailed = true
+                        currentOnErrorOccurred(
+                            "راه‌اندازی کنترل امن ناوبری ناموفق بود؛ برای حفظ امنیت بارگذاری متوقف شد."
+                        )
+                        if (BuildConfig.DEBUG) {
+                            android.util.Log.e("SiteBinWebView", "Document-start guard registration failed.", error)
+                        }
+                        return@apply
+                    }
 
                     // WebView 153/154 have a documented, device/GPU-specific black-rendering
                     // regression. Apply software drawing only to those affected release families;
@@ -605,6 +617,8 @@ fun SafeWebView(
                     setDownloadListener { downloadUrl, _, _, _, _ ->
                         currentOnUrlBlocked(downloadUrl, "دانلود مستقیم فایل در سایت بین مجاز نیست.")
                     }
+
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
 
                     webViewClient = safeClient
                     webChromeClient = safeChromeClient
