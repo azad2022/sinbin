@@ -99,6 +99,10 @@ BEGIN
     clock_timestamp(), clock_timestamp() + interval '10 minutes'
   );
 
+  SELECT available_coins INTO v_before
+  FROM public.profiles
+  WHERE id = v_uid;
+
   SELECT public.create_campaign(
     'https://example.com/',
     'https://example.com/',
@@ -117,12 +121,8 @@ BEGIN
   FROM public.profiles
   WHERE id=v_uid;
 
-  SELECT available_coins INTO v_before
-  FROM public.profiles
-  WHERE id=v_uid;
-
-  -- A single 5-second keyword campaign costs 15 coins under the current pricing.
-  IF v_before <> 985 OR v_after <> 985 THEN
+  -- A single 5-second keyword campaign costs 15 coins under current pricing.
+  IF v_before - v_after <> 15 THEN
     RAISE EXCEPTION 'TEST_FAILED: keyword campaign cost mismatch';
   END IF;
 
