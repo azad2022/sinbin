@@ -9,13 +9,19 @@ DECLARE
   v_result json;
   v_before bigint;
   v_after bigint;
+  v_token text := 'sitebin-input-security-token-20261123-abcdefghijklmnopqrstuvwxyz';
+  v_token_hash text;
 BEGIN
   IF has_function_privilege('anon','public.create_campaign(text,text,text,integer,integer,text)','EXECUTE') THEN
     RAISE EXCEPTION 'TEST_FAILED: anonymous execution is still granted';
   END IF;
 
-  IF NOT has_function_privilege('authenticated','public.create_campaign(text,text,text,integer,integer,text)','EXECUTE') THEN
-    RAISE EXCEPTION 'TEST_FAILED: authenticated execution is missing';
+  IF has_function_privilege('authenticated','public.create_campaign(text,text,text,integer,integer,text)','EXECUTE') THEN
+    RAISE EXCEPTION 'TEST_FAILED: legacy 6-arg create_campaign remains executable';
+  END IF;
+
+  IF NOT has_function_privilege('authenticated','public.create_campaign(text,text,text,integer,integer,text,text)','EXECUTE') THEN
+    RAISE EXCEPTION 'TEST_FAILED: authenticated 7-arg preflight create_campaign execution is missing';
   END IF;
 
   SELECT id, available_coins
@@ -41,7 +47,8 @@ BEGIN
       'example.com',
       5,
       1,
-      repeat('A',26)
+      repeat('A',26),
+      NULL
     );
     RAISE EXCEPTION 'TEST_FAILED: 26-character keyword accepted';
   EXCEPTION
@@ -56,6 +63,7 @@ BEGIN
       '2130706433',
       5,
       1,
+      NULL,
       NULL
     );
     RAISE EXCEPTION 'TEST_FAILED: decimal IP obfuscation accepted';
@@ -64,13 +72,27 @@ BEGIN
       IF position('INVALID_URL:' IN SQLERRM) <> 1 THEN RAISE; END IF;
   END;
 
+  v_token_hash := encode(extensions.digest(v_token, 'sha256'), 'hex');
+  INSERT INTO private.campaign_preflight_tokens (
+    token_hash, user_id, source_url, normalized_url, domain, final_url,
+    http_status, redirect_count, response_ms, content_type, content_length,
+    viewer_compatibility, quality_score, diagnostics, created_at, expires_at
+  ) VALUES (
+    v_token_hash, v_uid,
+    'https://example.com/', 'https://example.com/', 'example.com', 'https://example.com/',
+    200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+    jsonb_build_object('referral_site_key', 'example.com'),
+    clock_timestamp(), clock_timestamp() + interval '10 minutes'
+  );
+
   SELECT public.create_campaign(
     'https://example.com/',
     'https://example.com/',
     'example.com',
     5,
     1,
-    'safe'' OR 1=1 --'
+    'safe'' OR 1=1 --',
+    v_token
   ) INTO v_result;
 
   IF v_result IS NULL OR (v_result->>'keyword') <> 'safe'' OR 1=1 --' THEN
