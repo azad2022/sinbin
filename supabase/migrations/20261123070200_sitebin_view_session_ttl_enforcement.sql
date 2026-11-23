@@ -329,7 +329,7 @@ BEGIN
         'campaign_completed', v_campaign_completed
     );
 END;
-$function$
+$function$;
 
 
 REVOKE ALL ON FUNCTION public.complete_view_session(uuid, text) FROM PUBLIC, anon;
