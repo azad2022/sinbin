@@ -353,6 +353,22 @@ BEGIN
         RAISE EXCEPTION 'TEST_FAILED: TTL did not release capacity without consuming budget';
     END IF;
 
+    -- Expiration must also be enforced when the client signals content-ready.
+    v_result := public.request_view_session();
+    IF v_result IS NULL THEN
+        RAISE EXCEPTION 'TEST_FAILED: could not allocate content-ready TTL fixture';
+    END IF;
+    v_session_id := (v_result->>'id')::UUID;
+    UPDATE public.view_sessions
+    SET expires_at = pg_catalog.clock_timestamp() - INTERVAL '1 second'
+    WHERE id = v_session_id;
+
+    IF public.signal_content_ready(v_session_id) IS TRUE
+       OR (SELECT status FROM public.view_sessions WHERE id = v_session_id) <> 'EXPIRED'
+       OR (SELECT canceled FROM public.special_campaign_assignments WHERE session_id = v_session_id) IS NOT TRUE THEN
+        RAISE EXCEPTION 'TEST_FAILED: expired session accepted content-ready signal or retained capacity';
+    END IF;
+
     -- Successful completion is idempotent and updates the daily leaderboard once.
     v_result := public.request_view_session();
     IF v_result IS NULL THEN
