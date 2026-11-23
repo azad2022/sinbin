@@ -1062,6 +1062,12 @@ BEGIN
 
 
     -- Preserve the per-UTC-day cursor when an Auth UID is rebound.
+    -- Move the denormalized UTC-day ranking before deleting the old profile.
+    UPDATE public.daily_view_leaderboard
+    SET user_id = p_new_uid,
+        updated_at = pg_catalog.clock_timestamp()
+    WHERE user_id = p_old_uid;
+
     UPDATE public.viewer_daily_cursor
     SET viewer_id = p_new_uid,
         last_selected_owner_id = CASE
