@@ -67,7 +67,7 @@ BEGIN
   END IF;
 
   IF ddl NOT LIKE '%VISIT_REQUIRED%' THEN
-    IF pg_catalog.position(needle in ddl) = 0 THEN
+    IF pg_catalog.strpos(ddl, needle) = 0 THEN
       RAISE EXCEPTION 'claim_daily_bonus patch anchor not found';
     END IF;
     ddl := pg_catalog.replace(ddl, needle, replacement);
