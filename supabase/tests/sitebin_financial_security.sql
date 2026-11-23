@@ -18,6 +18,10 @@ DECLARE
     v_before_reserved bigint;
     v_after_available bigint;
     v_after_reserved bigint;
+    v_http_token text := 's2-fin-http-' || substr(md5(clock_timestamp()::text),1,24);
+    v_http_token_hash text;
+    v_private_token text := 's2-fin-private-' || substr(md5(clock_timestamp()::text),1,24);
+    v_private_token_hash text;
 BEGIN
     INSERT INTO auth.users(
         id, aud, role, email, email_confirmed_at,
@@ -74,6 +78,24 @@ BEGIN
     );
     PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
+    -- Synthetic one-use tokens let this test reach URL validation after
+    -- the current RPC's mandatory preflight-token gate.
+    v_http_token_hash := encode(extensions.digest(v_http_token, 'sha256'), 'hex');
+    INSERT INTO private.campaign_preflight_tokens(
+        token_hash, user_id, source_url, normalized_url, domain, final_url,
+        http_status, redirect_count, response_ms, content_type, content_length,
+        viewer_compatibility, quality_score, diagnostics, created_at, expires_at,
+        referral_site_key
+    )
+    VALUES(
+        v_http_token_hash, v_uid, 'http://example.com', 'http://example.com',
+        'example.com', 'http://example.com',
+        200, 0, 100, 'text/html', 1024, 'COMPATIBLE', 95,
+        jsonb_build_object('referral_site_key', 'example.com'),
+        clock_timestamp(), clock_timestamp() + INTERVAL '10 minutes',
+        'example.com'
+    );
+
     -- URL validation happens before a valid campaign can be created.
     BEGIN
         PERFORM public.create_campaign(
@@ -83,13 +105,29 @@ BEGIN
             5,
             1,
             NULL,
-            NULL
+            v_http_token
         );
         RAISE EXCEPTION 'FINANCIAL_FAIL: HTTP destination unexpectedly accepted';
     EXCEPTION
         WHEN OTHERS THEN
             IF position('INVALID_URL:' IN SQLERRM) = 0 THEN RAISE; END IF;
     END;
+
+    v_private_token_hash := encode(extensions.digest(v_private_token, 'sha256'), 'hex');
+    INSERT INTO private.campaign_preflight_tokens(
+        token_hash, user_id, source_url, normalized_url, domain, final_url,
+        http_status, redirect_count, response_ms, content_type, content_length,
+        viewer_compatibility, quality_score, diagnostics, created_at, expires_at,
+        referral_site_key
+    )
+    VALUES(
+        v_private_token_hash, v_uid, 'https://127.0.0.1', 'https://127.0.0.1',
+        '127.0.0.1', 'https://127.0.0.1',
+        200, 0, 100, 'text/html', 1024, 'COMPATIBLE', 95,
+        jsonb_build_object('referral_site_key', '127.0.0.1'),
+        clock_timestamp(), clock_timestamp() + INTERVAL '10 minutes',
+        '127.0.0.1'
+    );
 
     BEGIN
         PERFORM public.create_campaign(
@@ -99,7 +137,7 @@ BEGIN
             5,
             1,
             NULL,
-            NULL
+            v_private_token
         );
         RAISE EXCEPTION 'FINANCIAL_FAIL: private IPv4 destination unexpectedly accepted';
     EXCEPTION
