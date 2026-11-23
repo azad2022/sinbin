@@ -143,7 +143,8 @@ internal fun buildMainFrameFormOriginGuard(expectedOriginUrl: String): String {
                 if (isSubmitControl(submitter) && submitter.hasAttribute('formtarget')) {
                     return String(submitter.formTarget || '_self').toLowerCase();
                 }
-                return String(form.target || '_self').toLowerCase();
+                const baseTarget = document.querySelector('base[target]');
+                return String(form.target || (baseTarget && baseTarget.target) || '_self').toLowerCase();
             };
             const effectiveAction = function (form, submitter) {
                 if (isSubmitControl(submitter) && submitter.hasAttribute('formaction')) {
