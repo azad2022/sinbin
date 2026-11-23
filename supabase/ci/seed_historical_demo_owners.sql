@@ -7,8 +7,8 @@
 -- synthetic accounts and synthetic starting balances; this file must never be
 -- run against a hosted database.
 --
--- 75 coins are required per owner because the historical migration reserves
--- 25 coins for each of its three default campaigns.
+-- 75 coins are required per owner because the CI-only demo campaign fixture
+-- reserves 25 coins for each of its three default campaigns.
 
 BEGIN;
 

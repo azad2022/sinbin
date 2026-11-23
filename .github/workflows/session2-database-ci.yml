@@ -101,8 +101,8 @@ jobs:
         run: |
           set -euo pipefail
           DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
-          if [[ -z "$DB_URL" ]]; then
-            echo "DB_URL was not reported by the local Supabase stack." >&2
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
             exit 1
           fi
           # This connects only to the local disposable DB. The script sources
@@ -133,8 +133,8 @@ jobs:
         run: |
           set -euo pipefail
           DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
-          if [[ -z "$DB_URL" ]]; then
-            echo "DB_URL was not reported by the local Supabase stack." >&2
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
             exit 1
           fi
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/restore_applied_20261003170402.sql
@@ -159,35 +159,22 @@ jobs:
         run: |
           set -euo pipefail
           DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
-          if [[ -z "$DB_URL" ]]; then
-            echo "DB_URL was not reported by the local Supabase stack." >&2
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
             exit 1
           fi
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_owners.sql
 
-      - name: Restore the already-applied daily-bonus function from Production evidence
+      - name: Seed the historical demo campaign pool in disposable database only
         shell: bash
         run: |
           set -euo pipefail
-          historical_migration="$SITEBIN_LATER_MIGRATIONS/20261009024000_sitebin_daily_bonus_requires_completed_view.sql"
-          if [[ ! -s "$historical_migration" ]]; then
-            echo "Expected already-applied daily-bonus migration is missing: $historical_migration" >&2
-            exit 1
-          fi
           DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
-          if [[ -z "$DB_URL" ]]; then
-            echo "DB_URL was not reported by the local Supabase stack." >&2
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to seed demo campaigns outside the local disposable Supabase database." >&2
             exit 1
           fi
-          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/restore_applied_20261009024000.sql
-          # Return the unchanged historical file to the CLI's migration directory:
-          # migration repair validates that the version has a matching filename.
-          mv "$historical_migration" supabase/migrations/
-          test -s supabase/migrations/20261009024000_sitebin_daily_bonus_requires_completed_view.sql
-          # This version is already Applied in Production. Record that state
-          # only in the disposable local ledger; do not replay its historical
-          # DO-block patch or modify the historical migration file.
-          supabase migration repair 20261009024000 --status applied --local
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_pool.sql
 
       - name: Replay remaining forward migrations
         shell: bash
@@ -197,7 +184,7 @@ jobs:
           for migration in "$SITEBIN_LATER_MIGRATIONS"/*.sql; do
             mv "$migration" supabase/migrations/
           done
-          supabase migration up --local
+          supabase migration up --local --include-all
           supabase migration list --local
 
       - name: Run every isolated SQL acceptance suite and concurrency test
@@ -206,8 +193,8 @@ jobs:
           set -uo pipefail
 
           DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
-          if [[ -z "$DB_URL" ]]; then
-            echo "DB_URL was not reported by the local Supabase stack." >&2
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
             exit 1
           fi
 

@@ -7,8 +7,8 @@ BEGIN;
 
 DO $patch$
 DECLARE
-  ddl text;
-  needle text := $needle$
+  v_function_definition text;
+  v_needle text := $needle$
   IF v_entitlement.id IS NOT NULL
      AND (v_entitlement.granted_at AT TIME ZONE 'UTC')::date = v_today THEN
     RETURN pg_catalog.json_build_object(
@@ -21,7 +21,7 @@ DECLARE
 
   SELECT *
 $needle$;
-  replacement text := $replacement$
+  v_replacement text := $replacement$
   IF v_entitlement.id IS NOT NULL
      AND (v_entitlement.granted_at AT TIME ZONE 'UTC')::date = v_today THEN
     RETURN pg_catalog.json_build_object(
@@ -54,7 +54,7 @@ $needle$;
 $replacement$;
 BEGIN
   SELECT pg_catalog.pg_get_functiondef(p.oid)
-    INTO ddl
+    INTO v_function_definition
   FROM pg_catalog.pg_proc p
   JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public'
@@ -62,16 +62,16 @@ BEGIN
     AND pg_catalog.pg_get_function_identity_arguments(p.oid) =
       'p_android_id text, p_app_set_id text, p_app_set_scope text, p_installation_key_fingerprint text';
 
-  IF ddl IS NULL THEN
+  IF v_function_definition IS NULL THEN
     RAISE EXCEPTION 'claim_daily_bonus function definition not found';
   END IF;
 
-  IF ddl NOT LIKE '%VISIT_REQUIRED%' THEN
-    IF pg_catalog.position(needle in ddl) = 0 THEN
+  IF v_function_definition NOT LIKE '%VISIT_REQUIRED%' THEN
+    IF pg_catalog.position(v_needle in v_function_definition) = 0 THEN
       RAISE EXCEPTION 'claim_daily_bonus patch anchor not found';
     END IF;
-    ddl := pg_catalog.replace(ddl, needle, replacement);
-    EXECUTE ddl;
+    v_function_definition := pg_catalog.replace(v_function_definition, v_needle, v_replacement);
+    EXECUTE v_function_definition;
   END IF;
 END
 $patch$;

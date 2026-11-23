@@ -1,3 +1,9 @@
+-- CI-only fixture copied from the unrecorded historical demo-pool SQL.
+-- It is intentionally outside supabase/migrations: this is disposable test data,
+-- not an approved Production migration. The Production owners/campaigns were
+-- verified read-only on 2026-11-23; all six campaigns already exist there.
+-- Never execute this file against a hosted database.
+
 -- Keep a small, reusable demo viewer pool independent of the account
 -- that owns the original seed campaigns. This preserves anti-self-view rules
 -- while ensuring fresh/test accounts can always receive default sites.
