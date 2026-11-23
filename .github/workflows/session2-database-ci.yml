@@ -1,0 +1,70 @@
+name: Session 2 - Supabase Local Database Verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - db/session2-sequential-campaign-assignment-20261123
+    paths:
+      - "supabase/**"
+      - ".github/workflows/session2-database-ci.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "supabase/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sitebin-session2-db-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay-migrations:
+    name: Replay all Supabase migrations locally
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      SUPABASE_TELEMETRY_DISABLED: "1"
+      DO_NOT_TRACK: "1"
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify CLI and initialize local config if absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase --version
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          test -d supabase/migrations
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print | sort
+
+      - name: Start disposable local Supabase stack
+        run: supabase start
+
+      - name: Replay migration history from an empty local database
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Explicitly local: no project link, token, password, or remote URL is configured.
+          supabase db reset --local
+
+      - name: Verify migration history is readable
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase migration list --local
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: supabase stop --no-backup
