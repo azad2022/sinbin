@@ -5,12 +5,14 @@ on:
     branches:
       - db/daily-sequential-featured-lifecycle-20261123
       - db/session2-finalize-20261123
+      - android/session3-rolling30-webview-20261123
     paths:
       - "supabase/**"
       - ".github/workflows/session2-database-ci.yml"
   pull_request:
     branches:
       - main
+      - android/session3-rolling30-webview-20261123
     paths:
       - "supabase/**"
       - ".github/workflows/session2-database-ci.yml"
