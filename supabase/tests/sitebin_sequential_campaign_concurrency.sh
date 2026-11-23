@@ -151,19 +151,37 @@ wait "$pid_b"
 result_a="$(tr -d '\r' <"$tmp_dir/a.out" | tail -n 1)"
 result_b="$(tr -d '\r' <"$tmp_dir/b.out" | tail -n 1)"
 
-success_count=0
-[[ "$result_a" != "NULL" ]] && success_count=$((success_count + 1))
-[[ "$result_b" != "NULL" ]] && success_count=$((success_count + 1))
+campaign_id="$(psql "$DB_URL" -X -qAt -v ON_ERROR_STOP=1 -v domain="$domain" \
+  -c "SELECT id FROM public.campaigns WHERE domain = :'domain'")"
 
-if [[ "$success_count" -ne 1 ]]; then
-  echo "FAIL: expected exactly one successful allocation for target_views=1" >&2
+extract_campaign_id() {
+  local raw="$1"
+  if [[ -z "$raw" || "$raw" == "NULL" ]]; then
+    printf ''
+    return
+  fi
+  jq -r '.campaign_id // empty' <<<"$raw"
+}
+
+a_campaign_id="$(extract_campaign_id "$result_a")"
+b_campaign_id="$(extract_campaign_id "$result_b")"
+target_reservations=0
+[[ "$a_campaign_id" == "$campaign_id" ]] && target_reservations=$((target_reservations + 1))
+[[ "$b_campaign_id" == "$campaign_id" ]] && target_reservations=$((target_reservations + 1))
+
+if [[ "$target_reservations" -ne 1 ]]; then
+  echo "FAIL: expected exactly one reservation for the single-capacity campaign; got $target_reservations" >&2
   echo "viewer A: $result_a" >&2
   echo "viewer B: $result_b" >&2
   exit 1
 fi
 
-campaign_id="$(psql "$DB_URL" -X -qAt -v ON_ERROR_STOP=1 -v domain="$domain" \
-  -c "SELECT id FROM public.campaigns WHERE domain = :'domain'")"
+# Once the featured campaign is exhausted, the second viewer may legitimately
+# receive an ordinary fallback campaign. It must never receive the same campaign.
+if [[ "$a_campaign_id" == "$campaign_id" && "$b_campaign_id" == "$campaign_id" ]]; then
+  echo "FAIL: both viewers received the same single-capacity campaign" >&2
+  exit 1
+fi
 
 active_count="$(psql "$DB_URL" -X -qAt -v ON_ERROR_STOP=1 -v campaign_id="$campaign_id" \
   -c "SELECT count(*) FROM public.view_sessions WHERE campaign_id = :'campaign_id'::uuid AND status IN ('INITIALIZED','CONTENT_READY') AND started_at > clock_timestamp() - interval '3 minutes'")"
@@ -187,4 +205,4 @@ if [[ "$active_count" -ne 1 || "$completed_count" -ne 0 || "$assignment_count" -
   exit 1
 fi
 
-echo "PASS: two concurrent viewers contended for one slot; exactly one reservation was created (target=1)."
+echo "PASS: two concurrent viewers contended for one slot; exactly one reservation was created for the target campaign (target=1), with fallback permitted."
