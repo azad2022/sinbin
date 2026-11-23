@@ -115,6 +115,7 @@ class SafeWebViewSslClassificationTest {
         assertTrue(script.contains("event.submitter"))
         assertTrue(script.contains("formAction"))
         assertTrue(script.contains("formTarget"))
+        assertTrue(script.contains("document.querySelector('base[target]')"))
         assertTrue(script.contains("preventDefault"))
         assertTrue(script.contains("stopImmediatePropagation"))
         assertTrue(script.contains("nativeSubmit.call(this)"))

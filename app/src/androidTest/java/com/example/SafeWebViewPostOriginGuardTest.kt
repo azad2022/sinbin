@@ -45,7 +45,8 @@ class SafeWebViewPostOriginGuardTest {
                         view?.evaluateJavascript(
                             "location.origin + '|' + " +
                                 "document.body.getAttribute('data-direct-submit-blocked') + '|' + " +
-                                "document.body.getAttribute('data-submitter-override-blocked')"
+                                "document.body.getAttribute('data-submitter-override-blocked') + '|' + " +
+                                "document.body.getAttribute('data-base-target-blocked')"
                         ) { value ->
                             result.set(value)
                             completed.countDown()
@@ -81,6 +82,30 @@ class SafeWebViewPostOriginGuardTest {
                         }, false);
                         submitterForm.requestSubmit(submitter);
                         document.body.setAttribute('data-submitter-override-blocked', String(!submitEventReachedPage));
+
+                        const frame = document.createElement('iframe');
+                        frame.addEventListener('load', function () {
+                            const frameDocument = frame.contentDocument;
+                            const frameForm = frameDocument.getElementById('base-target-form');
+                            const frameSubmitter = frameDocument.getElementById('base-target-submit');
+                            let frameSubmitReachedPage = false;
+                            frameDocument.addEventListener('submit', function () {
+                                frameSubmitReachedPage = true;
+                            }, false);
+                            frameForm.requestSubmit(frameSubmitter);
+                            frameDocument.body.setAttribute(
+                                'data-base-target-blocked',
+                                String(!frameSubmitReachedPage)
+                            );
+                            document.body.setAttribute(
+                                'data-base-target-blocked',
+                                frameDocument.body.getAttribute('data-base-target-blocked')
+                            );
+                        });
+                        frame.srcdoc = '<!doctype html><html><head><base target="_top"></head><body>' +
+                            '<form id="base-target-form" method="POST" action="https://attacker.invalid/base-target">' +
+                            '<button id="base-target-submit" type="submit">Send</button></form></body></html>';
+                        document.body.appendChild(frame);
                     </script>
                     </body>
                     </html>
@@ -102,7 +127,7 @@ class SafeWebViewPostOriginGuardTest {
                 completed.await(10, TimeUnit.SECONDS)
             )
             assertEquals(
-                "\\"https://sitebin.test|true|true\\"",
+                "\\"https://sitebin.test|true|true|true\\"",
                 result.get()
             )
         } finally {

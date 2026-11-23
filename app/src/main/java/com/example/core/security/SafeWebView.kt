@@ -168,12 +168,18 @@ internal fun buildMainFrameFormOriginGuard(expectedOriginUrl: String): String {
                     return false;
                 }
             };
+            const defaultNavigationTarget = function () {
+                const base = document.querySelector('base[target]');
+                return base ? (base.target || '_self') : '_self';
+            };
             const mustBlock = function (form, submitter) {
                 let action = form.action;
-                let target = form.target;
+                let target = form.target || defaultNavigationTarget();
                 if (submitter && typeof submitter.hasAttribute === 'function') {
                     if (submitter.hasAttribute('formaction')) action = submitter.formAction;
-                    if (submitter.hasAttribute('formtarget')) target = submitter.formTarget;
+                    if (submitter.hasAttribute('formtarget')) {
+                        target = submitter.formTarget || defaultNavigationTarget();
+                    }
                 }
                 return isTopNavigationTarget(target) && !isAllowedAction(action);
             };
