@@ -138,8 +138,20 @@ jobs:
             exit 1
           fi
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/restore_applied_20261003170402.sql
-          # This is local-only bookkeeping: the SQL above applies the recovered
-          # statements, then the exact historical version is marked applied.
+          # The historical migration was staged with the other later files so
+          # the baseline replay could not execute its contaminated source file.
+          # Return only its original path before migration repair: the CLI requires
+          # a matching migration filename even though the SQL was restored above.
+          historical_migration="$SITEBIN_LATER_MIGRATIONS/20261003170402_sitebin_financial_refund_and_auth_hardening.sql"
+          if [[ ! -s "$historical_migration" ]]; then
+            echo "Expected exactly the staged historical migration: $historical_migration" >&2
+            exit 1
+          fi
+          mv "$historical_migration" supabase/migrations/
+          test -s supabase/migrations/20261003170402_sitebin_financial_refund_and_auth_hardening.sql
+
+          # This is local-only bookkeeping: recovered SQL is already applied and
+          # the original historical version is now present for the CLI's file check.
           supabase migration repair 20261003170402 --status applied --local
 
       - name: Replay remaining forward migrations
