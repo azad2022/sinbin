@@ -28,7 +28,7 @@ AS $restore$
     SELECT
         p_day,
         p.user_id,
-        p.user_handle,
+        profile.user_handle,
         p.completed_views,
         pg_catalog.clock_timestamp()
     FROM _s2_rank_fixture p
@@ -147,14 +147,15 @@ BEGIN
                 token_hash, user_id, source_url, normalized_url, domain, final_url,
                 http_status, redirect_count, response_ms, content_type, content_length,
                 viewer_compatibility, quality_score, diagnostics, created_at,
-                expires_at, consumed_at
+                expires_at, consumed_at, referral_site_key
             ) VALUES (
                 v_token_hash, v_owner_id, v_url, v_url, v_domain, v_url,
                 200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
                 pg_catalog.jsonb_build_object('referral_site_key', v_domain),
                 pg_catalog.clock_timestamp(),
                 pg_catalog.clock_timestamp() + INTERVAL '10 minutes',
-                pg_catalog.clock_timestamp()
+                pg_catalog.clock_timestamp(),
+                v_domain
             );
 
             INSERT INTO public.campaigns(
@@ -190,14 +191,15 @@ BEGIN
         token_hash, user_id, source_url, normalized_url, domain, final_url,
         http_status, redirect_count, response_ms, content_type, content_length,
         viewer_compatibility, quality_score, diagnostics, created_at,
-        expires_at, consumed_at
+        expires_at, consumed_at, referral_site_key
     ) VALUES (
         v_token_hash, v_fallback_owner, v_url, v_url, v_domain, v_url,
         200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
         pg_catalog.jsonb_build_object('referral_site_key', v_domain),
         pg_catalog.clock_timestamp(),
         pg_catalog.clock_timestamp() + INTERVAL '10 minutes',
-        pg_catalog.clock_timestamp()
+        pg_catalog.clock_timestamp(),
+        v_domain
     );
 
     INSERT INTO public.campaigns(
@@ -441,14 +443,15 @@ BEGIN
         token_hash, user_id, source_url, normalized_url, domain, final_url,
         http_status, redirect_count, response_ms, content_type, content_length,
         viewer_compatibility, quality_score, diagnostics, created_at,
-        expires_at, consumed_at
+        expires_at, consumed_at, referral_site_key
     ) VALUES (
         v_token_hash, v_cap_owner, v_url, v_url, v_domain, v_url,
         200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
         pg_catalog.jsonb_build_object('referral_site_key', v_domain),
         pg_catalog.clock_timestamp(),
         pg_catalog.clock_timestamp() + INTERVAL '10 minutes',
-        pg_catalog.clock_timestamp()
+        pg_catalog.clock_timestamp(),
+        v_domain
     );
 
     INSERT INTO public.campaigns(
@@ -588,14 +591,15 @@ BEGIN
         token_hash, user_id, source_url, normalized_url, domain, final_url,
         http_status, redirect_count, response_ms, content_type, content_length,
         viewer_compatibility, quality_score, diagnostics, created_at,
-        expires_at, consumed_at
+        expires_at, consumed_at, referral_site_key
     ) VALUES (
         v_token_hash, v_ttl_owner, v_url, v_url, v_domain, v_url,
         200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
         pg_catalog.jsonb_build_object('referral_site_key', v_domain),
         pg_catalog.clock_timestamp(),
         pg_catalog.clock_timestamp() + INTERVAL '10 minutes',
-        pg_catalog.clock_timestamp()
+        pg_catalog.clock_timestamp(),
+        v_domain
     );
 
     INSERT INTO public.campaigns(
