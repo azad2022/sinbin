@@ -27,6 +27,8 @@ DECLARE
     v_handle TEXT;
     v_score INTEGER;
     v_domain TEXT;
+    v_url TEXT;
+    v_token_hash TEXT;
     v_result JSON;
     v_retry_result JSON;
     v_complete JSON;
@@ -101,6 +103,21 @@ BEGIN
     -- Owner 1 (rank 2) intentionally has no campaign; owners 2..7 are eligible.
     FOR i IN 2..7 LOOP
         v_domain := 'seq-owner-' || i::TEXT || '.example.com';
+        v_url := 'https://' || v_domain || '/';
+        INSERT INTO private.campaign_preflight_tokens (
+            token_hash, user_id, source_url, normalized_url, domain, final_url,
+            http_status, redirect_count, response_ms, content_type, content_length,
+            viewer_compatibility, quality_score, diagnostics, created_at, expires_at, consumed_at
+        )
+        VALUES (
+            pg_catalog.md5(v_owners[i]::TEXT || v_url) || pg_catalog.md5(v_url || v_owners[i]::TEXT),
+            v_owners[i], v_url, v_url, v_domain, v_url,
+            200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+            pg_catalog.jsonb_build_object('referral_site_key', v_domain),
+            pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp() + INTERVAL '10 minutes',
+            pg_catalog.clock_timestamp()
+        );
+
         INSERT INTO public.campaigns (
             owner_id, url, normalized_url, domain, duration_seconds,
             target_views, completed_views, cost_per_view, total_budget,
@@ -118,6 +135,22 @@ BEGIN
     END LOOP;
 
     -- Self-owned inventory must never be selected by its owner.
+    v_domain := 'seq-self.example.com';
+    v_url := 'https://' || v_domain || '/';
+    INSERT INTO private.campaign_preflight_tokens (
+        token_hash, user_id, source_url, normalized_url, domain, final_url,
+        http_status, redirect_count, response_ms, content_type, content_length,
+        viewer_compatibility, quality_score, diagnostics, created_at, expires_at, consumed_at
+    )
+    VALUES (
+        pg_catalog.md5(v_viewer::TEXT || v_url) || pg_catalog.md5(v_url || v_viewer::TEXT),
+        v_viewer, v_url, v_url, v_domain, v_url,
+        200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+        pg_catalog.jsonb_build_object('referral_site_key', v_domain),
+        pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp() + INTERVAL '10 minutes',
+        pg_catalog.clock_timestamp()
+    );
+
     INSERT INTO public.campaigns (
         owner_id, url, normalized_url, domain, duration_seconds,
         target_views, completed_views, cost_per_view, total_budget,
@@ -131,6 +164,22 @@ BEGIN
         'seq-self.example.com',
         5, 20, 0, 5, 100, 0, 100, 0, 'ACTIVE',
         pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp()
+    );
+
+    v_domain := 'seq-fallback.example.com';
+    v_url := 'https://' || v_domain || '/';
+    INSERT INTO private.campaign_preflight_tokens (
+        token_hash, user_id, source_url, normalized_url, domain, final_url,
+        http_status, redirect_count, response_ms, content_type, content_length,
+        viewer_compatibility, quality_score, diagnostics, created_at, expires_at, consumed_at
+    )
+    VALUES (
+        pg_catalog.md5(v_fallback_owner::TEXT || v_url) || pg_catalog.md5(v_url || v_fallback_owner::TEXT),
+        v_fallback_owner, v_url, v_url, v_domain, v_url,
+        200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+        pg_catalog.jsonb_build_object('referral_site_key', v_domain),
+        pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp() + INTERVAL '10 minutes',
+        pg_catalog.clock_timestamp()
     );
 
     INSERT INTO public.campaigns (
@@ -656,6 +705,21 @@ BEGIN
     -- Rebind regression: cursor, visited owners, daily rank and assignments must
     -- move to the new Auth UID before the old profile is deleted.
     v_domain := 'seq-rebind.example.com';
+    v_url := 'https://' || v_domain || '/';
+    INSERT INTO private.campaign_preflight_tokens (
+        token_hash, user_id, source_url, normalized_url, domain, final_url,
+        http_status, redirect_count, response_ms, content_type, content_length,
+        viewer_compatibility, quality_score, diagnostics, created_at, expires_at, consumed_at
+    )
+    VALUES (
+        pg_catalog.md5(v_rebind_old::TEXT || v_url) || pg_catalog.md5(v_url || v_rebind_old::TEXT),
+        v_rebind_old, v_url, v_url, v_domain, v_url,
+        200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+        pg_catalog.jsonb_build_object('referral_site_key', v_domain),
+        pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp() + INTERVAL '10 minutes',
+        pg_catalog.clock_timestamp()
+    );
+
     INSERT INTO public.campaigns (
         owner_id, url, normalized_url, domain, duration_seconds,
         target_views, completed_views, cost_per_view, total_budget,
