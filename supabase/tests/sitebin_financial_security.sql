@@ -12,6 +12,8 @@ DECLARE
     v_create json;
     v_campaign record;
     v_campaign_id uuid;
+    v_token text := 'sitebin-financial-security-token-20261123-abcdefghijklmnopqrstuvwxyz';
+    v_token_hash text;
 BEGIN
     SELECT id, available_coins, reserved_coins
       INTO v_uid, v_before_available, v_before_reserved
@@ -62,7 +64,9 @@ BEGIN
             'http://example.com',
             'example.com',
             5,
-            1
+            1,
+            NULL,
+            NULL
         );
         RAISE EXCEPTION 'TEST_FAILED: HTTP destination unexpectedly accepted';
     EXCEPTION
@@ -78,7 +82,9 @@ BEGIN
             'https://127.0.0.1',
             '127.0.0.1',
             5,
-            1
+            1,
+            NULL,
+            NULL
         );
         RAISE EXCEPTION 'TEST_FAILED: private IPv4 destination unexpectedly accepted';
     EXCEPTION
@@ -88,13 +94,30 @@ BEGIN
             END IF;
     END;
 
-    -- Server-authoritative domain and reservation.
+    -- Server-authoritative domain and reservation. The local test supplies
+    -- a consumed-on-use preflight token with the referral metadata required by
+    -- the production campaign INSERT trigger.
+    v_token_hash := encode(extensions.digest(v_token, 'sha256'), 'hex');
+    INSERT INTO private.campaign_preflight_tokens (
+        token_hash, user_id, source_url, normalized_url, domain, final_url,
+        http_status, redirect_count, response_ms, content_type, content_length,
+        viewer_compatibility, quality_score, diagnostics, created_at, expires_at
+    ) VALUES (
+        v_token_hash, v_uid,
+        'https://example.com/path', 'https://example.com/path', 'example.com', 'https://example.com/path',
+        200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+        jsonb_build_object('referral_site_key', 'example.com'),
+        clock_timestamp(), clock_timestamp() + interval '10 minutes'
+    );
+
     SELECT public.create_campaign(
         'https://example.com/path',
         'https://example.com/path',
         'attacker.invalid',
         5,
-        1
+        1,
+        NULL,
+        v_token
     )
     INTO v_create;
 
