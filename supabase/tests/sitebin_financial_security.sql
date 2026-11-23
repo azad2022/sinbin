@@ -1,18 +1,21 @@
--- SiteBin real PostgreSQL integration smoke tests.
--- Run only against a disposable/transactional test context.
--- This file intentionally uses BEGIN/ROLLBACK and never creates permanent test data.
+-- SiteBin financial/security integration smoke test.
+-- Isolated account + preflight token; all mutations are rolled back.
 
 BEGIN;
 
-DO $$
+DO $test$
 DECLARE
     v_tag text := substr(md5(clock_timestamp()::text || random()::text), 1, 10);
     v_uid uuid := gen_random_uuid();
-    v_before_available bigint;
-    v_before_reserved bigint;
+    v_url text := 'https://s2-fin-' || v_tag || '.example.com/path';
+    v_domain text := 's2-fin-' || v_tag || '.example.com';
+    v_token text := 's2-financial-' || substr(md5(clock_timestamp()::text),1,24);
+    v_token_hash text := encode(extensions.digest(v_token, 'sha256'), 'hex');
     v_create json;
     v_campaign record;
     v_campaign_id uuid;
+    v_before_available bigint;
+    v_before_reserved bigint;
 BEGIN
     INSERT INTO auth.users(
         id, aud, role, email, email_confirmed_at,
@@ -35,13 +38,8 @@ BEGIN
         clock_timestamp(), clock_timestamp()
     );
 
-    SELECT available_coins, reserved_coins
-      INTO v_before_available, v_before_reserved
-    FROM public.profiles
-    WHERE id = v_uid;
-
-    -- Anonymous users use the authenticated Postgres role, so the server must
-    -- explicitly reject them for financial SiteBin operations.
+    -- Anonymous JWTs are rejected by the mutation itself even when Postgres role
+    -- is authenticated. No campaign inventory is needed for this auth check.
     PERFORM set_config(
         'request.jwt.claims',
         json_build_object(
@@ -55,7 +53,7 @@ BEGIN
 
     BEGIN
         PERFORM public.request_view_session();
-        RAISE EXCEPTION 'TEST_FAILED: anonymous request unexpectedly succeeded';
+        RAISE EXCEPTION 'FINANCIAL_FAIL: anonymous request unexpectedly succeeded';
     EXCEPTION
         WHEN OTHERS THEN
             IF position('UNAUTHORIZED: Anonymous authentication is not allowed' IN SQLERRM) = 0 THEN
@@ -74,21 +72,21 @@ BEGIN
     );
     PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
-    -- RPC-level destination validation.
+    -- URL validation happens before a valid campaign can be created.
     BEGIN
         PERFORM public.create_campaign(
             'http://example.com',
             'http://example.com',
             'example.com',
             5,
-            1
+            1,
+            NULL,
+            NULL
         );
-        RAISE EXCEPTION 'TEST_FAILED: HTTP destination unexpectedly accepted';
+        RAISE EXCEPTION 'FINANCIAL_FAIL: HTTP destination unexpectedly accepted';
     EXCEPTION
         WHEN OTHERS THEN
-            IF position('INVALID_URL:' IN SQLERRM) = 0 THEN
-                RAISE;
-            END IF;
+            IF position('INVALID_URL:' IN SQLERRM) = 0 THEN RAISE; END IF;
     END;
 
     BEGIN
@@ -97,78 +95,106 @@ BEGIN
             'https://127.0.0.1',
             '127.0.0.1',
             5,
-            1
+            1,
+            NULL,
+            NULL
         );
-        RAISE EXCEPTION 'TEST_FAILED: private IPv4 destination unexpectedly accepted';
+        RAISE EXCEPTION 'FINANCIAL_FAIL: private IPv4 destination unexpectedly accepted';
     EXCEPTION
         WHEN OTHERS THEN
-            IF position('INVALID_URL:' IN SQLERRM) = 0 THEN
-                RAISE;
-            END IF;
+            IF position('INVALID_URL:' IN SQLERRM) = 0 THEN RAISE; END IF;
     END;
 
-    -- Server-authoritative domain and reservation.
+    SELECT available_coins, reserved_coins
+      INTO v_before_available, v_before_reserved
+    FROM public.profiles
+    WHERE id = v_uid
+    FOR UPDATE;
+
+    INSERT INTO private.campaign_preflight_tokens(
+        token_hash, user_id, source_url, normalized_url, domain, final_url,
+        http_status, redirect_count, response_ms, content_type, content_length,
+        viewer_compatibility, quality_score, diagnostics, created_at, expires_at
+    )
+    VALUES(
+        v_token_hash, v_uid, v_url, v_url, v_domain, v_url,
+        200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+        jsonb_build_object('referral_site_key', v_domain),
+        clock_timestamp(), clock_timestamp() + INTERVAL '10 minutes'
+    );
+
     SELECT public.create_campaign(
-        'https://example.com/path',
-        'https://example.com/path',
+        v_url,
+        v_url,
         'attacker.invalid',
         5,
-        1
-    )
-    INTO v_create;
+        1,
+        NULL,
+        v_token
+    ) INTO v_create;
 
     v_campaign_id := (v_create->>'id')::uuid;
 
     SELECT * INTO v_campaign
-      FROM public.campaigns
-     WHERE id = v_campaign_id;
+    FROM public.campaigns
+    WHERE id = v_campaign_id;
 
-    IF v_campaign.domain <> 'example.com'
+    IF v_campaign.domain <> v_domain
        OR v_campaign.total_budget <> 5
        OR v_campaign.spent_budget <> 0
        OR v_campaign.reserved_budget <> 5
        OR v_campaign.refunded_budget <> 0
        OR v_campaign.status <> 'ACTIVE' THEN
-        RAISE EXCEPTION 'TEST_FAILED: reservation/domain invariant mismatch';
+        RAISE EXCEPTION 'FINANCIAL_FAIL: authoritative domain/budget reservation mismatch';
     END IF;
 
-    -- Cancellation must move the remaining reservation into explicit refund
-    -- accounting and restore the owner's spendable/reserved balances.
+    SELECT available_coins, reserved_coins
+      INTO v_campaign.owner_available, v_campaign.owner_reserved
+    FROM public.profiles
+    WHERE id = v_uid;
+
+    IF v_campaign.owner_available <> v_before_available - 5
+       OR v_campaign.owner_reserved <> v_before_reserved + 5 THEN
+        RAISE EXCEPTION 'FINANCIAL_FAIL: campaign creation wallet reservation is wrong';
+    END IF;
+
     PERFORM public.cancel_campaign(v_campaign_id);
 
     SELECT * INTO v_campaign
-      FROM public.campaigns
-     WHERE id = v_campaign_id;
+    FROM public.campaigns
+    WHERE id = v_campaign_id;
 
     IF v_campaign.status <> 'CANCELLED'
        OR v_campaign.spent_budget <> 0
        OR v_campaign.reserved_budget <> 0
        OR v_campaign.refunded_budget <> 5
        OR v_campaign.spent_budget + v_campaign.reserved_budget + v_campaign.refunded_budget <> v_campaign.total_budget THEN
-        RAISE EXCEPTION 'TEST_FAILED: refund invariant mismatch';
+        RAISE EXCEPTION 'FINANCIAL_FAIL: campaign refund accounting mismatch';
     END IF;
 
     IF NOT EXISTS (
         SELECT 1
-          FROM public.coin_ledger
-         WHERE user_id = v_uid
-           AND transaction_type = 'CAMPAIGN_REFUND'
-           AND reference_id = v_campaign_id::text
-           AND amount = 5
+        FROM public.coin_ledger
+        WHERE user_id = v_uid
+          AND transaction_type = 'CAMPAIGN_REFUND'
+          AND reference_id = v_campaign_id::text
+          AND amount = 5
     ) THEN
-        RAISE EXCEPTION 'TEST_FAILED: refund ledger entry missing';
+        RAISE EXCEPTION 'FINANCIAL_FAIL: refund ledger entry missing';
     END IF;
 
-    PERFORM 1
-      FROM public.profiles
-     WHERE id = v_uid
-       AND available_coins = v_before_available
-       AND reserved_coins = v_before_reserved;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'TEST_FAILED: owner balances did not return to baseline';
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.profiles
+        WHERE id = v_uid
+          AND available_coins = v_before_available
+          AND reserved_coins = v_before_reserved
+    ) THEN
+        RAISE EXCEPTION 'FINANCIAL_FAIL: owner balances did not return to baseline';
     END IF;
+
+    RAISE NOTICE 'PASS: auth, URL validation, authoritative campaign budget reservation and refund invariants';
 END;
-$$;
+$test$;
 
 ROLLBACK;
