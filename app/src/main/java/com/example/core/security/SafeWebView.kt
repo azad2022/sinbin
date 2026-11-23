@@ -237,33 +237,38 @@ fun SafeWebView(
                 val generation = pageLoadGeneration
                 contentReadyPending = true
                 val requestId = ++visualStateRequestId
-                targetView.postVisualStateCallback(requestId) {
-                    if (generation != pageLoadGeneration || targetView !== webViewRef) {
-                        return@postVisualStateCallback
-                    }
-                    contentReadyPending = false
-                    if (mainFrameLoadFailed) return@postVisualStateCallback
-                    if (expectedOrigin?.matches(targetView.url) != true) {
-                        reportMainFrameFailure("مقصد وب‌سایت پیش از نمایش نهایی تغییر کرد.")
-                        return@postVisualStateCallback
-                    }
+                targetView.postVisualStateCallback(
+                    requestId,
+                    object : WebView.VisualStateCallback() {
+                        override fun onComplete(requestId: Long) {
+                            if (generation != pageLoadGeneration || targetView !== webViewRef) {
+                                return
+                            }
+                            contentReadyPending = false
+                            if (mainFrameLoadFailed) return
+                            if (expectedOrigin?.matches(targetView.url) != true) {
+                                reportMainFrameFailure("مقصد وب‌سایت پیش از نمایش نهایی تغییر کرد.")
+                                return
+                            }
 
-                    contentReadyReported = true
-                    cancelPublicChannelReadyCheck()
-                    val elapsedMs = if (currentPageStartedAt > 0L) {
-                        SystemClock.elapsedRealtime() - currentPageStartedAt
-                    } else {
-                        -1L
+                            contentReadyReported = true
+                            cancelPublicChannelReadyCheck()
+                            val elapsedMs = if (currentPageStartedAt > 0L) {
+                                SystemClock.elapsedRealtime() - currentPageStartedAt
+                            } else {
+                                -1L
+                            }
+                            if (BuildConfig.DEBUG) {
+                                val host = expectedOrigin.host
+                                android.util.Log.d(
+                                    "SiteBinPerf",
+                                    "operation=webview_visual_state_ready host=$host elapsedMs=$elapsedMs"
+                                )
+                            }
+                            currentOnPageContentReady()
+                        }
                     }
-                    if (BuildConfig.DEBUG) {
-                        val host = expectedOrigin.host
-                        android.util.Log.d(
-                            "SiteBinPerf",
-                            "operation=webview_visual_state_ready host=$host elapsedMs=$elapsedMs"
-                        )
-                    }
-                    currentOnPageContentReady()
-                }
+                )
             }
 
             /**
