@@ -5,6 +5,7 @@ on:
     branches:
       - db/daily-sequential-featured-lifecycle-20261123
       - db/session2-finalize-20261123
+      - db/session2-verified-20261123
       - android/session3-rolling30-webview-20261123
     paths:
       - "supabase/**"
@@ -103,22 +104,91 @@ jobs:
         run: |
           set -euo pipefail
           DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
-          if [[ -z "$DB_URL" ]]; then
-            echo "DB_URL was not reported by the local Supabase stack." >&2
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
             exit 1
           fi
           # This connects only to the local disposable DB. The script sources
           # the same versioned SQL migration that records the prerequisite.
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/bootstrap_platform.sql
 
-      - name: Replay every versioned migration locally
+      - name: Replay the clean baseline up to the corrupted historical migration
         shell: bash
         run: |
           set -euo pipefail
-          # Explicit local target only. No project link, remote DB URL, access
-          # token, production password, or production connection is configured.
+          later_dir="$RUNNER_TEMP/sitebin-later-migrations"
+          mkdir -p "$later_dir"
+          shopt -s nullglob
+          for migration in supabase/migrations/*.sql; do
+            filename="${migration##*/}"
+            version="${filename%%_*}"
+            if [[ "$version" > "20261003165012" ]]; then
+              mv "$migration" "$later_dir/"
+            fi
+          done
+          echo "SITEBIN_LATER_MIGRATIONS=$later_dir" >> "$GITHUB_ENV"
+          # Only migrations before the already-applied but corrupted historical
+          # version are replayed in this stage.
           supabase migration up --local
+
+      - name: Restore the already-applied historical migration from its recorded payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
+            exit 1
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/restore_applied_20261003170402.sql
+          # The historical migration was staged with the other later files so
+          # the baseline replay could not execute its contaminated source file.
+          # Return only its original path before migration repair: the CLI requires
+          # a matching migration filename even though the SQL was restored above.
+          historical_migration="$SITEBIN_LATER_MIGRATIONS/20261003170402_sitebin_financial_refund_and_auth_hardening.sql"
+          if [[ ! -s "$historical_migration" ]]; then
+            echo "Expected exactly the staged historical migration: $historical_migration" >&2
+            exit 1
+          fi
+          mv "$historical_migration" supabase/migrations/
+          test -s supabase/migrations/20261003170402_sitebin_financial_refund_and_auth_hardening.sql
+
+          # This is local-only bookkeeping: recovered SQL is already applied and
+          # the original historical version is now present for the CLI's file check.
+          supabase migration repair 20261003170402 --status applied --local
+
+      - name: Seed historical demo-owner prerequisites in disposable database only
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
+            exit 1
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_owners.sql
+
+      - name: Replay all remaining forward migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for migration in "$SITEBIN_LATER_MIGRATIONS"/*.sql; do
+            mv "$migration" supabase/migrations/
+          done
+          supabase migration up --local --include-all
           supabase migration list --local
+
+      - name: Seed the historical demo campaign pool in disposable database only
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to seed demo campaigns outside the local disposable Supabase database." >&2
+            exit 1
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_pool.sql
 
       - name: Run every isolated SQL acceptance suite and concurrency test
         shell: bash
@@ -126,8 +196,8 @@ jobs:
           set -uo pipefail
 
           DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
-          if [[ -z "$DB_URL" ]]; then
-            echo "DB_URL was not reported by the local Supabase stack." >&2
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
             exit 1
           fi
 
