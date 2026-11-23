@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicReference
 class SafeWebViewPostOriginGuardTest {
 
     @Test
-    fun crossOriginPostFormCannotNavigateTheTopLevelDocument() {
+    fun directAndSubmitterOverriddenCrossOriginPostFormsAreBlocked() {
         assumeTrue(
             "The emulator WebView must support document-start JavaScript.",
             WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
@@ -44,8 +44,8 @@ class SafeWebViewPostOriginGuardTest {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         view?.evaluateJavascript(
                             "location.origin + '|' + " +
-                                "document.body.getAttribute('data-post-attempted') + '|' + " +
-                                "document.body.getAttribute('data-origin-after-submit')"
+                                "document.body.getAttribute('data-direct-submit-blocked') + '|' + " +
+                                "document.body.getAttribute('data-submitter-override-blocked')"
                         ) { value ->
                             result.set(value)
                             completed.countDown()
@@ -59,13 +59,28 @@ class SafeWebViewPostOriginGuardTest {
                     <head><meta charset="utf-8"></head>
                     <body>
                     <script>
-                        const form = document.createElement('form');
-                        form.method = 'POST';
-                        form.action = 'https://attacker.invalid/collect';
-                        document.body.appendChild(form);
-                        document.body.setAttribute('data-post-attempted', 'true');
-                        form.submit();
-                        document.body.setAttribute('data-origin-after-submit', location.origin);
+                        const directForm = document.createElement('form');
+                        directForm.method = 'POST';
+                        directForm.action = 'https://attacker.invalid/direct';
+                        document.body.appendChild(directForm);
+                        directForm.submit();
+                        document.body.setAttribute('data-direct-submit-blocked', String(location.origin === 'https://sitebin.test'));
+
+                        const submitterForm = document.createElement('form');
+                        submitterForm.method = 'POST';
+                        submitterForm.action = 'https://sitebin.test/same-origin-default';
+                        const submitter = document.createElement('button');
+                        submitter.type = 'submit';
+                        submitter.setAttribute('formaction', 'https://attacker.invalid/submitter-override');
+                        submitterForm.appendChild(submitter);
+                        document.body.appendChild(submitterForm);
+
+                        let submitEventReachedPage = false;
+                        document.addEventListener('submit', function () {
+                            submitEventReachedPage = true;
+                        }, false);
+                        submitterForm.requestSubmit(submitter);
+                        document.body.setAttribute('data-submitter-override-blocked', String(!submitEventReachedPage));
                     </script>
                     </body>
                     </html>
@@ -82,9 +97,12 @@ class SafeWebViewPostOriginGuardTest {
         }
 
         try {
-            assertTrue("WebView did not finish the local test page.", completed.await(10, TimeUnit.SECONDS))
+            assertTrue(
+                "WebView did not finish the local test page.",
+                completed.await(10, TimeUnit.SECONDS)
+            )
             assertEquals(
-                "\"https://sitebin.test|true|https://sitebin.test\"",
+                "\\"https://sitebin.test|true|true\\"",
                 result.get()
             )
         } finally {

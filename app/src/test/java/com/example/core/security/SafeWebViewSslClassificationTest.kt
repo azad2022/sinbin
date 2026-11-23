@@ -97,11 +97,23 @@ class SafeWebViewSslClassificationTest {
     }
 
     @Test
+    fun javascriptStringLiteralEscapesQuotesControlsAndLineSeparators() {
+        assertEquals(
+            "\"a\\\\b\\\"c\\n\\r\\t\\u2028\\u2029\"",
+            javascriptStringLiteral("a\\b\"c\n\r\t\u2028\u2029")
+        )
+        assertEquals("\"\\u0001\"", javascriptStringLiteral("\u0001"))
+    }
+
+    @Test
     fun postFormGuardIsBoundToExpectedOriginAndBlocksCrossOriginSubmissions() {
         val script = buildMainFrameFormOriginGuard("https://example.com/start")
 
-        assertTrue(script.contains("https://example.com"))
+        assertTrue(script.contains("\"https://example.com\""))
         assertTrue(script.contains("HTMLFormElement.prototype"))
+        assertTrue(script.contains("event.submitter"))
+        assertTrue(script.contains("formAction"))
+        assertTrue(script.contains("formTarget"))
         assertTrue(script.contains("preventDefault"))
         assertTrue(script.contains("stopImmediatePropagation"))
         assertTrue(script.contains("nativeSubmit.call(this)"))

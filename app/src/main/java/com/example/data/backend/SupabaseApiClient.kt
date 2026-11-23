@@ -56,6 +56,17 @@ class RateLimitException(
     message: String
 ) : IOException(message)
 
+class ViewSessionExpiredException : IOException(
+    "مهلت سشن بازدید در سرور تمام شده است؛ این بازدید ثبت نشده. برای ادامه یک بازدید جدید شروع کنید."
+)
+
+internal fun viewCompletionFailure(errorCode: String?): IOException =
+    if (errorCode?.trim() == "SESSION_EXPIRED") {
+        ViewSessionExpiredException()
+    } else {
+        IOException("خطا در تایید سرور برای بازدید.")
+    }
+
 /**
  * Production-Grade Supabase Client for SiteBin.
  *
@@ -983,7 +994,7 @@ class SupabaseApiClient(
                     )
                 )
             } else {
-                Result.failure(IllegalStateException("خطا در تایید سرور برای بازدید."))
+                Result.failure(viewCompletionFailure(res.optString("error_code").takeIf { it.isNotBlank() }))
             }
         } catch (e: Exception) {
             Result.failure(e)

@@ -3,7 +3,6 @@ package com.example.core.security
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import java.net.URI
-import org.json.JSONObject
 import android.net.http.SslError
 import android.os.Build
 import android.os.Handler
@@ -115,6 +114,32 @@ internal data class WebOrigin(
 internal fun isSameWebOrigin(expectedUrl: String?, candidateUrl: String?): Boolean =
     WebOrigin.parse(expectedUrl)?.matches(candidateUrl) == true
 
+internal fun javascriptStringLiteral(value: String): String = buildString(value.length + 2) {
+    append('"')
+    value.forEach { character ->
+        when (character) {
+            '\\' -> append("\\\\")
+            '"' -> append("\\\"")
+            '\b' -> append("\\b")
+            '\u000C' -> append("\\f")
+            '\n' -> append("\\n")
+            '\r' -> append("\\r")
+            '\t' -> append("\\t")
+            '\u2028' -> append("\\u2028")
+            '\u2029' -> append("\\u2029")
+            else -> {
+                if (character.code < 0x20) {
+                    append("\\u")
+                    append(character.code.toString(16).padStart(4, '0'))
+                } else {
+                    append(character)
+                }
+            }
+        }
+    }
+    append('"')
+}
+
 /**
  * Runs at document-start in every frame. Cross-origin form submissions that could
  * navigate the top-level browsing context are blocked before page scripts execute.
@@ -124,13 +149,13 @@ internal fun buildMainFrameFormOriginGuard(expectedOriginUrl: String): String {
     val origin = requireNotNull(WebOrigin.parse(expectedOriginUrl)) {
         "A valid HTTPS origin is required for the WebView navigation guard."
     }
-    val encodedOrigin = JSONObject.quote(origin.serialized)
+    val encodedOrigin = javascriptStringLiteral(origin.serialized)
     return """
         (function () {
             'use strict';
             const expectedOrigin = $encodedOrigin;
-            const isTopNavigationTarget = function (form) {
-                const target = String(form.target || '_self').toLowerCase();
+            const isTopNavigationTarget = function (targetValue) {
+                const target = String(targetValue || '_self').trim().toLowerCase();
                 return window.top === window ||
                     target === '_top' ||
                     target === '_parent' ||
@@ -143,12 +168,18 @@ internal fun buildMainFrameFormOriginGuard(expectedOriginUrl: String): String {
                     return false;
                 }
             };
-            const mustBlock = function (form) {
-                return isTopNavigationTarget(form) && !isAllowedAction(form.action);
+            const mustBlock = function (form, submitter) {
+                let action = form.action;
+                let target = form.target;
+                if (submitter && typeof submitter.hasAttribute === 'function') {
+                    if (submitter.hasAttribute('formaction')) action = submitter.formAction;
+                    if (submitter.hasAttribute('formtarget')) target = submitter.formTarget;
+                }
+                return isTopNavigationTarget(target) && !isAllowedAction(action);
             };
             document.addEventListener('submit', function (event) {
                 const form = event.target;
-                if (form instanceof HTMLFormElement && mustBlock(form)) {
+                if (form instanceof HTMLFormElement && mustBlock(form, event.submitter)) {
                     event.preventDefault();
                     event.stopImmediatePropagation();
                 }
@@ -160,7 +191,7 @@ internal fun buildMainFrameFormOriginGuard(expectedOriginUrl: String): String {
                 enumerable: false,
                 writable: false,
                 value: function () {
-                    if (mustBlock(this)) return;
+                    if (mustBlock(this, null)) return;
                     return nativeSubmit.call(this);
                 }
             });
