@@ -117,7 +117,7 @@ BEGIN
         v_token_hash, v_uid,
         'https://example.com/', 'https://example.com/', 'example.com', 'https://example.com/',
         200, 0, 120, 'text/html', 4096,
-        'COMPATIBLE', 95, '[{"code":"TEST","severity":"INFO","message":"integration"}]'::jsonb,
+        'COMPATIBLE', 95, jsonb_build_object('referral_site_key', 'example.com'),
         clock_timestamp(), clock_timestamp() + interval '10 minutes'
     );
 
