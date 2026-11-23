@@ -11,6 +11,8 @@ DECLARE
     v_domain text := 's2-fin-' || v_tag || '.example.com';
     v_token text := 's2-financial-' || substr(md5(clock_timestamp()::text),1,24);
     v_token_hash text := encode(extensions.digest(v_token, 'sha256'), 'hex');
+    v_ip_token text;
+    v_ip_token_hash text;
     v_create json;
     v_campaign record;
     v_campaign_id uuid;
@@ -74,22 +76,48 @@ BEGIN
     );
     PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
-    -- URL validation happens before a valid campaign can be created.
+    -- The preflight-token table itself must reject non-HTTPS URLs. The
+    -- create_campaign RPC intentionally checks token presence/ownership before
+    -- inspecting the URL, so a token-less HTTP call cannot reach its URL guard.
     BEGIN
-        PERFORM public.create_campaign(
-            'http://example.com',
-            'http://example.com',
-            'example.com',
-            5,
-            1,
-            NULL,
-            NULL
+        INSERT INTO private.campaign_preflight_tokens(
+            token_hash, user_id, source_url, normalized_url, domain, final_url,
+            http_status, redirect_count, response_ms, content_type, content_length,
+            viewer_compatibility, quality_score, diagnostics, created_at, expires_at,
+            referral_site_key
+        )
+        VALUES(
+            encode(extensions.digest('s2-financial-http-' || v_tag, 'sha256'), 'hex'),
+            v_uid, 'http://example.com', 'http://example.com', 'example.com',
+            'http://example.com', 200, 0, 100, 'text/html', 2048,
+            'COMPATIBLE', 95, '{}'::jsonb,
+            clock_timestamp(), clock_timestamp() + INTERVAL '10 minutes',
+            'example.com'
         );
-        RAISE EXCEPTION 'FINANCIAL_FAIL: HTTP destination unexpectedly accepted';
+        RAISE EXCEPTION 'FINANCIAL_FAIL: HTTP preflight token was stored';
     EXCEPTION
-        WHEN OTHERS THEN
-            IF position('INVALID_URL:' IN SQLERRM) = 0 THEN RAISE; END IF;
+        WHEN check_violation THEN
+            NULL;
     END;
+
+    -- Seed a structurally valid, one-use token to exercise the database's
+    -- defense-in-depth rejection of private IP destinations after preflight.
+    v_ip_token := 's2-financial-ip-' || substr(md5(clock_timestamp()::text), 1, 24);
+    v_ip_token_hash := encode(extensions.digest(v_ip_token, 'sha256'), 'hex');
+
+    INSERT INTO private.campaign_preflight_tokens(
+        token_hash, user_id, source_url, normalized_url, domain, final_url,
+        http_status, redirect_count, response_ms, content_type, content_length,
+        viewer_compatibility, quality_score, diagnostics, created_at, expires_at,
+        referral_site_key
+    )
+    VALUES(
+        v_ip_token_hash, v_uid, 'https://127.0.0.1', 'https://127.0.0.1',
+        '127.0.0.1', 'https://127.0.0.1', 200, 0, 100, 'text/html', 2048,
+        'COMPATIBLE', 95, jsonb_build_object('referral_site_key', NULL),
+        clock_timestamp(), clock_timestamp() + INTERVAL '10 minutes',
+        NULL
+    );
 
     BEGIN
         PERFORM public.create_campaign(
@@ -99,7 +127,7 @@ BEGIN
             5,
             1,
             NULL,
-            NULL
+            v_ip_token
         );
         RAISE EXCEPTION 'FINANCIAL_FAIL: private IPv4 destination unexpectedly accepted';
     EXCEPTION
