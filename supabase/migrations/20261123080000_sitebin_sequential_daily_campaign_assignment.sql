@@ -748,10 +748,14 @@ BEGIN
         RETURN FALSE;
     END IF;
 
-    IF v_session.expires_at <= pg_catalog.clock_timestamp() THEN
+    -- NULL or elapsed expiry is fail-closed. Recheck in the UPDATE predicate
+    -- as well, so the boundary remains safe if the TTL elapses after the SELECT.
+    IF v_session.expires_at IS NULL
+       OR v_session.expires_at <= pg_catalog.clock_timestamp() THEN
         UPDATE public.view_sessions
         SET status = 'EXPIRED'
-        WHERE id = v_session.id;
+        WHERE id = v_session.id
+          AND status = 'INITIALIZED';
         RETURN FALSE;
     END IF;
 
@@ -761,9 +765,22 @@ BEGIN
     WHERE id = v_session.id
       AND viewer_id = v_uid
       AND status = 'INITIALIZED'
+      AND expires_at IS NOT NULL
       AND expires_at > pg_catalog.clock_timestamp();
 
-    RETURN FOUND;
+    IF FOUND THEN
+        RETURN TRUE;
+    END IF;
+
+    -- If the deadline elapsed between the read and update, settle the session
+    -- as expired and let the assignment-state trigger release its reservation.
+    UPDATE public.view_sessions
+    SET status = 'EXPIRED'
+    WHERE id = v_session.id
+      AND status = 'INITIALIZED'
+      AND (expires_at IS NULL OR expires_at <= pg_catalog.clock_timestamp());
+
+    RETURN FALSE;
 END;
 $function$;
 
