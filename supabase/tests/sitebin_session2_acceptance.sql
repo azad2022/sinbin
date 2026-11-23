@@ -58,6 +58,7 @@ DECLARE
     v_tie_b uuid := gen_random_uuid();
     v_ttl_viewer uuid := gen_random_uuid();
     v_ttl_owner uuid := gen_random_uuid();
+    v_delete_viewer uuid := gen_random_uuid();
     v_all_users uuid[];
     v_uid uuid;
     v_handle text;
@@ -100,7 +101,7 @@ BEGIN
         || ARRAY[
             v_fallback_owner, v_cap_viewer_a, v_cap_viewer_b, v_cap_owner,
             v_rolling_viewer, v_boundary_viewer, v_tie_a, v_tie_b,
-            v_ttl_viewer, v_ttl_owner
+            v_ttl_viewer, v_ttl_owner, v_delete_viewer
         ];
 
     -- Isolated identities make the suite deterministic on a completely empty DB.
@@ -376,6 +377,55 @@ BEGIN
     END IF;
 
     PERFORM public.cancel_view_session(v_session_id);
+
+    -- The ordinary fallback must not reselect a ranked owner already selected
+    -- earlier today, even after its previous Session is no longer recent.
+    UPDATE public.campaigns
+    SET status = 'PAUSED'
+    WHERE id IN (SELECT campaign_id FROM _s2_campaigns);
+
+    UPDATE public.campaigns
+    SET status = 'ACTIVE'
+    WHERE id = (
+        SELECT campaign_id
+        FROM _s2_campaigns
+        WHERE owner_id = v_rank_owners[2]
+          AND purpose = 'ranked'
+        LIMIT 1
+    );
+
+    v_result := public.request_view_session();
+    IF v_result IS NOT NULL THEN
+        RAISE EXCEPTION
+            'SESSION2_FAIL: ordinary fallback reselected a same-day featured owner: %',
+            v_result;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM private.daily_featured_campaign_assignment
+        WHERE viewer_id = v_viewer
+          AND day_utc = v_day_utc
+          AND owner_id = v_rank_owners[2]
+    ) THEN
+        RAISE EXCEPTION
+            'SESSION2_FAIL: selected-owner audit was lost before profile deletion';
+    END IF;
+
+    -- Deleting the selected owner's Profile must not erase the append-only
+    -- assignment snapshot or make that owner eligible again for this day.
+    DELETE FROM public.profiles WHERE id = v_rank_owners[2];
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM private.daily_featured_campaign_assignment
+        WHERE viewer_id = v_viewer
+          AND day_utc = v_day_utc
+          AND owner_id = v_rank_owners[2]
+    ) THEN
+        RAISE EXCEPTION
+            'SESSION2_FAIL: deleting owner Profile erased its assignment audit';
+    END IF;
 
     -- Capacity and completion idempotency use one remaining active campaign.
     UPDATE public.campaigns
@@ -776,7 +826,97 @@ BEGIN
         RAISE EXCEPTION 'SESSION2_FAIL: Rolling30 view is not SECURITY INVOKER';
     END IF;
 
-    RAISE NOTICE 'PASS: Session 2 sequential allocation, all-rank scan, fallback, TTL, capacity, completion idempotency, Rolling30, UTC daily boundary, tie order and RLS';
+    -- A physical Session delete must leave the audit row and mark its reservation
+    -- RELEASED before the FK nulls session_id.
+    INSERT INTO public.view_sessions(
+        campaign_id,
+        viewer_id,
+        required_duration_seconds,
+        reward_coins,
+        status,
+        started_at,
+        created_at,
+        leaderboard_feature_week,
+        leaderboard_feature_owner_id,
+        leaderboard_feature_rank
+    ) VALUES (
+        v_campaign_id,
+        v_delete_viewer,
+        5,
+        3,
+        'INITIALIZED',
+        pg_catalog.clock_timestamp(),
+        pg_catalog.clock_timestamp(),
+        NULL,
+        v_ttl_owner,
+        1
+    )
+    RETURNING id INTO v_session_id;
+
+    INSERT INTO private.daily_featured_campaign_assignment(
+        viewer_id,
+        day_utc,
+        request_position,
+        owner_id,
+        campaign_id,
+        leaderboard_rank,
+        leaderboard_completed_views,
+        leaderboard_user_handle,
+        leaderboard_as_of,
+        session_id,
+        reservation_status,
+        created_at,
+        expires_at,
+        updated_at
+    ) VALUES (
+        v_delete_viewer,
+        v_day_utc,
+        1,
+        v_ttl_owner,
+        v_campaign_id,
+        1,
+        1900,
+        (SELECT user_handle FROM public.profiles WHERE id = v_ttl_owner),
+        pg_catalog.clock_timestamp(),
+        v_session_id,
+        'RESERVED',
+        pg_catalog.clock_timestamp(),
+        pg_catalog.clock_timestamp() + INTERVAL '3 minutes',
+        pg_catalog.clock_timestamp()
+    );
+
+    DELETE FROM public.view_sessions WHERE id = v_session_id;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM private.daily_featured_campaign_assignment
+        WHERE viewer_id = v_delete_viewer
+          AND day_utc = v_day_utc
+          AND owner_id = v_ttl_owner
+          AND reservation_status = 'RELEASED'
+          AND session_id IS NULL
+    ) THEN
+        RAISE EXCEPTION
+            'SESSION2_FAIL: deleting Session did not preserve and release its audit row';
+    END IF;
+
+    DELETE FROM public.profiles WHERE id = v_ttl_owner;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM private.daily_featured_campaign_assignment
+        WHERE viewer_id = v_delete_viewer
+          AND day_utc = v_day_utc
+          AND owner_id = v_ttl_owner
+          AND reservation_status = 'RELEASED'
+          AND campaign_id IS NULL
+          AND session_id IS NULL
+    ) THEN
+        RAISE EXCEPTION
+            'SESSION2_FAIL: deleting owner Profile or Campaign erased assignment evidence';
+    END IF;
+
+    RAISE NOTICE 'PASS: Session 2 sequential allocation, all-rank scan, same-day no-repeat including fallback, audit retention, session-delete release, TTL, capacity, completion idempotency, Rolling30, UTC daily boundary, tie order and RLS';
 END;
 $test$;
 
