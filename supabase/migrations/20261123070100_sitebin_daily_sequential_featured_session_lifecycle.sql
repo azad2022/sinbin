@@ -30,8 +30,9 @@ CREATE TABLE IF NOT EXISTS private.daily_featured_campaign_assignment (
         REFERENCES public.profiles(id) ON DELETE CASCADE,
     day_utc date NOT NULL,
     request_position bigint NOT NULL CHECK (request_position > 0),
-    owner_id uuid NOT NULL
-        REFERENCES public.profiles(id) ON DELETE CASCADE,
+    -- Keep the selected owner's UUID as immutable audit evidence even after
+    -- profile deletion; this column intentionally has no profile FK.
+    owner_id uuid NOT NULL,
     campaign_id uuid NULL
         REFERENCES public.campaigns(id) ON DELETE SET NULL,
     leaderboard_rank integer NOT NULL CHECK (leaderboard_rank > 0),
@@ -113,7 +114,8 @@ CREATE OR REPLACE FUNCTION private.lock_eligible_view_campaign(
     p_use_random_pivot boolean,
     p_exclude_recent_owner boolean,
     p_featured_order boolean,
-    p_expiration_cutoff timestamptz
+    p_expiration_cutoff timestamptz,
+    p_day_utc date
 )
 RETURNS public.campaigns
 LANGUAGE plpgsql
@@ -126,7 +128,7 @@ DECLARE
     v_active_reservations bigint;
     v_attempted_ids uuid[] := ARRAY[]::uuid[];
 BEGIN
-    IF p_viewer_id IS NULL OR p_expiration_cutoff IS NULL THEN
+    IF p_viewer_id IS NULL OR p_expiration_cutoff IS NULL OR p_day_utc IS NULL THEN
         RETURN NULL;
     END IF;
 
@@ -144,6 +146,15 @@ BEGIN
               OR (c.resolver_status = 'READY' AND c.resolved_target_url IS NOT NULL)
           )
           AND (NOT p_use_random_pivot OR c.id >= p_random_pivot)
+          -- A daily selected owner is excluded from both ranked and ordinary
+          -- fallback distribution for the entire UTC day, not just two minutes.
+          AND NOT EXISTS (
+              SELECT 1
+              FROM private.daily_featured_campaign_assignment assigned_today
+              WHERE assigned_today.viewer_id = p_viewer_id
+                AND assigned_today.day_utc = p_day_utc
+                AND assigned_today.owner_id = c.owner_id
+          )
           AND (
               NOT p_exclude_recent_owner
               OR NOT EXISTS (
@@ -210,7 +221,7 @@ END;
 $function$;
 
 REVOKE ALL ON FUNCTION private.lock_eligible_view_campaign(
-    uuid, uuid, uuid, boolean, boolean, boolean, timestamptz
+    uuid, uuid, uuid, boolean, boolean, boolean, timestamptz, date
 ) FROM PUBLIC, anon, authenticated, authenticator, service_role;
 
 -- Status transitions are the single source of truth for reservation lifecycle.
@@ -261,7 +272,7 @@ FOR EACH ROW
 EXECUTE FUNCTION private.sync_daily_featured_assignment_reservation();
 
 CREATE TRIGGER trg_sync_daily_featured_assignment_reservation_delete
-AFTER DELETE ON public.view_sessions
+BEFORE DELETE ON public.view_sessions
 FOR EACH ROW
 EXECUTE FUNCTION private.sync_daily_featured_assignment_reservation();
 
@@ -523,7 +534,8 @@ BEGIN
                 false,
                 true,
                 true,
-                v_expiration_cutoff
+                v_expiration_cutoff,
+                v_day_utc
             );
 
             IF v_campaign.id IS NULL THEN
@@ -641,25 +653,25 @@ BEGIN
                 SELECT *
                   INTO v_campaign
                 FROM private.lock_eligible_view_campaign(
-                    v_uid, NULL, v_random_pivot, true, true, false, v_expiration_cutoff
+                    v_uid, NULL, v_random_pivot, true, true, false, v_expiration_cutoff, v_day_utc
                 );
             WHEN 2 THEN
                 SELECT *
                   INTO v_campaign
                 FROM private.lock_eligible_view_campaign(
-                    v_uid, NULL, v_random_pivot, false, true, false, v_expiration_cutoff
+                    v_uid, NULL, v_random_pivot, false, true, false, v_expiration_cutoff, v_day_utc
                 );
             WHEN 3 THEN
                 SELECT *
                   INTO v_campaign
                 FROM private.lock_eligible_view_campaign(
-                    v_uid, NULL, v_random_pivot, true, false, false, v_expiration_cutoff
+                    v_uid, NULL, v_random_pivot, true, false, false, v_expiration_cutoff, v_day_utc
                 );
             WHEN 4 THEN
                 SELECT *
                   INTO v_campaign
                 FROM private.lock_eligible_view_campaign(
-                    v_uid, NULL, v_random_pivot, false, false, false, v_expiration_cutoff
+                    v_uid, NULL, v_random_pivot, false, false, false, v_expiration_cutoff, v_day_utc
                 );
         END CASE;
 
