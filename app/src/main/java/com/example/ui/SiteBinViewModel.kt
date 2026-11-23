@@ -62,7 +62,7 @@ sealed class ViewerState {
     ) : ViewerState()
     data class Completed(val session: ViewSession, val rewardEarned: Long) : ViewerState()
     data class Blocked(val rawUrl: String, val reason: String) : ViewerState()
-    data class Error(val message: String) : ViewerState()
+    data class Error(val message: String, val session: ViewSession? = null) : ViewerState()
 }
 
 sealed interface WebsitePreflightState {
@@ -463,15 +463,24 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
         if (contentReadySessionId == session.id) return
 
         contentReadySessionId = session.id
+        val requestGeneration = viewerFlowGeneration
         viewModelScope.launch {
             val result = repository.signalContentReady(session.id)
+            if (
+                requestGeneration != viewerFlowGeneration ||
+                _currentScreen.value != AppScreen.VIEWER ||
+                currentViewerSession()?.id != session.id
+            ) {
+                return@launch
+            }
             if (result.isSuccess && result.getOrNull() == true) {
                 startCountdown(session)
             } else {
                 contentReadySessionId = null
                 _viewerState.value = ViewerState.Error(
                     result.exceptionOrNull()?.message
-                        ?: "سرور هنوز شروع معتبر بازدید را تأیید نکرده است."
+                        ?: "سرور هنوز شروع معتبر بازدید را تأیید نکرده است.",
+                    session
                 )
             }
         }
@@ -479,6 +488,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     private fun startCountdown(session: ViewSession) {
         timerJob?.cancel()
+        val requestGeneration = viewerFlowGeneration
         timerJob = viewModelScope.launch {
             if (_viewerState.value !is ViewerState.Completed) {
                 _viewerState.value = ViewerState.Viewing(session, 0, session.requiredDurationSeconds)
@@ -499,13 +509,23 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
             // Server-authoritative view completion validation
             val result = repository.completeViewSession(session)
+            if (
+                requestGeneration != viewerFlowGeneration ||
+                _currentScreen.value != AppScreen.VIEWER ||
+                currentViewerSession()?.id != session.id
+            ) {
+                return@launch
+            }
             result.onSuccess { completion ->
                 _viewerState.value = ViewerState.Completed(session, completion.reward)
                 // A completed view unlocks today's daily bonus server-side.
                 // Startup/foreground reconciliation remains as a network-recovery path.
                 repository.claimDailyBonus()
             }.onFailure { err ->
-                _viewerState.value = ViewerState.Error(err.message ?: "اعتبارسنجی بازدید توسط سرور ناموفق بود.")
+                _viewerState.value = ViewerState.Error(
+                    err.message ?: "اعتبارسنجی بازدید توسط سرور ناموفق بود.",
+                    session
+                )
             }
         }
     }
@@ -543,16 +563,98 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
     fun skipCurrentSite() {
         if (!beginAction("skip_current_site")) return
 
+        // Invalidate pending content-ready/completion callbacks before touching the server.
+        viewerFlowGeneration += 1L
+        val skipGeneration = viewerFlowGeneration
         cancelViewerTimer()
+        contentReadySessionId = null
+
         viewModelScope.launch {
             try {
                 val activeSession = currentViewerSession()
-                contentReadySessionId = null
+
                 if (activeSession != null) {
-                    repository.cancelViewSession(activeSession.id)
+                    var cancelFailure: Throwable? = null
+                    for (attempt in 0..2) {
+                        if (
+                            skipGeneration != viewerFlowGeneration ||
+                            _currentScreen.value != AppScreen.VIEWER
+                        ) {
+                            return@launch
+                        }
+
+                        val cancelResult = repository.cancelViewSession(activeSession.id)
+                        if (
+                            skipGeneration != viewerFlowGeneration ||
+                            _currentScreen.value != AppScreen.VIEWER
+                        ) {
+                            return@launch
+                        }
+                        if (cancelResult.isSuccess) {
+                            cancelFailure = null
+                            break
+                        }
+
+                        cancelFailure = cancelResult.exceptionOrNull()
+                            ?: IllegalStateException("VIEW_SESSION_CANCEL_FAILED")
+                        // A 429 already contains authoritative retry guidance. Do not
+                        // create another request burst by retrying it immediately.
+                        if (cancelFailure is RateLimitException || attempt == 2) break
+                        delay(400L * (attempt + 1))
+                    }
+
+                    if (cancelFailure != null) {
+                        if (
+                            skipGeneration == viewerFlowGeneration &&
+                            _currentScreen.value == AppScreen.VIEWER
+                        ) {
+                            _viewerState.value = ViewerState.Error(
+                                "لغو بازدید قبلی از سرور تأیید نشد. اتصال را بررسی کنید و دوباره «رد کردن سایت» را بزنید.",
+                                activeSession
+                            )
+                            showMessage("سایت فعلی هنوز از سرور لغو نشده است؛ برای جلوگیری از تکرار همان سایت، ادامه متوقف شد.")
+                        }
+                        return@launch
+                    }
                 }
 
-                val nextResult = repository.getNextViewSession()
+                if (
+                    skipGeneration != viewerFlowGeneration ||
+                    _currentScreen.value != AppScreen.VIEWER
+                ) {
+                    return@launch
+                }
+
+                var nextResult = repository.getNextViewSession()
+                var nextFailure = nextResult.exceptionOrNull()
+                for (attempt in 0..1) {
+                    if (nextResult.isSuccess || nextFailure is RateLimitException || attempt == 1) break
+                    delay(600L * (attempt + 1))
+                    nextResult = repository.getNextViewSession()
+                    nextFailure = nextResult.exceptionOrNull()
+                }
+
+                if (
+                    skipGeneration != viewerFlowGeneration ||
+                    _currentScreen.value != AppScreen.VIEWER
+                ) {
+                    return@launch
+                }
+
+                if (nextResult.isFailure) {
+                    _viewerState.value = ViewerState.Error(
+                        "ارتباط با سرور برای دریافت وب‌سایت بعدی برقرار نشد. برای تلاش دوباره، دکمه «تلاش مجدد» را بزنید."
+                    )
+                    showMessage(
+                        if (nextFailure is RateLimitException) {
+                            "سرور موقتاً درخواست بعدی را محدود کرده است. پس از پایان زمان محدودیت دوباره تلاش کنید."
+                        } else {
+                            "دریافت وب‌سایت بعدی ناموفق بود؛ نشست قبلی لغو شده و می‌توانید دوباره تلاش کنید."
+                        }
+                    )
+                    return@launch
+                }
+
                 val next = nextResult.getOrNull()
                 if (next != null) {
                     contentReadySessionId = null
@@ -560,7 +662,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 } else {
                     _viewerState.value = ViewerState.Idle
                     _currentScreen.value = AppScreen.HOME
-                    showMessage("وب‌سایت دیگری یافت نشد.")
+                    showMessage("وب‌سایت دیگری برای مشاهده موجود نیست.")
                 }
             } finally {
                 endAction("skip_current_site")
@@ -625,6 +727,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             is ViewerState.Loading -> state.session
             is ViewerState.Viewing -> state.session
             is ViewerState.Completed -> state.session
+            is ViewerState.Error -> state.session
             else -> null
         }
     }
