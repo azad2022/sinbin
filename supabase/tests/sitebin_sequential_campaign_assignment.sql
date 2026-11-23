@@ -486,11 +486,22 @@ BEGIN
     FROM public.special_campaign_assignments a
     WHERE a.session_id = v_session_id;
 
+    SELECT status INTO v_status
+    FROM public.view_sessions
+    WHERE id = v_session_id;
+
     IF v_after_views IS DISTINCT FROM v_before_views + 1
        OR v_after_daily IS DISTINCT FROM v_before_daily + 1
        OR v_completed IS DISTINCT FROM TRUE
        OR v_canceled IS DISTINCT FROM FALSE THEN
-        RAISE EXCEPTION 'TEST_FAILED: completion counters or assignment state are inconsistent';
+        RAISE EXCEPTION 'TEST_FAILED: completion counters/assignment inconsistent campaign_before=% campaign_after=% daily_before=% daily_after=% assignment_completed=% assignment_canceled=% session_status=%',
+            v_before_views,
+            v_after_views,
+            v_before_daily,
+            v_after_daily,
+            v_completed,
+            v_canceled,
+            v_status;
     END IF;
 
     -- Preserve the existing two-minute advertiser anti-repeat behavior.
