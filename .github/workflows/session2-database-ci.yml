@@ -75,13 +75,31 @@ jobs:
             echo "DB_URL was not reported by the local Supabase stack" >&2
             exit 1
           fi
-          # Execute every transactional PostgreSQL integration suite; fail closed on
-          # the first SQL error rather than silently skipping unrelated regressions.
+          # Execute every suite even when an earlier one fails. Collect failures
+          # and fail the job only after SQL and concurrency coverage has completed.
+          test_failures=0
           for test_file in supabase/tests/*.sql; do
             echo "=== Running PostgreSQL integration test: $test_file ==="
-            psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f "$test_file"
+            if psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f "$test_file"; then
+              echo "PASS: $test_file"
+            else
+              echo "FAIL: $test_file" >&2
+              test_failures=$((test_failures + 1))
+            fi
           done
-          DB_URL="$DB_URL" bash supabase/tests/sitebin_sequential_campaign_concurrency.sh
+
+          echo "=== Running PostgreSQL concurrency integration test ==="
+          if DB_URL="$DB_URL" bash supabase/tests/sitebin_sequential_campaign_concurrency.sh; then
+            echo "PASS: sequential campaign concurrency"
+          else
+            echo "FAIL: sequential campaign concurrency" >&2
+            test_failures=$((test_failures + 1))
+          fi
+
+          if [[ "$test_failures" -ne 0 ]]; then
+            echo "FAIL: $test_failures PostgreSQL integration suite(s) failed" >&2
+            exit 1
+          fi
 
       - name: Verify migration history is readable
         shell: bash
