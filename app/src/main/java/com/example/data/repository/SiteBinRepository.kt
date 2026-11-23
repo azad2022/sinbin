@@ -21,6 +21,7 @@ import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
 import com.example.data.model.DailyBonusResult
 import com.example.data.model.Rolling30Leaderboard
+import com.example.data.model.Rolling30LeaderboardEntry
 import com.example.data.model.DurationOption
 import com.example.data.model.UserAccount
 import com.example.data.model.ReferralStatus
