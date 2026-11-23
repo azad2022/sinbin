@@ -221,6 +221,63 @@ FOR EACH ROW
 WHEN (OLD.viewer_id IS DISTINCT FROM NEW.viewer_id)
 EXECUTE FUNCTION private.sync_assignment_viewer_owner();
 
+-- Preserve assignment state for sessions already in flight at deployment.
+INSERT INTO public.special_campaign_assignments (
+    session_id, viewer_id, campaign_owner_id, campaign_id,
+    assigned_position, owner_rank, assignment_type, reserved_views,
+    created_at, expires_at, completed, canceled
+)
+SELECT
+    ranked_sessions.id,
+    ranked_sessions.viewer_id,
+    ranked_sessions.owner_id,
+    ranked_sessions.campaign_id,
+    ranked_sessions.assigned_position,
+    ranked_sessions.owner_rank,
+    'normal',
+    1,
+    ranked_sessions.created_at,
+    ranked_sessions.expires_at,
+    FALSE,
+    FALSE
+FROM (
+    SELECT
+        vs.id,
+        vs.viewer_id,
+        c.owner_id,
+        vs.campaign_id,
+        vs.created_at,
+        vs.expires_at,
+        pg_catalog.row_number() OVER (
+            PARTITION BY vs.viewer_id, (vs.started_at AT TIME ZONE 'UTC')::DATE
+            ORDER BY vs.started_at, vs.id
+        )::BIGINT AS assigned_position,
+        ranked_owner.owner_rank
+    FROM public.view_sessions vs
+    JOIN public.campaigns c ON c.id = vs.campaign_id
+    LEFT JOIN LATERAL (
+        SELECT ranked.user_id, ranked.owner_rank
+        FROM (
+            SELECT
+                d.user_id,
+                pg_catalog.row_number() OVER (
+                    ORDER BY d.completed_views DESC, d.user_id ASC
+                )::INTEGER AS owner_rank
+            FROM public.daily_view_leaderboard d
+            WHERE d.leaderboard_date = (vs.started_at AT TIME ZONE 'UTC')::DATE
+        ) ranked
+        WHERE ranked.user_id = c.owner_id
+    ) ranked_owner ON TRUE
+    WHERE vs.status IN ('INITIALIZED', 'CONTENT_READY')
+) ranked_sessions
+ON CONFLICT (session_id) DO NOTHING;
+
+-- Expire stale in-flight sessions now that assignment-state triggers exist.
+UPDATE public.view_sessions
+SET status = 'EXPIRED'
+WHERE status IN ('INITIALIZED', 'CONTENT_READY')
+  AND expires_at <= pg_catalog.clock_timestamp();
+
 -- Sequential featured allocation. Cursor row + advisory lock serialize same-viewer
 -- retries; campaign row FOR UPDATE serializes all viewers competing for one campaign.
 CREATE OR REPLACE FUNCTION public.request_view_session()
@@ -732,6 +789,7 @@ DECLARE
     v_dummy_profile RECORD;
     v_elapsed_seconds NUMERIC;
     v_campaign_completed BOOLEAN := FALSE;
+    v_active_session_count INTEGER;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'UNAUTHORIZED: Authentication token required';
@@ -870,6 +928,21 @@ BEGIN
 
     IF v_campaign.completed_views >= v_campaign.target_views THEN
         RAISE EXCEPTION 'CAMPAIGN_EXHAUSTED: Campaign has already reached its target view count';
+    END IF;
+
+    -- The current session is itself one active reservation. Reject any legacy or
+    -- externally-created over-reservation before consuming money or counters.
+    SELECT pg_catalog.count(*)::INTEGER
+    INTO v_active_session_count
+    FROM public.view_sessions active_vs
+    WHERE active_vs.campaign_id = v_campaign.id
+      AND active_vs.status IN ('INITIALIZED', 'CONTENT_READY')
+      AND active_vs.expires_at > pg_catalog.clock_timestamp();
+
+    IF v_campaign.completed_views + v_active_session_count > v_campaign.target_views THEN
+        RAISE EXCEPTION 'CAMPAIGN_OVER_RESERVED: Completed plus active views (%) exceed target (%)',
+            v_campaign.completed_views + v_active_session_count,
+            v_campaign.target_views;
     END IF;
 
     IF v_campaign.reserved_budget < v_campaign.cost_per_view THEN
