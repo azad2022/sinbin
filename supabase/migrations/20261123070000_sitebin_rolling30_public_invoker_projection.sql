@@ -16,24 +16,15 @@ CREATE TABLE IF NOT EXISTS private.completed_view_leaderboard_events (
 
 ALTER TABLE private.completed_view_leaderboard_events ENABLE ROW LEVEL SECURITY;
 
+-- Authenticated clients must never read per-session event rows directly.
+-- The SECURITY INVOKER public views call a narrow private aggregate function
+-- instead; the underlying event table remains default-deny under RLS.
 REVOKE ALL ON TABLE private.completed_view_leaderboard_events
-    FROM PUBLIC, anon, authenticated;
+    FROM PUBLIC, anon, authenticated, authenticator, service_role;
 
-DROP POLICY IF EXISTS authenticated_read_completed_view_leaderboard_events
-    ON private.completed_view_leaderboard_events;
-
-CREATE POLICY authenticated_read_completed_view_leaderboard_events
-    ON private.completed_view_leaderboard_events
-    FOR SELECT
-    TO authenticated
-    USING (true);
-
--- The invoker-mode public views below require only these two columns.
--- The private schema is not part of the default Data API exposed schemas.
+-- The invoker-mode public views need schema visibility and EXECUTE on the
+-- aggregate function only. No SELECT privilege is granted on the event table.
 GRANT USAGE ON SCHEMA private TO authenticated;
-GRANT SELECT (user_handle, completed_at)
-    ON TABLE private.completed_view_leaderboard_events
-    TO authenticated;
 
 CREATE INDEX IF NOT EXISTS idx_completed_view_leaderboard_events_window
     ON private.completed_view_leaderboard_events (completed_at, user_handle);
@@ -265,6 +256,46 @@ WHERE e.completed_at < pg_catalog.statement_timestamp() - INTERVAL '30 days'
          AND p.user_handle = e.user_handle
    );
 
+-- Expose only aggregated leaderboard rows through a narrowly granted
+-- SECURITY DEFINER function. The event table itself remains unreadable to
+-- client roles, preventing per-session timestamps from becoming an API surface.
+CREATE OR REPLACE FUNCTION private.get_rolling_30d_leaderboard()
+RETURNS TABLE (
+    user_handle text,
+    completed_views integer,
+    updated_at timestamptz
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+    WITH bounds AS (
+        SELECT
+            pg_catalog.statement_timestamp() AS window_end,
+            pg_catalog.statement_timestamp() - INTERVAL '30 days' AS window_start
+    )
+    SELECT
+        e.user_handle,
+        pg_catalog.count(*)::integer AS completed_views,
+        pg_catalog.max(e.completed_at) AS updated_at
+    FROM private.completed_view_leaderboard_events e
+    CROSS JOIN bounds b
+    WHERE (SELECT auth.uid()) IS NOT NULL
+      AND NOT COALESCE((SELECT (auth.jwt()->>'is_anonymous')::boolean), false)
+      AND e.completed_at >= b.window_start
+      AND e.completed_at < b.window_end
+    GROUP BY e.user_handle;
+$function$;
+
+REVOKE ALL ON FUNCTION private.get_rolling_30d_leaderboard()
+    FROM PUBLIC, anon, authenticated, authenticator, service_role;
+GRANT EXECUTE ON FUNCTION private.get_rolling_30d_leaderboard()
+    TO authenticated;
+
+COMMENT ON FUNCTION private.get_rolling_30d_leaderboard() IS
+    'Authenticated-only aggregate projection for the exact rolling-30-day leaderboard; never exposes per-session event rows.';
+
 -- New, unambiguous contract: exact [as_of - 30 days, as_of) interval.
 CREATE OR REPLACE VIEW public.rolling_30d_view_leaderboard_public
 WITH (security_invoker = true)
@@ -276,14 +307,10 @@ WITH bounds AS (
 ),
 user_counts AS (
     SELECT
-        e.user_handle,
-        pg_catalog.count(*)::integer AS completed_views,
-        pg_catalog.max(e.completed_at) AS updated_at
-    FROM private.completed_view_leaderboard_events e
-    CROSS JOIN bounds b
-    WHERE e.completed_at >= b.window_start
-      AND e.completed_at < b.window_end
-    GROUP BY e.user_handle
+        aggregate_rows.user_handle,
+        aggregate_rows.completed_views,
+        aggregate_rows.updated_at
+    FROM private.get_rolling_30d_leaderboard() AS aggregate_rows
 )
 SELECT
     b.window_start,
