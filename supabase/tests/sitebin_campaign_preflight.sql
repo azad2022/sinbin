@@ -5,28 +5,38 @@ BEGIN;
 
 DO $$
 DECLARE
-    v_uid uuid;
-    v_other_uid uuid;
+    v_tag text := substr(md5(clock_timestamp()::text || random()::text), 1, 10);
+    v_uid uuid := gen_random_uuid();
+    v_other_uid uuid := gen_random_uuid();
     v_before_available bigint;
     v_before_reserved bigint;
     v_after_available bigint;
     v_after_reserved bigint;
-    v_token text := 'sitebin-preflight-integration-token-20261005-abcdefghijklmnopqrstuvwxyz';
+    v_token text := 'sitebin-preflight-' || substr(md5(clock_timestamp()::text), 1, 24);
     v_token_hash text := encode(extensions.digest(v_token, 'sha256'), 'hex');
 BEGIN
-    SELECT id INTO v_uid
-    FROM public.profiles
-    ORDER BY created_at
-    LIMIT 1;
+    INSERT INTO auth.users(
+        id, aud, role, email, email_confirmed_at,
+        created_at, updated_at, is_sso_user, is_anonymous
+    )
+    VALUES
+        (v_uid, 'authenticated', 'authenticated',
+         's2_preflight_' || v_tag || '@sitebin.internal',
+         clock_timestamp(), clock_timestamp(), clock_timestamp(), false, false),
+        (v_other_uid, 'authenticated', 'authenticated',
+         's2_preflight_other_' || v_tag || '@sitebin.internal',
+         clock_timestamp(), clock_timestamp(), clock_timestamp(), false, false);
 
-    IF v_uid IS NULL THEN
-        RAISE EXCEPTION 'TEST_SETUP: no profile exists';
-    END IF;
-
-    SELECT id INTO v_other_uid
-    FROM public.profiles
-    WHERE id <> v_uid
-    LIMIT 1;
+    INSERT INTO public.profiles(
+        id, user_handle, app_install_id, available_coins, reserved_coins,
+        lifetime_earned, lifetime_spent, trust_score, completed_views_count,
+        received_views_count, welcome_bonus_claimed, created_at, updated_at
+    )
+    VALUES
+        (v_uid, 's2_pf_' || v_tag, 's2_pf_inst_' || v_tag,
+         1000, 0, 1000, 0, 100, 0, 0, true, clock_timestamp(), clock_timestamp()),
+        (v_other_uid, 's2_pf_other_' || v_tag, 's2_pf_other_inst_' || v_tag,
+         1000, 0, 1000, 0, 100, 0, 0, true, clock_timestamp(), clock_timestamp());
 
     PERFORM set_config(
         'request.jwt.claims',
