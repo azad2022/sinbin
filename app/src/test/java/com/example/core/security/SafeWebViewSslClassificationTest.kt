@@ -108,6 +108,7 @@ class SafeWebViewSslClassificationTest {
         assertTrue(script.contains("event.submitter"))
         assertTrue(script.contains("submitter.formAction"))
         assertTrue(script.contains("submitter.formTarget"))
+        assertTrue(script.contains("document.querySelector('base[target]')"))
         assertTrue(script.contains("hasAttribute('formaction')"))
         assertTrue(script.contains("hasAttribute('formtarget')"))
     }
