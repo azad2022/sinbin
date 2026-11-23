@@ -59,6 +59,25 @@ jobs:
           # Explicitly local: no project link, token, password, or remote URL is configured.
           supabase db reset --local
 
+      - name: Install PostgreSQL client
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Run sequential allocation integration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" ]]; then
+            echo "DB_URL was not reported by the local Supabase stack" >&2
+            exit 1
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/tests/sitebin_sequential_campaign_assignment.sql
+          DB_URL="$DB_URL" bash supabase/tests/sitebin_sequential_campaign_concurrency.sh
+
       - name: Verify migration history is readable
         shell: bash
         run: |
