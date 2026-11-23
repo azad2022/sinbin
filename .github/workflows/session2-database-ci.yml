@@ -154,6 +154,17 @@ jobs:
           # the original historical version is now present for the CLI's file check.
           supabase migration repair 20261003170402 --status applied --local
 
+      - name: Seed historical demo-owner prerequisites in disposable database only
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" ]]; then
+            echo "DB_URL was not reported by the local Supabase stack." >&2
+            exit 1
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_owners.sql
+
       - name: Replay remaining forward migrations
         shell: bash
         run: |
