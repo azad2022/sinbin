@@ -525,6 +525,15 @@ BEGIN
 
     PERFORM public.cancel_view_session((v_result->>'id')::UUID);
 
+    -- Completion reconciliation replaced the synthetic rank score with the
+    -- authoritative count. Restore a deterministic rank fixture for this isolated
+    -- rank-movement scenario before adding its rank-1 viewer.
+    UPDATE public.daily_view_leaderboard
+    SET completed_views = 1000,
+        updated_at = pg_catalog.clock_timestamp()
+    WHERE leaderboard_date = v_day
+      AND user_id = v_viewer;
+
     -- A rank change must not revisit the selected owner after it moves below the cursor.
     INSERT INTO public.daily_view_leaderboard (
         leaderboard_date, user_id, user_handle, completed_views, updated_at
