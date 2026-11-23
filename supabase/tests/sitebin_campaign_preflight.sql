@@ -121,14 +121,16 @@ BEGIN
     INSERT INTO private.campaign_preflight_tokens(
         token_hash, user_id, source_url, normalized_url, domain, final_url,
         http_status, redirect_count, response_ms, content_type, content_length,
-        viewer_compatibility, quality_score, diagnostics, created_at, expires_at
+        viewer_compatibility, quality_score, diagnostics, created_at, expires_at,
+        referral_site_key
     )
     VALUES(
         v_token_hash, v_uid,
         'https://example.com/', 'https://example.com/', 'example.com', 'https://example.com/',
         200, 0, 120, 'text/html', 4096,
-        'COMPATIBLE', 95, '[{"code":"TEST","severity":"INFO","message":"integration"}]'::jsonb,
-        clock_timestamp(), clock_timestamp() + interval '10 minutes'
+        'COMPATIBLE', 95, jsonb_build_object('referral_site_key', 'example.com', 'test_diagnostic', 'integration'),
+        clock_timestamp(), clock_timestamp() + interval '10 minutes',
+        'example.com'
     );
 
     PERFORM public.create_campaign(
