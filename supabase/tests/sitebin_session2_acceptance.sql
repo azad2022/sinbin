@@ -386,6 +386,13 @@ BEGIN
     SET status = 'PAUSED'
     WHERE id IN (SELECT campaign_id FROM _s2_campaigns);
 
+    -- The CI demo pool is external to this fixture. Pause it as well so this
+    -- assertion isolates the previously featured owner rather than treating
+    -- an unrelated ordinary fallback campaign as a repeat.
+    UPDATE public.campaigns
+    SET status = 'PAUSED'
+    WHERE id NOT IN (SELECT campaign_id FROM _s2_campaigns);
+
     UPDATE public.campaigns
     SET status = 'ACTIVE'
     WHERE id = (
