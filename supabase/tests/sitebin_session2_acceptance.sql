@@ -131,6 +131,15 @@ BEGIN
         pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp()
     FROM pg_catalog.unnest(v_all_users) AS users(u);
 
+    -- Fix explicit lexical order for the equal-score leaderboard assertion.
+    UPDATE public.profiles
+    SET user_handle = 's2tiealpha_' || v_tag
+    WHERE id = v_tie_a;
+
+    UPDATE public.profiles
+    SET user_handle = 's2tiezulu_' || v_tag
+    WHERE id = v_tie_b;
+
     -- Campaigns for rank 1 (self) and ranks 3..7. Rank 2 and rank 8
     -- intentionally have no campaign. A separate owner is reserved for fallback.
     FOR i IN 1..7 LOOP
