@@ -82,8 +82,10 @@ COMMENT ON TABLE public.special_campaign_assignments IS
 
 -- Keep the public daily leaderboard response shape, but make ties deterministic
 -- by user_id rather than mutable display handle.
+-- The private user_id is used only for deterministic tie-breaking. This view
+-- intentionally runs as its owner and exposes only public handle/count columns.
 CREATE OR REPLACE VIEW public.daily_view_leaderboard_public
-WITH (security_invoker = true)
+WITH (security_invoker = false)
 AS
 SELECT
     leaderboard_date,
