@@ -25,10 +25,17 @@ BEGIN
                 FROM public.campaigns
                 WHERE owner_id = v_owner AND domain = v_domain
             ) THEN
+                -- A clean local replay may not contain the historical demo owners.
+                -- Do not manufacture auth/profile identities or bypass the FK:
+                -- skip this owner unless its real profile exists.
                 PERFORM 1
                 FROM public.profiles
                 WHERE id = v_owner
                 FOR UPDATE;
+
+                IF NOT FOUND THEN
+                    CONTINUE;
+                END IF;
 
                 IF (SELECT available_coins FROM public.profiles WHERE id = v_owner) < 25 THEN
                     RAISE EXCEPTION 'INSUFFICIENT_SEED_BALANCE for owner %', v_owner;
