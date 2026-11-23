@@ -3,7 +3,6 @@ package com.example.core.security
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import java.net.URI
-import org.json.JSONObject
 import android.net.http.SslError
 import android.os.Build
 import android.os.Handler
@@ -124,13 +123,36 @@ internal fun buildMainFrameFormOriginGuard(expectedOriginUrl: String): String {
     val origin = requireNotNull(WebOrigin.parse(expectedOriginUrl)) {
         "A valid HTTPS origin is required for the WebView navigation guard."
     }
-    val encodedOrigin = JSONObject.quote(origin.serialized)
+    // WebOrigin is already strictly parsed as an HTTPS origin. Escape it as a
+    // JavaScript single-quoted string without depending on Android's JSONObject
+    // implementation (which is stubbed in local JVM unit tests).
+    val encodedOrigin = "'" + origin.serialized
+        .replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace("\r", "\\r")
+        .replace("\n", "\\n") + "'"
     return """
         (function () {
             'use strict';
             const expectedOrigin = $encodedOrigin;
-            const isTopNavigationTarget = function (form) {
-                const target = String(form.target || '_self').toLowerCase();
+            const isSubmitControl = function (submitter) {
+                return submitter instanceof HTMLButtonElement ||
+                    submitter instanceof HTMLInputElement;
+            };
+            const effectiveTarget = function (form, submitter) {
+                if (isSubmitControl(submitter) && submitter.hasAttribute('formtarget')) {
+                    return String(submitter.formTarget || '_self').toLowerCase();
+                }
+                return String(form.target || '_self').toLowerCase();
+            };
+            const effectiveAction = function (form, submitter) {
+                if (isSubmitControl(submitter) && submitter.hasAttribute('formaction')) {
+                    return submitter.formAction;
+                }
+                return form.action;
+            };
+            const isTopNavigationTarget = function (form, submitter) {
+                const target = effectiveTarget(form, submitter);
                 return window.top === window ||
                     target === '_top' ||
                     target === '_parent' ||
@@ -143,12 +165,13 @@ internal fun buildMainFrameFormOriginGuard(expectedOriginUrl: String): String {
                     return false;
                 }
             };
-            const mustBlock = function (form) {
-                return isTopNavigationTarget(form) && !isAllowedAction(form.action);
+            const mustBlock = function (form, submitter) {
+                return isTopNavigationTarget(form, submitter) &&
+                    !isAllowedAction(effectiveAction(form, submitter));
             };
             document.addEventListener('submit', function (event) {
                 const form = event.target;
-                if (form instanceof HTMLFormElement && mustBlock(form)) {
+                if (form instanceof HTMLFormElement && mustBlock(form, event.submitter)) {
                     event.preventDefault();
                     event.stopImmediatePropagation();
                 }
@@ -160,7 +183,7 @@ internal fun buildMainFrameFormOriginGuard(expectedOriginUrl: String): String {
                 enumerable: false,
                 writable: false,
                 value: function () {
-                    if (mustBlock(this)) return;
+                    if (mustBlock(this, null)) return;
                     return nativeSubmit.call(this);
                 }
             });
