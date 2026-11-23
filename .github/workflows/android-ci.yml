@@ -2,7 +2,7 @@ name: SiteBin Android CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, android/session3-rolling30-webview-20261123]
   pull_request:
     branches: [main]
   workflow_dispatch:
