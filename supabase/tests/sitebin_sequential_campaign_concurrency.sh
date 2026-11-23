@@ -31,6 +31,27 @@ INSERT INTO public.profiles (
   ('$VIEWER_B', 'concurrency_b', 'concurrency_install_b', 1000, 100, 1000, 0, 100, 0, 0, true, now(), now()),
   ('$OWNER', 'concurrency_owner', 'concurrency_install_owner', 1000, 1000, 1000, 0, 100, 0, 0, true, now(), now());
 
+INSERT INTO private.campaign_preflight_tokens (
+  token_hash, user_id, source_url, normalized_url, domain, final_url,
+  http_status, redirect_count, response_ms, content_type, content_length,
+  viewer_compatibility, quality_score, diagnostics, created_at, expires_at, consumed_at
+)
+SELECT
+  md5('$OWNER' || 'https://' || d.domain || '/') || md5('https://' || d.domain || '/' || '$OWNER'),
+  '$OWNER',
+  'https://' || d.domain || '/',
+  'https://' || d.domain || '/',
+  d.domain,
+  'https://' || d.domain || '/',
+  200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+  jsonb_build_object('referral_site_key', d.domain),
+  now(), now() + interval '10 minutes', now()
+FROM (VALUES
+  ('concurrency-1.example.com'),
+  ('concurrency-2.example.com'),
+  ('concurrency-3.example.com')
+) AS d(domain);
+
 INSERT INTO public.campaigns (
   id, owner_id, url, normalized_url, domain, duration_seconds,
   target_views, completed_views, cost_per_view, total_budget,
