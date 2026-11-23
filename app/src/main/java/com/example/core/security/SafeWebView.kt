@@ -3,6 +3,7 @@ package com.example.core.security
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import java.net.URI
+import org.json.JSONObject
 import android.net.http.SslError
 import android.os.Build
 import android.os.Handler
@@ -37,6 +38,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.webkit.ScriptHandler
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 
 /**
  * Classifies an SSL callback as belonging to the top-level document only when its
@@ -79,6 +83,90 @@ internal fun isMainFrameSslErrorUrl(currentUrl: String?, failingUrl: String?): B
     }.getOrDefault(true)
 }
 
+
+internal data class WebOrigin(
+    val scheme: String,
+    val host: String,
+    val port: Int
+) {
+    val serialized: String
+        get() = "$scheme://$host" + if (port == 443) "" else ":$port"
+
+    fun matches(candidateUrl: String?): Boolean =
+        parse(candidateUrl) == this
+
+    companion object {
+        fun parse(rawUrl: String?): WebOrigin? = runCatching {
+            require(!rawUrl.isNullOrBlank())
+            val uri = URI(rawUrl)
+            require(uri.isAbsolute)
+            require(uri.scheme.equals("https", ignoreCase = true))
+            require(uri.rawUserInfo == null)
+            val host = uri.host?.trim()?.lowercase()
+            require(!host.isNullOrBlank())
+            val port = if (uri.port == -1) 443 else uri.port
+            require(port in 1..65535)
+            WebOrigin("https", host, port)
+        }.getOrNull()
+    }
+}
+
+internal fun isSameWebOrigin(expectedUrl: String?, candidateUrl: String?): Boolean =
+    WebOrigin.parse(expectedUrl)?.matches(candidateUrl) == true
+
+/**
+ * Runs at document-start in every frame. Cross-origin form submissions that could
+ * navigate the top-level browsing context are blocked before page scripts execute.
+ * WebViewClient.shouldOverrideUrlLoading is not invoked for POST navigations.
+ */
+internal fun buildMainFrameFormOriginGuard(expectedOriginUrl: String): String {
+    val origin = requireNotNull(WebOrigin.parse(expectedOriginUrl)) {
+        "A valid HTTPS origin is required for the WebView navigation guard."
+    }
+    val encodedOrigin = JSONObject.quote(origin.serialized)
+    return """
+        (function () {
+            'use strict';
+            const expectedOrigin = $encodedOrigin;
+            const isTopNavigationTarget = function (form) {
+                const target = String(form.target || '_self').toLowerCase();
+                return window.top === window ||
+                    target === '_top' ||
+                    target === '_parent' ||
+                    target !== '_self';
+            };
+            const isAllowedAction = function (action) {
+                try {
+                    return new URL(action || window.location.href, window.location.href).origin === expectedOrigin;
+                } catch (_) {
+                    return false;
+                }
+            };
+            const mustBlock = function (form) {
+                return isTopNavigationTarget(form) && !isAllowedAction(form.action);
+            };
+            document.addEventListener('submit', function (event) {
+                const form = event.target;
+                if (form instanceof HTMLFormElement && mustBlock(form)) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                }
+            }, true);
+            const prototype = HTMLFormElement.prototype;
+            const nativeSubmit = prototype.submit;
+            Object.defineProperty(prototype, 'submit', {
+                configurable: false,
+                enumerable: false,
+                writable: false,
+                value: function () {
+                    if (mustBlock(this)) return;
+                    return nativeSubmit.call(this);
+                }
+            });
+        })();
+    """.trimIndent()
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun SafeWebView(
@@ -93,14 +181,14 @@ fun SafeWebView(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Keep track of the currently loaded URL requested by Compose
-    // to prevent unwanted re-loads on timer ticks / recompositions
-    var targetLoadKey by remember { mutableStateOf<String?>(null) }
+    val expectedOrigin = remember(url) { WebOrigin.parse(url) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var webViewGeneration by remember { mutableStateOf(0) }
     var rendererTerminated by remember { mutableStateOf(false) }
     var currentPageStartedAt by remember { mutableStateOf(0L) }
     var contentReadyReported by remember { mutableStateOf(false) }
+    var contentReadyPending by remember { mutableStateOf(false) }
+    var documentStartScriptHandler by remember { mutableStateOf<ScriptHandler?>(null) }
     var pageLoadGeneration by remember { mutableStateOf(0) }
     var mainFrameLoadFailed by remember { mutableStateOf(false) }
 
@@ -109,10 +197,11 @@ fun SafeWebView(
     val currentOnUrlBlocked by rememberUpdatedState(onUrlBlocked)
     val currentOnErrorOccurred by rememberUpdatedState(onErrorOccurred)
 
-    val safeClient = remember {
+    val safeClient = remember(expectedOrigin) {
         object : WebViewClient() {
             private val mainHandler = Handler(Looper.getMainLooper())
             private var pendingPublicChannelReadyCheck: Runnable? = null
+            private var visualStateRequestId = 0L
 
             private fun cancelPublicChannelReadyCheck() {
                 pendingPublicChannelReadyCheck?.let(mainHandler::removeCallbacks)
@@ -131,31 +220,49 @@ fun SafeWebView(
                 if (mainFrameLoadFailed) return
                 mainFrameLoadFailed = true
                 contentReadyReported = false
+                contentReadyPending = false
                 cancelPublicChannelReadyCheck()
                 currentOnErrorOccurred(message)
             }
 
-            private fun reportContentVisible(pageUrl: String?) {
-                if (contentReadyReported || mainFrameLoadFailed) return
-                if (pageUrl?.startsWith("https://", ignoreCase = true) != true) return
+            private fun reportContentVisible(view: WebView?, pageUrl: String?) {
+                val targetView = view ?: return
+                if (contentReadyReported || contentReadyPending || mainFrameLoadFailed) return
+                if (expectedOrigin?.matches(pageUrl) != true) {
+                    reportMainFrameFailure("مقصد وب‌سایت در طول سشن تغییر کرد؛ بارگذاری متوقف شد.")
+                    return
+                }
 
-                contentReadyReported = true
-                cancelPublicChannelReadyCheck()
-                val elapsedMs = if (currentPageStartedAt > 0L) {
-                    SystemClock.elapsedRealtime() - currentPageStartedAt
-                } else {
-                    -1L
+                val generation = pageLoadGeneration
+                contentReadyPending = true
+                val requestId = ++visualStateRequestId
+                targetView.postVisualStateCallback(requestId) {
+                    if (generation != pageLoadGeneration || targetView !== webViewRef) {
+                        return@postVisualStateCallback
+                    }
+                    contentReadyPending = false
+                    if (mainFrameLoadFailed) return@postVisualStateCallback
+                    if (expectedOrigin?.matches(targetView.url) != true) {
+                        reportMainFrameFailure("مقصد وب‌سایت پیش از نمایش نهایی تغییر کرد.")
+                        return@postVisualStateCallback
+                    }
+
+                    contentReadyReported = true
+                    cancelPublicChannelReadyCheck()
+                    val elapsedMs = if (currentPageStartedAt > 0L) {
+                        SystemClock.elapsedRealtime() - currentPageStartedAt
+                    } else {
+                        -1L
+                    }
+                    if (BuildConfig.DEBUG) {
+                        val host = expectedOrigin.host
+                        android.util.Log.d(
+                            "SiteBinPerf",
+                            "operation=webview_visual_state_ready host=$host elapsedMs=$elapsedMs"
+                        )
+                    }
+                    currentOnPageContentReady()
                 }
-                if (BuildConfig.DEBUG) {
-                    val host = runCatching {
-                        pageUrl.substringAfter("://").substringBefore("/")
-                    }.getOrDefault("unknown")
-                    android.util.Log.d(
-                        "SiteBinPerf",
-                        "operation=webview_content_visible host=$host elapsedMs=$elapsedMs"
-                    )
-                }
-                currentOnPageContentReady()
             }
 
             /**
@@ -199,7 +306,7 @@ fun SafeWebView(
 
                             if (rawResult?.trim() == "true") {
                                 pendingPublicChannelReadyCheck = null
-                                reportContentVisible(pageUrl)
+                                reportContentVisible(targetView, pageUrl)
                             } else if (SystemClock.elapsedRealtime() - startedAt >= 12_000L) {
                                 pendingPublicChannelReadyCheck = null
                                 reportMainFrameFailure("محتوای عمومی ایتا یا بله در مهلت مجاز نمایش داده نشد.")
@@ -218,15 +325,19 @@ fun SafeWebView(
                 request: WebResourceRequest?
             ): Boolean {
                 val targetUrl = request?.url?.toString() ?: return true
-                val check = UrlSecurityPolicy.evaluateUrl(targetUrl)
+                if (request.isForMainFrame && expectedOrigin?.matches(targetUrl) != true) {
+                    currentOnUrlBlocked(
+                        targetUrl,
+                        "ناوبری اصلی به مبدأیی غیر از مبدأ سشن مسدود شد."
+                    )
+                    reportMainFrameFailure("تغییر مبدأ وب‌سایت در طول سشن مجاز نیست.")
+                    return true
+                }
 
+                val check = UrlSecurityPolicy.evaluateUrl(targetUrl)
                 return when (check) {
-                    is PolicyResult.Allowed -> {
-                        // Allow navigation within the same internal WebView sandbox
-                        false
-                    }
+                    is PolicyResult.Allowed -> false
                     is PolicyResult.Blocked -> {
-                        // Block external app escapes (Telegram, Google Play, Market, custom schemes, APKs)
                         currentOnUrlBlocked(targetUrl, check.reason)
                         true
                     }
@@ -242,17 +353,22 @@ fun SafeWebView(
                 pageLoadGeneration += 1
                 cancelPublicChannelReadyCheck()
                 mainFrameLoadFailed = false
+                contentReadyPending = false
                 currentPageStartedAt = SystemClock.elapsedRealtime()
                 contentReadyReported = false
+
+                if (expectedOrigin?.matches(pageUrl) != true) {
+                    view?.stopLoading()
+                    reportMainFrameFailure("مقصد وب‌سایت به مبدأ دیگری تغییر کرد؛ سشن متوقف شد.")
+                    return
+                }
                 currentOnPageStarted()
             }
 
             override fun onPageCommitVisible(view: WebView?, pageUrl: String?) {
                 super.onPageCommitVisible(view, pageUrl)
-                // Social channel pages may still be an empty JavaScript shell at this point.
                 if (UrlSecurityPolicy.publicChannelPlatform(pageUrl) != null) return
-                // Existing website behavior remains unchanged for regular sites.
-                reportContentVisible(pageUrl)
+                reportContentVisible(view, pageUrl)
             }
 
             override fun onPageFinished(view: WebView?, pageUrl: String?) {
@@ -260,9 +376,7 @@ fun SafeWebView(
                 if (UrlSecurityPolicy.publicChannelPlatform(pageUrl) != null) {
                     waitForPublicChannelContent(view, pageUrl)
                 } else {
-                    // Compatibility fallback for regular sites whose implementation does not
-                    // dispatch onPageCommitVisible reliably.
-                    reportContentVisible(pageUrl)
+                    reportContentVisible(view, pageUrl)
                 }
             }
 
@@ -333,6 +447,7 @@ fun SafeWebView(
                 mainFrameLoadFailed = true
                 cancelPublicChannelReadyCheck()
                 contentReadyReported = false
+                contentReadyPending = false
                 if (BuildConfig.DEBUG) {
                     android.util.Log.w(
                         "SiteBinWebView",
@@ -384,6 +499,8 @@ fun SafeWebView(
                         (webView.parent as? ViewGroup)?.removeView(webView)
                         webView.destroy()
                     }
+                    documentStartScriptHandler?.remove()
+                    documentStartScriptHandler = null
                     webViewRef = null
                 }
                 else -> Unit
@@ -397,31 +514,48 @@ fun SafeWebView(
                 (webView.parent as? ViewGroup)?.removeView(webView)
                 webView.destroy()
             }
+            documentStartScriptHandler?.remove()
+            documentStartScriptHandler = null
             webViewRef = null
         }
     }
 
-    // Load new URL only when url prop actually changes
+    // Each session/URL gets a fresh WebView instance. This binds the document-start
+    // form guard to one immutable server-issued origin and avoids stale async callbacks.
     LaunchedEffect(contentKey, url) {
-        if (targetLoadKey != contentKey) {
-            targetLoadKey = contentKey
-            contentReadyReported = false
-            if (rendererTerminated) {
-                // Changing the AndroidView key forces factory() to create a new instance.
-                rendererTerminated = false
-                webViewGeneration += 1
-            } else {
-                webViewRef?.loadUrl(url)
-            }
+        contentReadyReported = false
+        contentReadyPending = false
+        if (rendererTerminated) {
+            rendererTerminated = false
+            webViewGeneration += 1
         }
     }
 
-    key(webViewGeneration) {
+    key(webViewGeneration, contentKey, url) {
         AndroidView(
             modifier = modifier.fillMaxSize(),
             factory = { ctx ->
                 WebView(ctx).apply {
                     webViewRef = this
+
+                    val origin = expectedOrigin
+                    if (origin == null) {
+                        mainFrameLoadFailed = true
+                        currentOnErrorOccurred("نشانی مقصد فاقد مبدأ HTTPS معتبر است؛ بارگذاری متوقف شد.")
+                        return@apply
+                    }
+                    if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                        mainFrameLoadFailed = true
+                        currentOnErrorOccurred(
+                            "نسخهٔ موتور WebView از کنترل امن فرم‌های POST پشتیبانی نمی‌کند؛ برای حفظ امنیت بارگذاری متوقف شد."
+                        )
+                        return@apply
+                    }
+                    documentStartScriptHandler = WebViewCompat.addDocumentStartJavaScript(
+                        this,
+                        buildMainFrameFormOriginGuard(origin.serialized),
+                        setOf("*")
+                    )
 
                     // WebView 153/154 have a documented, device/GPU-specific black-rendering
                     // regression. Apply software drawing only to those affected release families;
@@ -475,24 +609,13 @@ fun SafeWebView(
                     webViewClient = safeClient
                     webChromeClient = safeChromeClient
 
-                    targetLoadKey = contentKey
                     loadUrl(url)
                 }
             },
             update = { webView ->
                 webViewRef = webView
-                // Only load if the requested destination has genuinely changed.
-                if (targetLoadKey != contentKey) {
-                    targetLoadKey = contentKey
-                    contentReadyReported = false
-                    webView.loadUrl(url)
-                }
-            },
-            onReset = { webView ->
-                webView.stopLoading()
-                targetLoadKey = null
-                webView.loadUrl("about:blank")
             }
+
         )
     }
 }
