@@ -153,8 +153,8 @@ wait "$pid_b"
 result_a="$(tr -d '\r' <"$tmp_dir/a.out" | tail -n 1)"
 result_b="$(tr -d '\r' <"$tmp_dir/b.out" | tail -n 1)"
 
-campaign_id="$(psql "$DB_URL" -X -qAt -v ON_ERROR_STOP=1 -v domain="$domain" \
-  -c "SELECT id FROM public.campaigns WHERE domain = :'domain'")"
+campaign_id="$(psql "$DB_URL" -X -qAt -v ON_ERROR_STOP=1 \
+  -c "SELECT id FROM public.campaigns WHERE domain = '$domain'")"
 
 extract_campaign_id() {
   local raw="$1"
