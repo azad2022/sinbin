@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - db/daily-sequential-featured-lifecycle-20261123
+      - db/session2-finalize-20261123
     paths:
       - "supabase/**"
       - ".github/workflows/session2-database-ci.yml"
@@ -50,24 +51,62 @@ jobs:
           fi
           test -d supabase/migrations
           test -d supabase/tests
+          test -f supabase/ci/bootstrap_platform.sql
+
+          # The production project has a pre-existing RLS event trigger that
+          # predates the tracked migration history. Disable automatic replay
+          # during 'supabase start' so CI can install that prerequisite first.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("supabase/config.toml")
+          text = path.read_text()
+          match = re.search(r"(?ms)^\\[db\\.migrations\\]\\s*(.*?)(?=^\\[|\\Z)", text)
+          if match:
+              section = match.group(0)
+              if re.search(r"(?m)^enabled\\s*=", section):
+                  section = re.sub(r"(?m)^enabled\\s*=.*$", "enabled = false", section, count=1)
+              else:
+                  section = section.replace("[db.migrations]", "[db.migrations]\\nenabled = false", 1)
+              text = text[:match.start()] + section + text[match.end():]
+          else:
+              text = text.rstrip() + "\\n\\n[db.migrations]\\nenabled = false\\n"
+          path.write_text(text)
+          PY
+          grep -A2 '^\\[db.migrations\\]' supabase/config.toml
           echo "Local migration and integration test directories verified."
 
-      - name: Start disposable local Supabase
+      - name: Start disposable local Supabase without automatic migration replay
         run: supabase start
-
-      - name: Replay all migrations from an empty local database
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Deliberately local. No project link, remote DB URL, access token,
-          # production password, or production connection is configured here.
-          supabase db reset --local
 
       - name: Install PostgreSQL client
         run: |
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y postgresql-client
+
+      - name: Install the pre-existing platform RLS prerequisite locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" ]]; then
+            echo "DB_URL was not reported by the local Supabase stack." >&2
+            exit 1
+          fi
+          # This connects only to the local disposable DB. The script sources
+          # the same versioned SQL migration that records the prerequisite.
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/bootstrap_platform.sql
+
+      - name: Replay every versioned migration locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Explicit local target only. No project link, remote DB URL, access
+          # token, production password, or production connection is configured.
+          supabase migration up --local
+          supabase migration list --local
 
       - name: Run every isolated SQL acceptance suite and concurrency test
         shell: bash
