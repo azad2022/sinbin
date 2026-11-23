@@ -1,0 +1,129 @@
+name: Session 2 - Supabase Local Database Verification
+
+on:
+  push:
+    branches:
+      - db/daily-sequential-featured-lifecycle-20261123
+    paths:
+      - "supabase/**"
+      - ".github/workflows/session2-database-ci.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "supabase/**"
+      - ".github/workflows/session2-database-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sitebin-session2-db-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay-and-test:
+    name: Replay migrations and run isolated PostgreSQL acceptance tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_TELEMETRY_DISABLED: "1"
+      DO_NOT_TRACK: "1"
+
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 3.2.0
+
+      - name: Initialize local-only Supabase configuration when absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase --version
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          test -d supabase/migrations
+          test -d supabase/tests
+          echo "Local migration and integration test directories verified."
+
+      - name: Start disposable local Supabase
+        run: supabase start
+
+      - name: Replay all migrations from an empty local database
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Deliberately local. No project link, remote DB URL, access token,
+          # production password, or production connection is configured here.
+          supabase db reset --local
+
+      - name: Install PostgreSQL client
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Run every isolated SQL acceptance suite and concurrency test
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" ]]; then
+            echo "DB_URL was not reported by the local Supabase stack." >&2
+            exit 1
+          fi
+
+          failures=0
+          total=0
+
+          shopt -s nullglob
+          test_files=(supabase/tests/*.sql)
+          if [[ "${#test_files[@]}" -eq 0 ]]; then
+            echo "No SQL integration test files found." >&2
+            exit 1
+          fi
+
+          for test_file in "${test_files[@]}"; do
+            total=$((total + 1))
+            echo "::group::PostgreSQL integration test: $test_file"
+            if psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f "$test_file"; then
+              echo "PASS: $test_file"
+            else
+              echo "FAIL: $test_file" >&2
+              failures=$((failures + 1))
+            fi
+            echo "::endgroup::"
+          done
+
+          echo "::group::Concurrent campaign reservation test"
+          if DB_URL="$DB_URL" bash supabase/tests/sitebin_sequential_campaign_concurrency.sh; then
+            echo "PASS: concurrent single-capacity reservation"
+          else
+            echo "FAIL: concurrent single-capacity reservation" >&2
+            failures=$((failures + 1))
+          fi
+          echo "::endgroup::"
+
+          echo "SQL suites executed: $total"
+          echo "Failed suites: $failures"
+          if [[ "$failures" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Verify local migration ledger after replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase migration list --local
+          echo "PASS: the disposable local database reports its replayed migration ledger."
+
+      - name: Stop disposable local Supabase
+        if: always()
+        run: supabase stop --no-backup
