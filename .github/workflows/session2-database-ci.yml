@@ -165,17 +165,6 @@ jobs:
           fi
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_owners.sql
 
-      - name: Seed the historical demo campaign pool in disposable database only
-        shell: bash
-        run: |
-          set -euo pipefail
-          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
-          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
-            echo "Refusing to seed demo campaigns outside the local disposable Supabase database." >&2
-            exit 1
-          fi
-          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_pool.sql
-
       - name: Replay remaining forward migrations
         shell: bash
         run: |
@@ -186,6 +175,17 @@ jobs:
           done
           supabase migration up --local --include-all
           supabase migration list --local
+
+      - name: Seed the historical demo campaign pool in disposable database only
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to seed demo campaigns outside the local disposable Supabase database." >&2
+            exit 1
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_pool.sql
 
       - name: Run every isolated SQL acceptance suite and concurrency test
         shell: bash
