@@ -165,6 +165,26 @@ jobs:
           fi
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_owners.sql
 
+      - name: Restore the already-applied daily-bonus function from Production evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          historical_migration="$SITEBIN_LATER_MIGRATIONS/20261009024000_sitebin_daily_bonus_requires_completed_view.sql"
+          if [[ ! -s "$historical_migration" ]]; then
+            echo "Expected already-applied daily-bonus migration is missing: $historical_migration" >&2
+            exit 1
+          fi
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" ]]; then
+            echo "DB_URL was not reported by the local Supabase stack." >&2
+            exit 1
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/restore_applied_20261009024000.sql
+          # This version is already Applied in Production. Record that state
+          # only in the disposable local ledger; do not replay its historical
+          # DO-block patch or modify the historical migration file.
+          supabase migration repair 20261009024000 --status applied --local
+
       - name: Replay remaining forward migrations
         shell: bash
         run: |
