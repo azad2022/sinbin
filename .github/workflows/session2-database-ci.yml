@@ -5,6 +5,7 @@ on:
     branches:
       - db/daily-sequential-featured-lifecycle-20261123
       - db/session2-finalize-20261123
+      - db/session2-verified-20261123
     paths:
       - "supabase/**"
       - ".github/workflows/session2-database-ci.yml"
@@ -165,7 +166,7 @@ jobs:
           fi
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_owners.sql
 
-      - name: Replay remaining forward migrations
+      - name: Replay all remaining forward migrations
         shell: bash
         run: |
           set -euo pipefail
@@ -175,23 +176,6 @@ jobs:
           done
           supabase migration up --local --include-all
           supabase migration list --local
-
-      - name: Replay historical migrations through keyword resolver before URL preflight
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          for migration in "$SITEBIN_LATER_MIGRATIONS"/*.sql; do
-            filename="${migration##*/}"
-            version="${filename%%_*}"
-            if [[ "$version" < "20261005112713" ]]; then
-              mv "$migration" supabase/migrations/
-            fi
-          done
-          # The demo campaigns predate the URL-preflight trigger. Replay the
-          # prerequisite schema through keyword resolution first, then seed
-          # those CI-only campaigns before the preflight trigger is installed.
-          supabase migration up --local --include-all
 
       - name: Seed the historical demo campaign pool in disposable database only
         shell: bash
