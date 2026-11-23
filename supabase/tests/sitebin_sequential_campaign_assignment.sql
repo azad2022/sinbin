@@ -84,8 +84,8 @@ BEGIN
     )
     SELECT
         u,
-        'seq_' || pg_catalog.substr(pg_catalog.replace(u::TEXT, '-', ''), 21, 12),
-        'seq_inst_' || pg_catalog.substr(pg_catalog.replace(u::TEXT, '-', ''), 21, 12),
+        'seq_' || (pg_catalog.substr(pg_catalog.replace(u::TEXT, '-', ''), 1, 8) || pg_catalog.substr(pg_catalog.replace(u::TEXT, '-', ''), 29, 4)),
+        'seq_inst_' || (pg_catalog.substr(pg_catalog.replace(u::TEXT, '-', ''), 1, 8) || pg_catalog.substr(pg_catalog.replace(u::TEXT, '-', ''), 29, 4)),
         10000,
         1000,
         10000,
