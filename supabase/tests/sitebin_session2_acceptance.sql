@@ -13,6 +13,32 @@ CREATE TEMP TABLE _s2_campaigns (
     domain text NOT NULL
 ) ON COMMIT DROP;
 
+CREATE TEMP TABLE _s2_rank_fixture (
+    user_id uuid PRIMARY KEY,
+    completed_views integer NOT NULL CHECK (completed_views > 0)
+) ON COMMIT DROP;
+
+CREATE OR REPLACE FUNCTION pg_temp.restore_s2_daily_ranking(p_day date)
+RETURNS void
+LANGUAGE sql
+AS $restore$
+    INSERT INTO public.daily_view_leaderboard(
+        leaderboard_date, user_id, user_handle, completed_views, updated_at
+    )
+    SELECT
+        p_day,
+        p.user_id,
+        p.user_handle,
+        p.completed_views,
+        pg_catalog.clock_timestamp()
+    FROM _s2_rank_fixture p
+    JOIN public.profiles profile ON profile.id = p.user_id
+    ON CONFLICT (leaderboard_date, user_id) DO UPDATE
+    SET user_handle = EXCLUDED.user_handle,
+        completed_views = EXCLUDED.completed_views,
+        updated_at = EXCLUDED.updated_at;
+$restore$;
+
 DO $test$
 DECLARE
     v_tag text := substr(md5(clock_timestamp()::text || random()::text), 1, 10);
@@ -188,30 +214,20 @@ BEGIN
     INSERT INTO _s2_campaigns(owner_id, campaign_id, rank, purpose, domain)
     VALUES (v_fallback_owner, v_campaign_id, NULL, 'fallback', v_domain);
 
-    -- Force a known daily UTC ranking. The viewer owns rank 1, rank 2 has no
-    -- inventory, ranks 3..7 have inventory, and rank 8 has none.
-    INSERT INTO public.daily_view_leaderboard(
-        leaderboard_date, user_id, user_handle, completed_views, updated_at
-    )
-    SELECT
-        v_day_utc, p.id, p.user_handle,
-        CASE
-            WHEN p.id = v_viewer THEN 800
-            WHEN p.id = v_rank_owners[1] THEN 700
-            WHEN p.id = v_rank_owners[2] THEN 600
-            WHEN p.id = v_rank_owners[3] THEN 500
-            WHEN p.id = v_rank_owners[4] THEN 400
-            WHEN p.id = v_rank_owners[5] THEN 300
-            WHEN p.id = v_rank_owners[6] THEN 200
-            ELSE 100
-        END,
-        pg_catalog.clock_timestamp()
-    FROM public.profiles p
-    WHERE p.id = ANY(ARRAY[v_viewer] || v_rank_owners)
-    ON CONFLICT (leaderboard_date, user_id) DO UPDATE
-    SET user_handle = EXCLUDED.user_handle,
-        completed_views = EXCLUDED.completed_views,
-        updated_at = EXCLUDED.updated_at;
+    -- Force a known daily UTC ranking. Keep a copy in a transaction-local table
+    -- because the real reconciliation trigger rebuilds the public aggregate after
+    -- Session state transitions exercised below.
+    INSERT INTO _s2_rank_fixture(user_id, completed_views)
+    VALUES
+        (v_viewer, 800),
+        (v_rank_owners[1], 700),
+        (v_rank_owners[2], 600),
+        (v_rank_owners[3], 500),
+        (v_rank_owners[4], 400),
+        (v_rank_owners[5], 300),
+        (v_rank_owners[6], 200),
+        (v_rank_owners[7], 100);
+    PERFORM pg_temp.restore_s2_daily_ranking(v_day_utc);
 
     -- Request retry is idempotent: the same active Session is returned and the
     -- per-viewer cursor is not consumed a second time.
@@ -287,6 +303,7 @@ BEGIN
     IF v_assignment_status <> 'EXPIRED' THEN
         RAISE EXCEPTION 'SESSION2_FAIL: expired Session reservation was not released: %', v_assignment_status;
     END IF;
+    PERFORM pg_temp.restore_s2_daily_ranking(v_day_utc);
 
     -- The next actual allocation starts after the last successfully selected
     -- owner, not at rank 1 or at the rank that lacked a campaign.
@@ -304,6 +321,7 @@ BEGIN
     IF v_assignment_status <> 'RELEASED' THEN
         RAISE EXCEPTION 'SESSION2_FAIL: canceled reservation state is %', v_assignment_status;
     END IF;
+    PERFORM pg_temp.restore_s2_daily_ranking(v_day_utc);
 
     v_result := public.request_view_session();
     IF v_result IS NULL OR (v_result->>'featured_rank')::integer <> 5 THEN
@@ -311,6 +329,7 @@ BEGIN
     END IF;
     v_session_id := (v_result->>'id')::uuid;
     PERFORM public.cancel_view_session(v_session_id);
+    PERFORM pg_temp.restore_s2_daily_ranking(v_day_utc);
 
     v_result := public.request_view_session();
     IF v_result IS NULL OR (v_result->>'featured_rank')::integer <> 6 THEN
@@ -318,6 +337,7 @@ BEGIN
     END IF;
     v_session_id := (v_result->>'id')::uuid;
     PERFORM public.cancel_view_session(v_session_id);
+    PERFORM pg_temp.restore_s2_daily_ranking(v_day_utc);
 
     v_result := public.request_view_session();
     IF v_result IS NULL OR (v_result->>'featured_rank')::integer <> 7 THEN
@@ -325,6 +345,7 @@ BEGIN
     END IF;
     v_session_id := (v_result->>'id')::uuid;
     PERFORM public.cancel_view_session(v_session_id);
+    PERFORM pg_temp.restore_s2_daily_ranking(v_day_utc);
 
     -- Rank 8 has no eligible campaign. Once all ranks are examined the cursor is
     -- exhausted and normal distribution returns a Session without featured_rank.
@@ -395,23 +416,10 @@ BEGIN
     INSERT INTO _s2_campaigns(owner_id, campaign_id, rank, purpose, domain)
     VALUES (v_cap_owner, v_campaign_id, 3, 'capacity', v_domain);
 
-    INSERT INTO public.daily_view_leaderboard(
-        leaderboard_date, user_id, user_handle, completed_views, updated_at
-    )
-    SELECT v_day_utc, p.id, p.user_handle,
-           CASE
-               WHEN p.id = v_cap_viewer_a THEN 1200
-               WHEN p.id = v_cap_viewer_b THEN 1100
-               WHEN p.id = v_cap_owner THEN 1000
-               ELSE 800
-           END,
-           pg_catalog.clock_timestamp()
-    FROM public.profiles p
-    WHERE p.id = ANY(ARRAY[v_cap_viewer_a, v_cap_viewer_b, v_cap_owner])
-    ON CONFLICT (leaderboard_date, user_id) DO UPDATE
-    SET user_handle = EXCLUDED.user_handle,
-        completed_views = EXCLUDED.completed_views,
-        updated_at = EXCLUDED.updated_at;
+    TRUNCATE _s2_rank_fixture;
+    INSERT INTO _s2_rank_fixture(user_id, completed_views)
+    VALUES (v_cap_viewer_a, 1200), (v_cap_viewer_b, 1100), (v_cap_owner, 1000);
+    PERFORM pg_temp.restore_s2_daily_ranking(v_day_utc);
 
     PERFORM pg_catalog.set_config(
         'request.jwt.claims',
@@ -427,6 +435,7 @@ BEGIN
         RAISE EXCEPTION 'SESSION2_FAIL: capacity fixture did not reserve the rank-3 campaign: %', v_result;
     END IF;
     v_session_id := (v_result->>'id')::uuid;
+    PERFORM pg_temp.restore_s2_daily_ranking(v_day_utc);
 
     PERFORM pg_catalog.set_config(
         'request.jwt.claims',
@@ -551,18 +560,10 @@ BEGIN
     )
     RETURNING id INTO v_campaign_id;
 
-    INSERT INTO public.daily_view_leaderboard(
-        leaderboard_date, user_id, user_handle, completed_views, updated_at
-    )
-    SELECT v_day_utc, p.id, p.user_handle,
-           CASE WHEN p.id = v_ttl_viewer THEN 2000 ELSE 1900 END,
-           pg_catalog.clock_timestamp()
-    FROM public.profiles p
-    WHERE p.id IN (v_ttl_viewer, v_ttl_owner)
-    ON CONFLICT (leaderboard_date, user_id) DO UPDATE
-    SET user_handle = EXCLUDED.user_handle,
-        completed_views = EXCLUDED.completed_views,
-        updated_at = EXCLUDED.updated_at;
+    TRUNCATE _s2_rank_fixture;
+    INSERT INTO _s2_rank_fixture(user_id, completed_views)
+    VALUES (v_ttl_viewer, 2000), (v_ttl_owner, 1900);
+    PERFORM pg_temp.restore_s2_daily_ranking(v_day_utc);
 
     PERFORM pg_catalog.set_config(
         'request.jwt.claims',
