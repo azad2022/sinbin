@@ -58,23 +58,33 @@ jobs:
           # during 'supabase start' so CI can install that prerequisite first.
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           path = Path("supabase/config.toml")
-          text = path.read_text()
-          match = re.search(r"(?ms)^\\[db\\.migrations\\]\\s*(.*?)(?=^\\[|\\Z)", text)
-          if match:
-              section = match.group(0)
-              if re.search(r"(?m)^enabled\\s*=", section):
-                  section = re.sub(r"(?m)^enabled\\s*=.*$", "enabled = false", section, count=1)
-              else:
-                  section = section.replace("[db.migrations]", "[db.migrations]\\nenabled = false", 1)
-              text = text[:match.start()] + section + text[match.end():]
+          lines = path.read_text().splitlines()
+          section_start = next(
+              (i for i, line in enumerate(lines) if line.strip() == "[db.migrations]"),
+              None,
+          )
+
+          if section_start is None:
+              lines.extend(["", "[db.migrations]", "enabled = false"])
           else:
-              text = text.rstrip() + "\\n\\n[db.migrations]\\nenabled = false\\n"
-          path.write_text(text)
+              section_end = next(
+                  (i for i in range(section_start + 1, len(lines)) if lines[i].lstrip().startswith("[")),
+                  len(lines),
+              )
+              enabled_line = next(
+                  (i for i in range(section_start + 1, section_end) if lines[i].strip().startswith("enabled")),
+                  None,
+              )
+              if enabled_line is None:
+                  lines.insert(section_start + 1, "enabled = false")
+              else:
+                  lines[enabled_line] = "enabled = false"
+
+          path.write_text("\n".join(lines) + "\n")
           PY
-          grep -A2 '^\\[db.migrations\\]' supabase/config.toml
+          grep -F -A2 '[db.migrations]' supabase/config.toml
           echo "Local migration and integration test directories verified."
 
       - name: Start disposable local Supabase without automatic migration replay
