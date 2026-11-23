@@ -149,12 +149,12 @@ BEGIN
     END IF;
 
     SELECT available_coins, reserved_coins
-      INTO v_campaign.owner_available, v_campaign.owner_reserved
+      INTO v_after_available, v_after_reserved
     FROM public.profiles
     WHERE id = v_uid;
 
-    IF v_campaign.owner_available <> v_before_available - 5
-       OR v_campaign.owner_reserved <> v_before_reserved + 5 THEN
+    IF v_after_available <> v_before_available - 5
+       OR v_after_reserved <> v_before_reserved + 5 THEN
         RAISE EXCEPTION 'FINANCIAL_FAIL: campaign creation wallet reservation is wrong';
     END IF;
 
