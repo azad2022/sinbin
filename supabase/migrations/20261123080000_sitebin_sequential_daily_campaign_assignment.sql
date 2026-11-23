@@ -297,7 +297,7 @@ BEGIN
                 'keyword', v_existing_active.keyword,
                 'required_duration_seconds', v_existing_active.required_duration_seconds,
                 'reward_coins', v_existing_active.reward_coins,
-                'started_at', (pg_catalog.extract(EPOCH FROM v_existing_active.started_at) * 1000)::BIGINT,
+                'started_at', (EXTRACT(EPOCH FROM v_existing_active.started_at) * 1000)::BIGINT,
                 'featured_rank', COALESCE(v_existing_active.assigned_owner_rank, v_existing_active.leaderboard_feature_rank)
             );
         END IF;
@@ -469,7 +469,7 @@ BEGIN
                         'keyword', v_new_session.keyword,
                         'required_duration_seconds', v_new_session.required_duration_seconds,
                         'reward_coins', v_new_session.reward_coins,
-                        'started_at', (pg_catalog.extract(EPOCH FROM v_new_session.started_at) * 1000)::BIGINT,
+                        'started_at', (EXTRACT(EPOCH FROM v_new_session.started_at) * 1000)::BIGINT,
                         'featured_rank', v_ranked.owner_rank
                     );
                 END IF;
@@ -639,7 +639,7 @@ BEGIN
         'keyword', v_new_session.keyword,
         'required_duration_seconds', v_new_session.required_duration_seconds,
         'reward_coins', v_new_session.reward_coins,
-        'started_at', (pg_catalog.extract(EPOCH FROM v_new_session.started_at) * 1000)::BIGINT,
+        'started_at', (EXTRACT(EPOCH FROM v_new_session.started_at) * 1000)::BIGINT,
         'featured_rank', v_owner_rank
     );
 END;
