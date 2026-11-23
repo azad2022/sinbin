@@ -105,7 +105,7 @@ BEGIN
         'refunded_amount', v_refund
     );
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.cancel_view_session(p_session_id uuid)
@@ -136,7 +136,7 @@ BEGIN
 
     RETURN FOUND;
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.complete_view_session(p_session_id uuid, p_idempotency_key text)
@@ -299,7 +299,7 @@ BEGIN
         'success',TRUE,'reward',v_session.reward_coins,'already_completed',FALSE
     );
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.create_campaign(p_url text, p_normalized_url text, p_domain text, p_duration_seconds integer, p_target_views integer)
@@ -401,7 +401,7 @@ BEGIN
 
     RETURN pg_catalog.row_to_json(v_new_campaign);
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.init_user_account(p_install_id text, p_handle text DEFAULT NULL::text)
@@ -492,7 +492,7 @@ BEGIN
 
     RETURN pg_catalog.row_to_json(v_profile);
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.pause_campaign(p_campaign_id uuid)
@@ -517,7 +517,7 @@ BEGIN
 
     RETURN FOUND;
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.request_view_session()
@@ -604,7 +604,7 @@ BEGIN
         'started_at',extract(epoch from v_new_session.started_at)*1000
     );
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.resume_campaign(p_campaign_id uuid)
@@ -629,7 +629,7 @@ BEGIN
 
     RETURN FOUND;
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.signal_content_ready(p_session_id uuid)
@@ -659,7 +659,7 @@ BEGIN
 
     RETURN FOUND;
 END;
-$function$
+$function$;
 
 
 REVOKE ALL ON FUNCTION public.init_user_account(TEXT, TEXT) FROM PUBLIC, anon;
