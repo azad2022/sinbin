@@ -127,8 +127,8 @@ SELECT set_config(
         'is_anonymous', false
     )::text,
     true
-) AS jwt \\gset
-SELECT set_config('request.jwt.claim.sub', :'viewer_id', true) AS uid \\gset
+) AS jwt \gset
+SELECT set_config('request.jwt.claim.sub', :'viewer_id', true) AS uid \gset
 SELECT COALESCE(public.request_view_session()::text, 'NULL');
 COMMIT;
 SQL
