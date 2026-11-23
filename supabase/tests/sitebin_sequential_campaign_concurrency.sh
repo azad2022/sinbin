@@ -110,9 +110,9 @@ sql() {
 }
 
 # 1. Two concurrent requests from one viewer must return the same active session.
-request_session "$VIEWER_A" >"$TMP_DIR/same_a" &
+request_session "$VIEWER_A" >"$TMP_DIR/same_a" 2>"$TMP_DIR/same_a.err" &
 PID_A=$!
-request_session "$VIEWER_A" >"$TMP_DIR/same_b" &
+request_session "$VIEWER_A" >"$TMP_DIR/same_b" 2>"$TMP_DIR/same_b.err" &
 PID_B=$!
 wait "$PID_A"
 wait "$PID_B"
@@ -129,9 +129,9 @@ cancel_session "$VIEWER_A" "$SAME_A" >/dev/null
 sql "UPDATE public.campaigns SET status = 'PAUSED' WHERE id IN ('$CAMPAIGN_2', '$CAMPAIGN_3');" >/dev/null
 
 # 2. Two different viewers racing for one remaining campaign slot cannot over-reserve.
-request_session "$VIEWER_A" >"$TMP_DIR/race_a" &
+request_session "$VIEWER_A" >"$TMP_DIR/race_a" 2>"$TMP_DIR/race_a.err" &
 PID_A=$!
-request_session "$VIEWER_B" >"$TMP_DIR/race_b" &
+request_session "$VIEWER_B" >"$TMP_DIR/race_b" 2>"$TMP_DIR/race_b.err" &
 PID_B=$!
 wait "$PID_A"
 wait "$PID_B"
@@ -204,7 +204,7 @@ fi
 sql "UPDATE public.view_sessions SET content_ready_at = now() - interval '10 seconds', expires_at = now() - interval '1 second', status = 'CONTENT_READY' WHERE id = '$EXPIRED_ID';" >/dev/null
 complete_session "$VIEWER_A" "$EXPIRED_ID" "expired_race_$EXPIRED_ID" >"$TMP_DIR/expired_complete" 2>"$TMP_DIR/expired_complete.err" &
 PID_A=$!
-request_session "$VIEWER_A" >"$TMP_DIR/after_expiry" &
+request_session "$VIEWER_A" >"$TMP_DIR/after_expiry" 2>"$TMP_DIR/after_expiry.err" &
 PID_B=$!
 wait "$PID_A" || true
 wait "$PID_B"
@@ -223,4 +223,9 @@ if [[ "$ACTIVE_COUNT" -gt 1 ]]; then
 fi
 cancel_session "$VIEWER_A" "$NEW_ID" >/dev/null
 
-echo "PASS: concurrent same-viewer retry, capacity serialization, idempotent completion, complete/cancel race, expiration/complete race"
+if grep -qiE 'deadlock detected|40P01' "$TMP_DIR"/*.err; then
+  echo "FAIL: PostgreSQL deadlock detected during concurrent session tests" >&2
+  exit 1
+fi
+
+echo "PASS: concurrent same-viewer retry, capacity serialization, idempotent completion, complete/cancel race, expiration/complete race; no deadlocks"

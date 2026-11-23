@@ -587,9 +587,14 @@ BEGIN
     -- UTC date; one second after midnight belongs to the current UTC date.
     v_boundary_previous := (v_day::TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '1 second';
     v_boundary_current := (v_day::TIMESTAMP AT TIME ZONE 'UTC') + INTERVAL '1 second';
-    SELECT completed_views INTO v_before_daily
-    FROM public.daily_view_leaderboard
-    WHERE leaderboard_date = v_day AND user_id = v_viewer;
+    -- Read the authoritative completed-session count, not the synthetic
+    -- leaderboard score used to build the ranking fixture.
+    SELECT pg_catalog.count(*)::INTEGER INTO v_before_daily
+    FROM public.view_sessions
+    WHERE viewer_id = v_viewer
+      AND status = 'COMPLETED'
+      AND completed_at >= (v_day::TIMESTAMP AT TIME ZONE 'UTC')
+      AND completed_at < ((v_day + 1)::TIMESTAMP AT TIME ZONE 'UTC');
 
     INSERT INTO public.view_sessions (
         campaign_id, viewer_id, required_duration_seconds, reward_coins,
@@ -845,5 +850,61 @@ BEGIN
     RAISE NOTICE 'PASS: sequential ranks, self-skip, next_eligible, >5 ranks, exhaustion, fallback, retry, cancel, TTL, completion idempotency, anti-repeat, RLS/grants, view security, Rolling30 and rebind';
 END;
 $test$;
+
+-- Exercise actual RLS under the client roles, not only pg_policy metadata.
+SET LOCAL ROLE authenticated;
+DO $rls_authenticated$
+DECLARE
+    v_uid UUID := auth.uid();
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'TEST_FAILED: authenticated RLS test has no auth.uid()';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM public.view_sessions WHERE viewer_id = v_uid
+    ) OR EXISTS (
+        SELECT 1 FROM public.view_sessions WHERE viewer_id <> v_uid
+    ) THEN
+        RAISE EXCEPTION 'TEST_FAILED: authenticated viewer can read sessions outside their ownership';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM public.campaigns WHERE owner_id = v_uid
+    ) OR EXISTS (
+        SELECT 1 FROM public.campaigns WHERE owner_id <> v_uid
+    ) THEN
+        RAISE EXCEPTION 'TEST_FAILED: authenticated viewer can read campaigns outside their ownership';
+    END IF;
+END;
+$rls_authenticated$;
+RESET ROLE;
+
+SET LOCAL ROLE anon;
+DO $rls_anon$
+BEGIN
+    BEGIN
+        PERFORM 1 FROM public.view_sessions LIMIT 1;
+        RAISE EXCEPTION 'TEST_FAILED: anon unexpectedly read view_sessions';
+    EXCEPTION WHEN insufficient_privilege THEN
+        NULL;
+    END;
+
+    BEGIN
+        PERFORM 1 FROM public.campaigns LIMIT 1;
+        RAISE EXCEPTION 'TEST_FAILED: anon unexpectedly read campaigns';
+    EXCEPTION WHEN insufficient_privilege THEN
+        NULL;
+    END;
+
+    BEGIN
+        PERFORM 1 FROM public.special_campaign_assignments LIMIT 1;
+        RAISE EXCEPTION 'TEST_FAILED: anon unexpectedly read special assignments';
+    EXCEPTION WHEN insufficient_privilege THEN
+        NULL;
+    END;
+END;
+$rls_anon$;
+RESET ROLE;
 
 ROLLBACK;
