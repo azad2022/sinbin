@@ -711,12 +711,14 @@ $function$;
 REVOKE ALL ON FUNCTION public.signal_content_ready(UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.signal_content_ready(UUID) TO authenticated;
 
-CREATE OR REPLACE FUNCTION public.complete_view_session(p_session_id UUID, p_idempotency_key TEXT)
-RETURNS json
+CREATE OR REPLACE FUNCTION public.complete_view_session(
+    p_session_id UUID,
+    p_idempotency_key TEXT
+) RETURNS json
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
-AS $$
+AS $function$
 DECLARE
     v_uid UUID := (select auth.uid());
     v_clean_key TEXT;
@@ -729,6 +731,7 @@ DECLARE
     v_second_lock UUID;
     v_dummy_profile RECORD;
     v_elapsed_seconds NUMERIC;
+    v_campaign_completed BOOLEAN := FALSE;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'UNAUTHORIZED: Authentication token required';
@@ -763,10 +766,24 @@ BEGIN
             RAISE EXCEPTION 'IDEMPOTENCY_KEY_CONFLICT: Key has already been associated with a different session';
         END IF;
         IF v_existing_by_key.status = 'COMPLETED' THEN
+            SELECT available_coins, lifetime_earned, completed_views_count
+            INTO v_viewer
+            FROM public.profiles
+            WHERE id = v_uid;
+
+            SELECT completed_views >= target_views
+            INTO v_campaign_completed
+            FROM public.campaigns
+            WHERE id = v_existing_by_key.campaign_id;
+
             RETURN pg_catalog.json_build_object(
                 'success', TRUE,
                 'reward', v_existing_by_key.reward_coins,
-                'already_completed', TRUE
+                'already_completed', TRUE,
+                'available_coins', COALESCE(v_viewer.available_coins, 0),
+                'lifetime_earned', COALESCE(v_viewer.lifetime_earned, 0),
+                'completed_views_count', COALESCE(v_viewer.completed_views_count, 0),
+                'campaign_completed', COALESCE(v_campaign_completed, FALSE)
             );
         END IF;
     END IF;
@@ -785,10 +802,24 @@ BEGIN
     END IF;
 
     IF v_session.status = 'COMPLETED' THEN
+        SELECT available_coins, lifetime_earned, completed_views_count
+        INTO v_viewer
+        FROM public.profiles
+        WHERE id = v_uid;
+
+        SELECT completed_views >= target_views
+        INTO v_campaign_completed
+        FROM public.campaigns
+        WHERE id = v_session.campaign_id;
+
         RETURN pg_catalog.json_build_object(
             'success', TRUE,
             'reward', v_session.reward_coins,
-            'already_completed', TRUE
+            'already_completed', TRUE,
+            'available_coins', COALESCE(v_viewer.available_coins, 0),
+            'lifetime_earned', COALESCE(v_viewer.lifetime_earned, 0),
+            'completed_views_count', COALESCE(v_viewer.completed_views_count, 0),
+            'campaign_completed', COALESCE(v_campaign_completed, FALSE)
         );
     END IF;
 
@@ -800,7 +831,7 @@ BEGIN
         RAISE EXCEPTION 'INVALID_SESSION_STATE: Content ready signal was never received';
     END IF;
 
-    -- TTL is enforced before any campaign/profile/ledger mutation.
+    -- Enforce the server-issued TTL before any financial or profile mutation.
     IF v_session.expires_at IS NOT NULL
        AND v_session.expires_at <= pg_catalog.clock_timestamp() THEN
         UPDATE public.view_sessions
@@ -846,6 +877,8 @@ BEGIN
             v_campaign.reserved_budget, v_campaign.cost_per_view;
     END IF;
 
+    v_campaign_completed := (v_campaign.completed_views + 1 >= v_campaign.target_views);
+
     v_first_lock := CASE WHEN v_campaign.owner_id < v_uid THEN v_campaign.owner_id ELSE v_uid END;
     v_second_lock := CASE WHEN v_campaign.owner_id < v_uid THEN v_uid ELSE v_campaign.owner_id END;
 
@@ -882,7 +915,9 @@ BEGIN
         lifetime_earned = lifetime_earned + v_session.reward_coins,
         completed_views_count = completed_views_count + 1,
         updated_at = pg_catalog.clock_timestamp()
-    WHERE id = v_uid;
+    WHERE id = v_uid
+    RETURNING available_coins, lifetime_earned, completed_views_count
+    INTO v_viewer;
 
     UPDATE public.view_sessions
     SET status = 'COMPLETED',
@@ -891,30 +926,34 @@ BEGIN
     WHERE id = v_session.id;
 
     INSERT INTO public.coin_ledger(
-        user_id,amount,transaction_type,description,reference_id,idempotency_key,created_at
+        user_id, amount, transaction_type, description, reference_id, idempotency_key, created_at
     )
     VALUES(
-        v_uid,v_session.reward_coins,'VIEW_REWARD',
+        v_uid, v_session.reward_coins, 'VIEW_REWARD',
         'مشاهده موفق ' || v_session.required_duration_seconds || ' ثانیه‌ای از ' || v_campaign.domain,
-        v_campaign.id::text,v_clean_key,pg_catalog.clock_timestamp()
+        v_campaign.id::text, v_clean_key, pg_catalog.clock_timestamp()
     );
 
     INSERT INTO public.coin_ledger(
-        user_id,amount,transaction_type,description,reference_id,idempotency_key,created_at
+        user_id, amount, transaction_type, description, reference_id, idempotency_key, created_at
     )
     VALUES(
-        v_campaign.owner_id,-v_campaign.cost_per_view,'CAMPAIGN_SPEND',
+        v_campaign.owner_id, -v_campaign.cost_per_view, 'CAMPAIGN_SPEND',
         'مصرف بودجه بازدید از ' || v_campaign.domain,
-        v_campaign.id::text,'spend_' || v_session.id::text,pg_catalog.clock_timestamp()
+        v_campaign.id::text, 'spend_' || v_session.id::text, pg_catalog.clock_timestamp()
     );
 
     RETURN pg_catalog.json_build_object(
         'success', TRUE,
         'reward', v_session.reward_coins,
-        'already_completed', FALSE
+        'already_completed', FALSE,
+        'available_coins', COALESCE(v_viewer.available_coins, 0),
+        'lifetime_earned', COALESCE(v_viewer.lifetime_earned, 0),
+        'completed_views_count', COALESCE(v_viewer.completed_views_count, 0),
+        'campaign_completed', v_campaign_completed
     );
 END;
-$$;
+$function$;
 
 REVOKE ALL ON FUNCTION public.complete_view_session(UUID, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.complete_view_session(UUID, TEXT) TO authenticated;
