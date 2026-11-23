@@ -522,7 +522,7 @@ fun SafeWebView(
 
     // Each session/URL gets a fresh WebView instance. This binds the document-start
     // form guard to one immutable server-issued origin and avoids stale async callbacks.
-    LaunchedEffect(contentKey, url) {
+    LaunchedEffect(contentKey, url, rendererTerminated) {
         contentReadyReported = false
         contentReadyPending = false
         if (rendererTerminated) {
