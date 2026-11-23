@@ -446,9 +446,19 @@ BEGIN
     );
     PERFORM pg_catalog.set_config('request.jwt.claim.sub', v_cap_viewer_b::text, true);
 
+    -- A second viewer must not reserve the exhausted featured campaign.
+    -- Once ranked inventory is exhausted, the documented normal fallback may
+    -- still return a different, non-featured demo-pool campaign.
     v_result := public.request_view_session();
     IF v_result IS NOT NULL THEN
-        RAISE EXCEPTION 'SESSION2_FAIL: a second viewer reserved an exhausted one-view campaign: %', v_result;
+        IF v_result->>'featured_rank' IS NOT NULL
+           OR (v_result->>'campaign_id')::uuid = v_campaign_id THEN
+            RAISE EXCEPTION 'SESSION2_FAIL: a second viewer exceeded featured capacity or reused the exhausted campaign: %', v_result;
+        END IF;
+
+        IF NOT public.cancel_view_session((v_result->>'id')::uuid) THEN
+            RAISE EXCEPTION 'SESSION2_FAIL: ordinary fallback Session could not be canceled';
+        END IF;
     END IF;
 
     SELECT pg_catalog.count(*)::integer INTO v_active_count
