@@ -16,6 +16,8 @@ DECLARE
     v_campaign_id uuid;
     v_before_available bigint;
     v_before_reserved bigint;
+    v_after_available bigint;
+    v_after_reserved bigint;
 BEGIN
     INSERT INTO auth.users(
         id, aud, role, email, email_confirmed_at,
@@ -114,13 +116,15 @@ BEGIN
     INSERT INTO private.campaign_preflight_tokens(
         token_hash, user_id, source_url, normalized_url, domain, final_url,
         http_status, redirect_count, response_ms, content_type, content_length,
-        viewer_compatibility, quality_score, diagnostics, created_at, expires_at
+        viewer_compatibility, quality_score, diagnostics, created_at, expires_at,
+        referral_site_key
     )
     VALUES(
         v_token_hash, v_uid, v_url, v_url, v_domain, v_url,
         200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
         jsonb_build_object('referral_site_key', v_domain),
-        clock_timestamp(), clock_timestamp() + INTERVAL '10 minutes'
+        clock_timestamp(), clock_timestamp() + INTERVAL '10 minutes',
+        v_domain
     );
 
     SELECT public.create_campaign(
