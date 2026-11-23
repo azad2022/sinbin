@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: sitebin-android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -179,8 +183,21 @@ jobs:
           grep -Fq 'fontSize = if (displayRank == 1) 25.sp else 22.sp' app/src/main/java/com/example/ui/screens/HomeScreen.kt
           grep -Fq 'fontSize = 16.sp' app/src/main/java/com/example/ui/screens/HomeScreen.kt
 
-      - name: Unit tests
-        run: gradle --no-daemon testBazaarDebugUnitTest testMyketDebugUnitTest
+      - name: Unit tests with bounded dependency retry
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "Running Android unit tests (attempt $attempt/3)"
+            if gradle --no-daemon --no-configuration-cache testBazaarDebugUnitTest testMyketDebugUnitTest; then
+              exit 0
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              sleep "$((attempt * 20))"
+            fi
+          done
+          echo "Android unit tests failed after three bounded attempts."
+          exit 1
 
       - name: Enable KVM for Android WebView smoke tests
         run: |
