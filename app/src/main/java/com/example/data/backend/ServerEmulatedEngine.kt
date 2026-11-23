@@ -7,7 +7,7 @@ import com.example.data.model.CampaignStatus
 import com.example.data.model.CoinTransaction
 import com.example.data.model.CoinTransferResult
 import com.example.data.model.DailyBonusResult
-import com.example.data.model.WeeklyLeaderboardEntry
+import com.example.data.model.Rolling30LeaderboardEntry
 import com.example.data.model.DurationOption
 import com.example.data.model.TransactionType
 import com.example.data.model.UserAccount
@@ -335,57 +335,33 @@ class ServerEmulatedEngine(
         Result.success(userLedger[userId]?.toList() ?: emptyList())
     }
 
-    override suspend fun fetchWeeklyLeaderboard(weekStart: String): Result<List<WeeklyLeaderboardEntry>> = lock.withLock {
-        val cleanWeekStart = weekStart.trim()
-        if (!cleanWeekStart.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$"))) {
-            return Result.failure(IllegalArgumentException("INVALID_WEEK_START: Leaderboard week start must be yyyy-MM-dd"))
-        }
+    override suspend fun fetchRolling30Leaderboard(): Result<List<Rolling30LeaderboardEntry>> = lock.withLock {
+        val windowEnd = System.currentTimeMillis()
+        val windowStart = windowEnd - 30L * 24L * 60L * 60L * 1000L
 
-        val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-            timeZone = java.util.TimeZone.getTimeZone("UTC")
-        }
-
-        val calendar = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"), Locale.US).apply {
-            firstDayOfWeek = java.util.Calendar.MONDAY
-            minimalDaysInFirstWeek = 4
-        }
-        val weekStartMillis = runCatching {
-            calendar.time = formatter.parse(cleanWeekStart) ?: return@runCatching null
-            calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
-            calendar.set(java.util.Calendar.MINUTE, 0)
-            calendar.set(java.util.Calendar.SECOND, 0)
-            calendar.set(java.util.Calendar.MILLISECOND, 0)
-            calendar.timeInMillis
-        }.getOrNull() ?: return Result.failure(IllegalArgumentException("INVALID_WEEK_START: Invalid week start"))
-
-        val calendarWeek = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"), Locale.US).apply {
-            firstDayOfWeek = java.util.Calendar.MONDAY
-            minimalDaysInFirstWeek = 4
-        }
         val counts = viewSessions.values
             .asSequence()
             .filter { it.status == "COMPLETED" && it.completedAt != null }
             .filter { record ->
-                calendarWeek.timeInMillis = record.completedAt!!
-                calendarWeek.set(java.util.Calendar.HOUR_OF_DAY, 0)
-                calendarWeek.set(java.util.Calendar.MINUTE, 0)
-                calendarWeek.set(java.util.Calendar.SECOND, 0)
-                calendarWeek.set(java.util.Calendar.MILLISECOND, 0)
-                calendarWeek.set(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.MONDAY)
-                calendarWeek.timeInMillis == weekStartMillis
+                val completedAt = record.completedAt!!
+                completedAt >= windowStart && completedAt < windowEnd
             }
             .groupingBy { it.viewerId }
             .eachCount()
 
         val ranked = counts.mapNotNull { (userId, count) ->
-            profiles[userId]?.userHandle?.trim()?.takeIf { it.isNotBlank() }?.let {
-                WeeklyLeaderboardEntry(rank = 0, userHandle = it, completedViews = count)
+            profiles[userId]?.userHandle?.trim()?.takeIf { it.isNotBlank() }?.let { handle ->
+                userId to Rolling30LeaderboardEntry(
+                    rank = 0,
+                    userHandle = handle,
+                    completedViews = count
+                )
             }
         }.sortedWith(
-            compareByDescending<WeeklyLeaderboardEntry> { it.completedViews }
-                .thenBy { it.userHandle.lowercase(Locale.US) }
-                .thenBy { it.userHandle }
-        ).mapIndexed { index, entry ->
+            compareByDescending<Pair<String, Rolling30LeaderboardEntry>> { it.second.completedViews }
+                .thenBy { it.second.userHandle }
+                .thenBy { it.first }
+        ).mapIndexed { index, (_, entry) ->
             entry.copy(rank = index + 1)
         }
 

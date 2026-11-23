@@ -70,7 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Campaign
 import com.example.data.model.DailyBonusResult
-import com.example.data.model.WeeklyLeaderboard
+import com.example.data.model.Rolling30Leaderboard
 import com.example.data.model.UserAccount
 import com.example.ui.AppScreen
 import com.example.ui.theme.SiteBinBlue
@@ -89,8 +89,8 @@ internal const val WELCOME_BONUS_BANNER_DURATION_MS = 2L * 60L * 60L * 1000L
 
 internal val HOME_VIEWING_CARD_SUBTITLES = listOf(
     "با مشاهده وب‌سایت‌های دیگران سکه رایگان دریافت کن و به موجودی خودت اضافه کن.",
-    "هر چقدر بیشتر بازدید کنی امکان اینکه نفر اول لیدربورد بشی بیشتر میشه",
-    "نفرات برتر لیدربورد لینک های آنها در صفحات ابتدایی مرورگر به ترتیب نمایش داده میشه"
+    "بازدیدهای معتبر ثبت‌شده در ۳۰ روز اخیر، رتبهٔ تو را در لیدربورد خانه تعیین می‌کنند.",
+    "نمایش ویژهٔ لینک‌ها جداگانه بر اساس رتبه‌بندی روزانه و واجد شرایط بودن کمپین انجام می‌شود."
 )
 
 internal val HOME_ADVERTISING_CARD_SUBTITLES = listOf(
@@ -121,7 +121,7 @@ fun HomeScreen(
     showWelcomeCelebration: Boolean = false,
     onWelcomeCelebrationConsumed: () -> Unit = {},
     dailyBonus: DailyBonusResult? = null,
-    weeklyLeaderboard: WeeklyLeaderboard? = null,
+    rolling30Leaderboard: Rolling30Leaderboard? = null,
     showDailyBonusCelebration: Boolean = false,
     onDailyBonusCelebrationConsumed: () -> Unit = {},
     onStartViewing: () -> Unit,
@@ -216,8 +216,8 @@ fun HomeScreen(
             }
 
             item {
-                WeeklyLeaderboardCard(
-                    leaderboard = weeklyLeaderboard,
+                Rolling30LeaderboardCard(
+                    leaderboard = rolling30Leaderboard,
                     currentUserHandle = account.userHandle
                 )
             }
@@ -320,40 +320,40 @@ private fun DailyBonusBanner(
 }
 
 
-internal fun weeklyLeaderboardTopFive(
-    entries: List<com.example.data.model.WeeklyLeaderboardEntry>
-): List<com.example.data.model.WeeklyLeaderboardEntry> =
+internal fun rolling30LeaderboardTopFive(
+    entries: List<com.example.data.model.Rolling30LeaderboardEntry>
+): List<com.example.data.model.Rolling30LeaderboardEntry> =
     entries.sortedBy { it.rank }.take(5)
 
-internal fun weeklyLeaderboardPodiumOrder(
-    entries: List<com.example.data.model.WeeklyLeaderboardEntry>
-): List<com.example.data.model.WeeklyLeaderboardEntry?> {
-    val byRank = weeklyLeaderboardTopFive(entries).associateBy { it.rank }
+internal fun rolling30LeaderboardPodiumOrder(
+    entries: List<com.example.data.model.Rolling30LeaderboardEntry>
+): List<com.example.data.model.Rolling30LeaderboardEntry?> {
+    val byRank = rolling30LeaderboardTopFive(entries).associateBy { it.rank }
     // Visual order left-to-right: bronze (3), gold (1), silver (2).
     return listOf(byRank[3], byRank[1], byRank[2])
 }
 
-internal fun weeklyLeaderboardLowerRows(
-    entries: List<com.example.data.model.WeeklyLeaderboardEntry>
-): List<com.example.data.model.WeeklyLeaderboardEntry> =
-    weeklyLeaderboardTopFive(entries).filter { it.rank in 4..5 }
+internal fun rolling30LeaderboardLowerRows(
+    entries: List<com.example.data.model.Rolling30LeaderboardEntry>
+): List<com.example.data.model.Rolling30LeaderboardEntry> =
+    rolling30LeaderboardTopFive(entries).filter { it.rank in 4..5 }
 
 @Composable
-private fun WeeklyLeaderboardCard(
-    leaderboard: WeeklyLeaderboard?,
+private fun Rolling30LeaderboardCard(
+    leaderboard: Rolling30Leaderboard?,
     currentUserHandle: String
 ) {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
-    val entries = weeklyLeaderboardTopFive(leaderboard?.entries.orEmpty())
-    val podiumEntries = weeklyLeaderboardPodiumOrder(entries)
-    val lowerEntries = weeklyLeaderboardLowerRows(entries)
+    val entries = rolling30LeaderboardTopFive(leaderboard?.entries.orEmpty())
+    val podiumEntries = rolling30LeaderboardPodiumOrder(entries)
+    val lowerEntries = rolling30LeaderboardLowerRows(entries)
     val rank = leaderboard?.currentUserRank
     val gap = leaderboard?.viewsToNextRank
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("weekly_leaderboard"),
+            .testTag("rolling30_leaderboard"),
         shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -376,7 +376,7 @@ private fun WeeklyLeaderboardCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "برترین بازدیدکنندگان این هفته",
+                    text = "برترین بازدیدکنندگان ۳۰ روز اخیر",
                     style = MaterialTheme.typography.titleLarge,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
@@ -398,7 +398,7 @@ private fun WeeklyLeaderboardCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "در حال دریافت جدول این هفته…",
+                            text = "در حال دریافت جدول ۳۰ روز اخیر…",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.86f),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -411,7 +411,7 @@ private fun WeeklyLeaderboardCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "هنوز بازدید موفقی برای این هفته ثبت نشده است.",
+                            text = "هنوز بازدید موفقی برای ۳۰ روز اخیر ثبت نشده است.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.86f),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -423,7 +423,7 @@ private fun WeeklyLeaderboardCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(390.dp)
-                            .testTag("weekly_leaderboard_podium")
+                            .testTag("rolling30_leaderboard_podium")
                     ) {
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             Row(
@@ -452,7 +452,7 @@ private fun WeeklyLeaderboardCard(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
-                                    .testTag("weekly_leaderboard_rank_rows"),
+                                    .testTag("rolling30_leaderboard_rank_rows"),
                                 shape = RoundedCornerShape(26.dp),
                                 color = Color(0xFF1A414F),
                                 tonalElevation = 3.dp,
@@ -486,7 +486,7 @@ private fun WeeklyLeaderboardCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .border(1.dp, Color(0xFF20A9A4).copy(alpha = 0.75f), RoundedCornerShape(20.dp))
-                    .testTag("weekly_leaderboard_current_rank"),
+                    .testTag("rolling30_leaderboard_current_rank"),
                 shape = RoundedCornerShape(20.dp),
                 color = Color(0xFF0B5157).copy(alpha = 0.68f)
             ) {
@@ -518,7 +518,7 @@ private fun WeeklyLeaderboardCard(
 
 @Composable
 private fun LeaderboardPodiumSlot(
-    entry: com.example.data.model.WeeklyLeaderboardEntry?,
+    entry: com.example.data.model.Rolling30LeaderboardEntry?,
     displayRank: Int,
     formatter: NumberFormat,
     modifier: Modifier = Modifier
@@ -650,12 +650,12 @@ private fun LeaderboardPodiumSlot(
 
 @Composable
 private fun LeaderboardLowerRankRow(
-    entry: com.example.data.model.WeeklyLeaderboardEntry,
+    entry: com.example.data.model.Rolling30LeaderboardEntry,
     isCurrentUser: Boolean,
     formatter: NumberFormat
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth().testTag("weekly_leaderboard_row_${entry.rank}"),
+        modifier = Modifier.fillMaxWidth().testTag("rolling30_leaderboard_row_${entry.rank}"),
         shape = RoundedCornerShape(18.dp),
         color = if (isCurrentUser) Color(0xFF315C69) else Color(0xFF2B515F)
     ) {

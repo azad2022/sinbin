@@ -79,7 +79,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.UserAccount
-import com.example.data.model.WeeklyLeaderboard
+import com.example.data.model.Rolling30Leaderboard
 import com.example.data.model.ReferralStatus
 import com.example.ui.theme.SiteBinBlue
 import com.example.ui.theme.SiteBinGold
@@ -105,7 +105,7 @@ internal fun leaderboardMedalNumeral(rank: Int): String = when (rank) {
 fun SettingsScreen(
     account: UserAccount,
     activeCampaignsCount: Int,
-    weeklyLeaderboard: WeeklyLeaderboard?,
+    rolling30Leaderboard: Rolling30Leaderboard?,
     isDarkTheme: Boolean,
     onToggleDarkTheme: (Boolean) -> Unit,
     notificationsEnabled: Boolean,
@@ -178,7 +178,7 @@ fun SettingsScreen(
                                 }
                             }
 
-                            val medalRank = weeklyLeaderboard?.currentUserRank
+                            val medalRank = rolling30Leaderboard?.currentUserRank
                                 ?.takeIf { leaderboardMedalLabel(it) != null }
                             if (medalRank != null) {
                                 RankMedalBadge(
