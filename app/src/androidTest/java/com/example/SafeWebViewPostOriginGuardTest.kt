@@ -154,7 +154,7 @@ class SafeWebViewPostOriginGuardTest {
 
         try {
             assertTrue("WebView did not finish the base-target test page.", completed.await(10, TimeUnit.SECONDS))
-            assertEquals("\\\"https://sitebin.test/\\\"", result.get())
+            assertEquals("\"https://sitebin.test/\"", result.get())
         } finally {
             instrumentation.runOnMainSync {
                 webView.stopLoading()
