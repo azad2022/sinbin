@@ -31,9 +31,18 @@ REVOKE EXECUTE ON FUNCTION public.cancel_view_session(uuid) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.cancel_view_session(uuid) FROM anon;
 GRANT EXECUTE ON FUNCTION public.cancel_view_session(uuid) TO authenticated;
 
-REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM anon;
-REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM authenticated;
+-- This legacy helper was created manually in some deployed databases but is
+-- not part of the versioned migration chain. Revoke it when present without
+-- making a clean migration replay depend on an out-of-band object.
+DO $rls_auto_enable_privileges$
+BEGIN
+  IF pg_catalog.to_regprocedure('public.rls_auto_enable()') IS NOT NULL THEN
+    EXECUTE 'REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM PUBLIC';
+    EXECUTE 'REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM anon';
+    EXECUTE 'REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM authenticated';
+  END IF;
+END
+$rls_auto_enable_privileges$;
 
 CREATE INDEX IF NOT EXISTS idx_campaigns_duration_seconds
   ON public.campaigns(duration_seconds);
