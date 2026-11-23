@@ -123,7 +123,7 @@ jobs:
               mv "$migration" "$later_dir/"
             fi
           done
-          echo "$later_dir" >> "$GITHUB_ENV"
+          echo "SITEBIN_LATER_MIGRATIONS=$later_dir" >> "$GITHUB_ENV"
           # Only migrations before the already-applied but corrupted historical
           # version are replayed in this stage.
           supabase migration up --local
