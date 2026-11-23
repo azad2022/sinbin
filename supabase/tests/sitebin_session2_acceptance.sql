@@ -806,6 +806,16 @@ BEGIN
         RAISE EXCEPTION 'SESSION2_FAIL: private cursor or assignment table is directly readable';
     END IF;
 
+    IF has_table_privilege('anon', 'private.completed_view_leaderboard_events', 'SELECT')
+       OR has_table_privilege('authenticated', 'private.completed_view_leaderboard_events', 'SELECT') THEN
+        RAISE EXCEPTION 'SESSION2_FAIL: raw rolling leaderboard event rows are directly readable';
+    END IF;
+
+    IF has_function_privilege('anon', 'private.get_rolling_30d_leaderboard()', 'EXECUTE')
+       OR NOT has_function_privilege('authenticated', 'private.get_rolling_30d_leaderboard()', 'EXECUTE') THEN
+        RAISE EXCEPTION 'SESSION2_FAIL: aggregate-only Rolling30 function grants are incorrect';
+    END IF;
+
     IF has_function_privilege('anon', 'public.request_view_session()', 'EXECUTE')
        OR NOT has_function_privilege('authenticated', 'public.request_view_session()', 'EXECUTE') THEN
         RAISE EXCEPTION 'SESSION2_FAIL: request_view_session grants are incorrect';
@@ -930,6 +940,12 @@ BEGIN
     FROM public.rolling_30d_view_leaderboard_public;
     IF v_count < 0 THEN
         RAISE EXCEPTION 'SESSION2_FAIL: authenticated Rolling30 view read failed';
+    END IF;
+
+    SELECT pg_catalog.count(*) INTO v_count
+    FROM public.weekly_view_leaderboard_public;
+    IF v_count < 0 THEN
+        RAISE EXCEPTION 'SESSION2_FAIL: authenticated legacy Rolling30 view read failed';
     END IF;
 
     SELECT pg_catalog.count(*) INTO v_count
