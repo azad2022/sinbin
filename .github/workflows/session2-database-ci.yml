@@ -109,12 +109,47 @@ jobs:
           # the same versioned SQL migration that records the prerequisite.
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/bootstrap_platform.sql
 
-      - name: Replay every versioned migration locally
+      - name: Replay the clean baseline up to the corrupted historical migration
         shell: bash
         run: |
           set -euo pipefail
-          # Explicit local target only. No project link, remote DB URL, access
-          # token, production password, or production connection is configured.
+          later_dir="$RUNNER_TEMP/sitebin-later-migrations"
+          mkdir -p "$later_dir"
+          shopt -s nullglob
+          for migration in supabase/migrations/*.sql; do
+            filename="${migration##*/}"
+            version="${filename%%_*}"
+            if [[ "$version" > "20261003165012" ]]; then
+              mv "$migration" "$later_dir/"
+            fi
+          done
+          echo "$later_dir" >> "$GITHUB_ENV"
+          # Only migrations before the already-applied but corrupted historical
+          # version are replayed in this stage.
+          supabase migration up --local
+
+      - name: Restore the already-applied historical migration from its recorded payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" ]]; then
+            echo "DB_URL was not reported by the local Supabase stack." >&2
+            exit 1
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/restore_applied_20261003170402.sql
+          # This is local-only bookkeeping: the SQL above applies the recovered
+          # statements, then the exact historical version is marked applied.
+          supabase migration repair 20261003170402 --status applied --local
+
+      - name: Replay remaining forward migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for migration in "$SITEBIN_LATER_MIGRATIONS"/*.sql; do
+            mv "$migration" supabase/migrations/
+          done
           supabase migration up --local
           supabase migration list --local
 
