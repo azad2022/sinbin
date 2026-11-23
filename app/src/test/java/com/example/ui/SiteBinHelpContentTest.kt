@@ -35,7 +35,7 @@ class SiteBinHelpContentTest {
         assertTrue(leaderboardText.contains("۳۰ روز کامل و شناور اخیر"))
         assertTrue(leaderboardText.contains("پنجرهٔ ۳۰ روزه"))
         assertTrue(leaderboardText.contains("پنج رتبهٔ نخست"))
-        assertTrue(leaderboardText.contains("رتبه‌بندی روزانهٔ UTC"))
+        assertTrue(leaderboardText.contains("لیدربورد روزانهٔ UTC"))
         assertTrue(leaderboardText.contains("رتبهٔ ششم و بالاتر"))
         assertTrue(leaderboardText.contains("به رتبه‌های قبلی برنمی‌گردد"))
         assertTrue(leaderboardText.contains("به‌صورت اتمیک"))
