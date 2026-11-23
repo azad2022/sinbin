@@ -79,7 +79,7 @@ BEGIN
       5,
       1,
       repeat('A',26),
-      NULL
+      v_token
     );
     RAISE EXCEPTION 'TEST_FAILED: 26-character keyword accepted';
   EXCEPTION
