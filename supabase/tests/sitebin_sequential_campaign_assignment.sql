@@ -412,10 +412,19 @@ BEGIN
     SET expires_at = pg_catalog.clock_timestamp() - INTERVAL '1 second'
     WHERE id = v_session_id;
 
-    IF public.signal_content_ready(v_session_id) IS TRUE
-       OR (SELECT status FROM public.view_sessions WHERE id = v_session_id) <> 'EXPIRED'
-       OR (SELECT canceled FROM public.special_campaign_assignments WHERE session_id = v_session_id) IS NOT TRUE THEN
-        RAISE EXCEPTION 'TEST_FAILED: expired session accepted content-ready signal or retained capacity';
+    v_retry_result := public.signal_content_ready(v_session_id);
+    SELECT status INTO v_status FROM public.view_sessions WHERE id = v_session_id;
+    SELECT canceled INTO v_canceled
+    FROM public.special_campaign_assignments
+    WHERE session_id = v_session_id;
+
+    IF v_retry_result IS TRUE OR v_status IS DISTINCT FROM 'EXPIRED'
+       OR v_canceled IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION 'TEST_FAILED: expired content-ready signal result=%, status=%, assignment_canceled=%, expires_at=%',
+            v_retry_result,
+            v_status,
+            v_canceled,
+            (SELECT expires_at FROM public.view_sessions WHERE id = v_session_id);
     END IF;
 
     -- Successful completion is idempotent and updates the daily leaderboard once.
