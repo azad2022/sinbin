@@ -2,6 +2,7 @@ package com.example.core.security
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import java.net.URI
 import android.net.http.SslError
 import android.os.Build
 import android.os.Handler
@@ -36,6 +37,47 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+
+/**
+ * Classifies an SSL callback as belonging to the top-level document only when its
+ * URL matches the WebView's current document URL. Missing/malformed values fail
+ * closed so the caller reports the failure rather than risking an untrusted page.
+ */
+internal fun isMainFrameSslErrorUrl(currentUrl: String?, failingUrl: String?): Boolean {
+    if (currentUrl.isNullOrBlank() || failingUrl.isNullOrBlank()) return true
+
+    return runCatching {
+        val current = URI(currentUrl).normalize()
+        val failing = URI(failingUrl).normalize()
+
+        fun effectivePort(uri: URI): Int = when {
+            uri.port >= 0 -> uri.port
+            uri.scheme.equals("https", ignoreCase = true) -> 443
+            uri.scheme.equals("http", ignoreCase = true) -> 80
+            else -> -1
+        }
+
+        val currentHost = current.host
+        val failingHost = failing.host
+        val sameHost = when {
+            currentHost != null && failingHost != null ->
+                currentHost.equals(failingHost, ignoreCase = true)
+            currentHost == null && failingHost == null &&
+                !current.rawAuthority.isNullOrBlank() && !failing.rawAuthority.isNullOrBlank() ->
+                current.rawAuthority.equals(failing.rawAuthority, ignoreCase = true)
+            else -> false
+        }
+
+        current.isAbsolute &&
+            failing.isAbsolute &&
+            current.scheme.equals(failing.scheme, ignoreCase = true) &&
+            sameHost &&
+            effectivePort(current) == effectivePort(failing) &&
+            current.rawPath.orEmpty().trimEnd('/') == failing.rawPath.orEmpty().trimEnd('/') &&
+            current.rawQuery == failing.rawQuery &&
+            current.rawUserInfo == failing.rawUserInfo
+    }.getOrDefault(true)
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -75,6 +117,22 @@ fun SafeWebView(
             private fun cancelPublicChannelReadyCheck() {
                 pendingPublicChannelReadyCheck?.let(mainHandler::removeCallbacks)
                 pendingPublicChannelReadyCheck = null
+            }
+
+            /**
+             * SSL callbacks are resource-scoped: Android may invoke this for an image,
+             * iframe, stylesheet, or the main document. Only a failure for the current
+             * top-level URL should fail the complete viewing session.
+             */
+            private fun isMainFrameSslError(view: WebView?, error: SslError?): Boolean =
+                isMainFrameSslErrorUrl(view?.url, error?.url)
+
+            private fun reportMainFrameFailure(message: String) {
+                if (mainFrameLoadFailed) return
+                mainFrameLoadFailed = true
+                contentReadyReported = false
+                cancelPublicChannelReadyCheck()
+                currentOnErrorOccurred(message)
             }
 
             private fun reportContentVisible(pageUrl: String?) {
@@ -144,7 +202,7 @@ fun SafeWebView(
                                 reportContentVisible(pageUrl)
                             } else if (SystemClock.elapsedRealtime() - startedAt >= 12_000L) {
                                 pendingPublicChannelReadyCheck = null
-                                currentOnErrorOccurred("محتوای عمومی ایتا یا بله در مهلت مجاز نمایش داده نشد.")
+                                reportMainFrameFailure("محتوای عمومی ایتا یا بله در مهلت مجاز نمایش داده نشد.")
                             } else {
                                 mainHandler.postDelayed(check, 350L)
                             }
@@ -215,10 +273,9 @@ fun SafeWebView(
             ) {
                 super.onReceivedHttpError(view, request, errorResponse)
                 if (request?.isForMainFrame == true && (errorResponse?.statusCode ?: 0) >= 400) {
-                    mainFrameLoadFailed = true
-                    contentReadyReported = false
-                    cancelPublicChannelReadyCheck()
-                    currentOnErrorOccurred("صفحه مقصد با خطای HTTP " + (errorResponse?.statusCode ?: 0) + " پاسخ داد.")
+                    reportMainFrameFailure(
+                        "صفحه مقصد با خطای HTTP " + (errorResponse?.statusCode ?: 0) + " پاسخ داد."
+                    )
                 }
             }
 
@@ -227,12 +284,24 @@ fun SafeWebView(
                 handler: SslErrorHandler?,
                 error: SslError?
             ) {
-                // Strict SSL Enforcement: never proceed with invalid certs
-                mainFrameLoadFailed = true
-                contentReadyReported = false
-                cancelPublicChannelReadyCheck()
+                // Security invariant: never proceed past an invalid certificate.
+                // The callback may refer to a subresource, not the main document.
                 handler?.cancel()
-                currentOnErrorOccurred("گواهی امنیتی این وب‌سایت نامعتبر است (SSL Error).")
+
+                if (!isMainFrameSslError(view, error)) {
+                    if (BuildConfig.DEBUG) {
+                        val resourceHost = runCatching {
+                            URI(error?.url.orEmpty()).host ?: "unknown"
+                        }.getOrDefault("unknown")
+                        android.util.Log.w(
+                            "SiteBinWebView",
+                            "Rejected SSL subresource without failing page; host=$resourceHost"
+                        )
+                    }
+                    return
+                }
+
+                reportMainFrameFailure("گواهی امنیتی صفحه اصلی این وب‌سایت نامعتبر است (SSL Error).")
             }
 
             override fun onReceivedError(
@@ -242,10 +311,9 @@ fun SafeWebView(
             ) {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame == true) {
-                    mainFrameLoadFailed = true
-                    contentReadyReported = false
-                    cancelPublicChannelReadyCheck()
-                    currentOnErrorOccurred("خطا در بارگذاری وب‌سایت. ممکن است سرور مقصد در دسترس نباشد.")
+                    reportMainFrameFailure(
+                        "خطا در بارگذاری وب‌سایت. ممکن است سرور مقصد در دسترس نباشد."
+                    )
                 }
             }
 
