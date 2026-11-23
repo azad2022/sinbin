@@ -186,16 +186,16 @@ if [[ "$a_campaign_id" == "$campaign_id" && "$b_campaign_id" == "$campaign_id" ]
 fi
 
 active_count="$(psql "$DB_URL" -X -qAt -v ON_ERROR_STOP=1 -v campaign_id="$campaign_id" \
-  -c "SELECT count(*) FROM public.view_sessions WHERE campaign_id = :'campaign_id'::uuid AND status IN ('INITIALIZED','CONTENT_READY') AND started_at > clock_timestamp() - interval '3 minutes'")"
+  -c "SELECT count(*) FROM public.view_sessions WHERE campaign_id = '$campaign_id'::uuid AND status IN ('INITIALIZED','CONTENT_READY') AND started_at > clock_timestamp() - interval '3 minutes'")"
 
 completed_count="$(psql "$DB_URL" -X -qAt -v ON_ERROR_STOP=1 -v campaign_id="$campaign_id" \
-  -c "SELECT completed_views FROM public.campaigns WHERE id = :'campaign_id'::uuid")"
+  -c "SELECT completed_views FROM public.campaigns WHERE id = '$campaign_id'::uuid")"
 
 target_count="$(psql "$DB_URL" -X -qAt -v ON_ERROR_STOP=1 -v campaign_id="$campaign_id" \
-  -c "SELECT target_views FROM public.campaigns WHERE id = :'campaign_id'::uuid")"
+  -c "SELECT target_views FROM public.campaigns WHERE id = '$campaign_id'::uuid")"
 
 assignment_count="$(psql "$DB_URL" -X -qAt -v ON_ERROR_STOP=1 -v campaign_id="$campaign_id" \
-  -c "SELECT count(*) FROM private.daily_featured_campaign_assignment WHERE campaign_id = :'campaign_id'::uuid AND reservation_status = 'RESERVED'")"
+  -c "SELECT count(*) FROM private.daily_featured_campaign_assignment WHERE campaign_id = '$campaign_id'::uuid AND reservation_status = 'RESERVED'")"
 
 if (( completed_count + active_count > target_count )); then
   echo "FAIL: target capacity exceeded: completed=$completed_count active=$active_count target=$target_count" >&2
