@@ -670,8 +670,23 @@ BEGIN
     FROM pg_catalog.pg_class c
     WHERE c.oid = 'public.daily_view_leaderboard_public'::REGCLASS;
 
-    IF NOT ('security_invoker=true' = ANY(v_reloptions)) THEN
-        RAISE EXCEPTION 'TEST_FAILED: daily leaderboard view is not security_invoker';
+    -- The daily view uses user_id privately for deterministic tie-breaking.
+    -- It is deliberately owner-executed and must expose no private identifier.
+    IF NOT ('security_invoker=false' = ANY(v_reloptions))
+       OR EXISTS (
+           SELECT 1
+           FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name = 'daily_view_leaderboard_public'
+             AND column_name = 'user_id'
+       )
+       OR has_column_privilege(
+           'authenticated',
+           'public.daily_view_leaderboard',
+           'user_id',
+           'SELECT'
+       ) THEN
+        RAISE EXCEPTION 'TEST_FAILED: daily leaderboard leaks its private tie-break identity';
     END IF;
 
     -- The rolling-30 public view intentionally remains a definer view: it exposes
