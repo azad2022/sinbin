@@ -21,6 +21,6 @@ class OnboardingScreenBehaviorTest {
         val leaderboard = siteBinOnboardingSteps[5]
         assertEquals("لیدربورد ۳۰ روز اخیر", leaderboard.title)
         assertTrue(leaderboard.subtitle.contains("۳۰ روز اخیر"))
-        assertTrue(leaderboard.subtitle.contains("تخصیص روزانه"))
+        assertTrue(leaderboard.subtitle.contains("رتبه‌بندی روزانه"))
     }
 }
