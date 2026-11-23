@@ -106,6 +106,7 @@ BEGIN
     json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
     true
   );
+  PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
   SELECT public.init_user_account(
     'install_first_' || v_tag,
@@ -147,6 +148,7 @@ BEGIN
     json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
     true
   );
+  PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
   SELECT public.init_user_account(
     'install_optional_appset_' || v_tag,
@@ -189,6 +191,7 @@ BEGIN
     json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
     true
   );
+  PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
   INSERT INTO public.profiles(
     id,user_handle,app_install_id,available_coins,reserved_coins,lifetime_earned,
@@ -248,6 +251,7 @@ BEGIN
     json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
     true
   );
+  PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
   -- Test 2 / 7: duplicate/replay on same Auth user and changed install ID is harmless.
   SELECT public.init_user_account(
@@ -287,6 +291,7 @@ BEGIN
       json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
       true
     );
+  PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
     SELECT public.init_user_account(
       'install_reinstall_' || replace(v_uid::text,'-',''),
@@ -325,6 +330,7 @@ BEGIN
     json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
     true
   );
+  PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
   SELECT public.init_user_account('install_no_evidence_'||v_tag,'test_no_evidence_'||replace(v_uid::text,'-',''),NULL,NULL,NULL,NULL)
   INTO v_profile;
@@ -346,6 +352,7 @@ BEGIN
     json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
     true
   );
+  PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
   SELECT public.init_user_account(
     'install_bad_'||v_tag,NULL,
@@ -392,6 +399,7 @@ BEGIN
     json_build_object('sub',v_existing_300::text,'role','authenticated','is_anonymous',false)::text,
     true
   );
+  PERFORM set_config('request.jwt.claim.sub', v_existing_300::text, true);
 
   SELECT public.init_user_account(
     'brand_new_install_after_reinstall_' || v_tag,
@@ -415,6 +423,7 @@ BEGIN
     json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
     true
   );
+  PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
   SELECT public.init_user_account(
     'attacker_new_install_after_reinstall_' || v_tag,
@@ -457,6 +466,7 @@ BEGIN
     json_build_object('sub',v_existing_150::text,'role','authenticated','is_anonymous',false)::text,
     true
   );
+  PERFORM set_config('request.jwt.claim.sub', v_existing_150::text, true);
   PERFORM public.init_user_account(
     (SELECT install_id FROM public.welcome_bonus_grants WHERE user_id=v_existing_150),
     NULL,
@@ -471,6 +481,7 @@ BEGIN
     json_build_object('sub',v_existing_300::text,'role','authenticated','is_anonymous',false)::text,
     true
   );
+  PERFORM set_config('request.jwt.claim.sub', v_existing_300::text, true);
   PERFORM public.init_user_account(
     (SELECT install_id FROM public.welcome_bonus_grants WHERE user_id=v_existing_300),
     NULL,
@@ -494,6 +505,7 @@ BEGIN
     json_build_object('sub',v_uid::text,'role','authenticated','is_anonymous',false)::text,
     true
   );
+  PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
 
   FOR i IN 1..20 LOOP
     PERFORM public.init_user_account(
