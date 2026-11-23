@@ -70,7 +70,8 @@ VALUES
 INSERT INTO private.campaign_preflight_tokens(
     token_hash, user_id, source_url, normalized_url, domain, final_url,
     http_status, redirect_count, response_ms, content_type, content_length,
-    viewer_compatibility, quality_score, diagnostics, created_at, expires_at, consumed_at
+    viewer_compatibility, quality_score, diagnostics, created_at, expires_at, consumed_at,
+    referral_site_key
 )
 VALUES(
     :'token_hash',
@@ -83,7 +84,8 @@ VALUES(
     'COMPATIBLE', 95,
     jsonb_build_object('referral_site_key', :'domain'),
     clock_timestamp(), clock_timestamp() + interval '10 minutes',
-    clock_timestamp()
+    clock_timestamp(),
+    :'domain'
 );
 
 INSERT INTO public.campaigns(
