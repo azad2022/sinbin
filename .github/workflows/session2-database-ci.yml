@@ -75,7 +75,12 @@ jobs:
             echo "DB_URL was not reported by the local Supabase stack" >&2
             exit 1
           fi
-          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/tests/sitebin_sequential_campaign_assignment.sql
+          # Execute every transactional PostgreSQL integration suite; fail closed on
+          # the first SQL error rather than silently skipping unrelated regressions.
+          for test_file in supabase/tests/*.sql; do
+            echo "=== Running PostgreSQL integration test: $test_file ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f "$test_file"
+          done
           DB_URL="$DB_URL" bash supabase/tests/sitebin_sequential_campaign_concurrency.sh
 
       - name: Verify migration history is readable
