@@ -312,6 +312,7 @@ jobs:
         run: rm -f "$HOME/.android/debug.keystore"
 
   release:
+    needs: android
     if: >
       github.event_name == 'workflow_dispatch' ||
       (
@@ -356,6 +357,33 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "9.3.1"
+
+      - name: Require production rolling leaderboard API before release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          SUPABASE_URL="$(sed -n 's/^SUPABASE_URL=//p' .env.example)"
+          SUPABASE_PUBLISHABLE_KEY="$(sed -n 's/^SUPABASE_PUBLISHABLE_KEY=//p' .env.example)"
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_PUBLISHABLE_KEY"
+          status="$(curl --silent --show-error --output /tmp/sitebin-rolling30-preflight.json --write-out '%{http_code}' \
+            "$SUPABASE_URL/rest/v1/rolling_30d_view_leaderboard_public?select=rank&limit=1" \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY")"
+          case "$status" in
+            401|403)
+              echo "Rolling 30-day leaderboard endpoint is present and does not allow anonymous reads."
+              ;;
+            404)
+              cat /tmp/sitebin-rolling30-preflight.json
+              echo "Release blocked: rolling_30d_view_leaderboard_public is absent from the Production Data API. Apply and verify the approved database migration before releasing."
+              exit 1
+              ;;
+            *)
+              cat /tmp/sitebin-rolling30-preflight.json
+              echo "Release blocked: unexpected anonymous rolling leaderboard response HTTP $status."
+              exit 1
+              ;;
+          esac
 
       - name: Materialize temporary release keystore
         env:
