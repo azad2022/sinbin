@@ -364,7 +364,7 @@ jobs:
             -keystore "$KEYSTORE_PATH" \
             -storepass "$RELEASE_STORE_PASSWORD" \
             -alias "$RELEASE_KEY_ALIAS" 2>/dev/null)"
-          actual_sha256="$(printf '%s\\n' "$output" |
+          actual_sha256="$(printf '%s\n' "$output" |
             sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' |
             head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           test -n "$actual_sha256"
@@ -407,7 +407,7 @@ jobs:
           expected_version_name="1.0.3"
           expected_sha256="6F259D3C4557BA4B4E4C9489F38BCD85E7EC9F4641C87346F9578BD0F4FF2900"
           grep -Fq "versionCode = ${expected_version_code}" app/build.gradle.kts
-          grep -Fq "versionName = \" ${expected_version_name}\"" app/build.gradle.kts
+          grep -Fq 'versionName = "1.0.3"' app/build.gradle.kts
           for flavor in bazaar myket; do
             apk="app/build/outputs/apk/$flavor/release/sitebin.azerakhsh.apk"
             "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk"
