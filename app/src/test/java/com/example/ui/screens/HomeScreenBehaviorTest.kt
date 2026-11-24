@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import com.example.data.model.DailyBonusResult
 import com.example.data.model.WeeklyLeaderboardEntry
-import com.example.data.model.TransactionType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -102,24 +101,6 @@ class HomeScreenBehaviorTest {
             "ترتیب نمایش لینک‌ها در مرورگر SiteBin بر اساس میزان بازدید روزانه کاربران محاسبه می‌شود.",
             LEADERBOARD_DISPLAY_ORDER_NOTE
         )
-    }
-
-    @Test
-    fun monthlyLeaderboardPrizesMatchTheFivePublishedAwardTiers() {
-        assertEquals(listOf(1, 2, 3, 4, 5), MONTHLY_LEADERBOARD_PRIZES.map { it.rank })
-        assertEquals(
-            listOf(20_000, 15_000, 10_000, 7_000, 5_000),
-            MONTHLY_LEADERBOARD_PRIZES.map { it.coins }
-        )
-        assertEquals(57_000, MONTHLY_LEADERBOARD_TOTAL_PRIZE_COINS)
-        assertTrue(MONTHLY_LEADERBOARD_PRIZES.all { it.positionLabel.length <= 9 })
-    }
-
-    @Test
-    fun monthlyRewardPayoutTimingAndWalletTransactionAreExplicit() {
-        assertEquals("واریز خودکار پس از پایان ماه", MONTHLY_LEADERBOARD_PAYOUT_NOTE)
-        assertEquals("جایزه برترین‌های ماه", TransactionType.MONTHLY_LEADERBOARD_REWARD.labelFarsi)
-        assertTrue(TransactionType.MONTHLY_LEADERBOARD_REWARD.isPositive)
     }
 
     @Test

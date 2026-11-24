@@ -42,7 +42,6 @@ enum class TransactionType(val labelFarsi: String, val isPositive: Boolean) {
     CAMPAIGN_SPEND("مصرف بودجه بازدید", false),
     CAMPAIGN_REFUND("استرداد بودجه باقیمانده", true),
     REFERRAL_REWARD("پاداش معرفی دوستان", true),
-    MONTHLY_LEADERBOARD_REWARD("جایزه برترین‌های ماه", true),
     PLATFORM_GRANT("اعتبار پلتفرمی", true),
     DAILY_BONUS("هدیه ورود روزانه", true),
     AUTO_VIEW_SUBSCRIPTION("فعال‌سازی بازدید خودکار", false),

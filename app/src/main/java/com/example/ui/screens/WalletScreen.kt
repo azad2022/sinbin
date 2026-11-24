@@ -639,7 +639,6 @@ private fun TransactionRow(tx: CoinTransaction) {
         TransactionType.CAMPAIGN_SPEND -> Icons.Default.Savings to MaterialTheme.colorScheme.error
         TransactionType.CAMPAIGN_REFUND -> Icons.Default.Replay to SiteBinBlue
         TransactionType.REFERRAL_REWARD -> Icons.Default.CardGiftcard to SiteBinGold
-        TransactionType.MONTHLY_LEADERBOARD_REWARD -> Icons.Default.CardGiftcard to SiteBinGold
         TransactionType.PLATFORM_GRANT -> Icons.Default.Savings to SiteBinGold
         TransactionType.DAILY_BONUS -> Icons.Default.CardGiftcard to SiteBinGold
         TransactionType.AUTO_VIEW_SUBSCRIPTION -> Icons.Default.Autorenew to MaterialTheme.colorScheme.error
