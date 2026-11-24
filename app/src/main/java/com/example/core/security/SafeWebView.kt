@@ -134,60 +134,134 @@ internal fun buildMainFrameFormOriginGuard(expectedOriginUrl: String): String {
     return """
         (function () {
             'use strict';
-            const expectedOrigin = $encodedOrigin;
-            const isSubmitControl = function (submitter) {
-                return submitter instanceof HTMLButtonElement ||
-                    submitter instanceof HTMLInputElement;
-            };
-            const effectiveTarget = function (form, submitter) {
-                if (isSubmitControl(submitter) && submitter.hasAttribute('formtarget')) {
-                    return String(submitter.formTarget || '_self').toLowerCase();
+
+            // The function is self-contained so the parent document can inject
+            // the identical policy into dynamically-created about:srcdoc frames.
+            function installFormOriginGuard(expectedOrigin) {
+                const isSubmitControl = function (submitter) {
+                    return submitter instanceof HTMLButtonElement ||
+                        submitter instanceof HTMLInputElement;
+                };
+                const effectiveTarget = function (form, submitter) {
+                    if (isSubmitControl(submitter) && submitter.hasAttribute('formtarget')) {
+                        return String(submitter.formTarget || '_self').toLowerCase();
+                    }
+                    const baseTarget = document.querySelector('base[target]');
+                    return String(form.target || (baseTarget && baseTarget.target) || '_self').toLowerCase();
+                };
+                const effectiveAction = function (form, submitter) {
+                    if (isSubmitControl(submitter) && submitter.hasAttribute('formaction')) {
+                        return submitter.formAction;
+                    }
+                    return form.action;
+                };
+                const isTopNavigationTarget = function (form, submitter) {
+                    const target = effectiveTarget(form, submitter);
+                    return window.top === window ||
+                        target === '_top' ||
+                        target === '_parent' ||
+                        target !== '_self';
+                };
+                const isAllowedAction = function (action) {
+                    try {
+                        return new URL(action || window.location.href, window.location.href).origin === expectedOrigin;
+                    } catch (_) {
+                        return false;
+                    }
+                };
+                const mustBlock = function (form, submitter) {
+                    return isTopNavigationTarget(form, submitter) &&
+                        !isAllowedAction(effectiveAction(form, submitter));
+                };
+
+                if (!Object.prototype.hasOwnProperty.call(window, '__sitebinFormOriginGuardInstalled')) {
+                    document.addEventListener('submit', function (event) {
+                        const form = event.target;
+                        if (form instanceof HTMLFormElement && mustBlock(form, event.submitter)) {
+                            event.preventDefault();
+                            event.stopImmediatePropagation();
+                        }
+                    }, true);
+                    Object.defineProperty(window, '__sitebinFormOriginGuardInstalled', {
+                        configurable: false,
+                        enumerable: false,
+                        writable: false,
+                        value: true
+                    });
                 }
-                const baseTarget = document.querySelector('base[target]');
-                return String(form.target || (baseTarget && baseTarget.target) || '_self').toLowerCase();
-            };
-            const effectiveAction = function (form, submitter) {
-                if (isSubmitControl(submitter) && submitter.hasAttribute('formaction')) {
-                    return submitter.formAction;
+
+                const formPrototype = HTMLFormElement.prototype;
+                if (!Object.prototype.hasOwnProperty.call(formPrototype, '__sitebinFormOriginGuardInstalled')) {
+                    const nativeSubmit = formPrototype.submit;
+                    Object.defineProperty(formPrototype, 'submit', {
+                        configurable: false,
+                        enumerable: false,
+                        writable: false,
+                        value: function () {
+                            if (mustBlock(this, null)) return;
+                            return nativeSubmit.call(this);
+                        }
+                    });
+                    Object.defineProperty(formPrototype, '__sitebinFormOriginGuardInstalled', {
+                        configurable: false,
+                        enumerable: false,
+                        writable: false,
+                        value: true
+                    });
                 }
-                return form.action;
-            };
-            const isTopNavigationTarget = function (form, submitter) {
-                const target = effectiveTarget(form, submitter);
-                return window.top === window ||
-                    target === '_top' ||
-                    target === '_parent' ||
-                    target !== '_self';
-            };
-            const isAllowedAction = function (action) {
-                try {
-                    return new URL(action || window.location.href, window.location.href).origin === expectedOrigin;
-                } catch (_) {
-                    return false;
+
+                const injectSrcdocGuard = function (markup) {
+                    const source = String(markup);
+                    const bootstrap =
+                        '<script data-sitebin-post-origin-guard>(' +
+                        installFormOriginGuard.toString() +
+                        ')(' + JSON.stringify(expectedOrigin) + ');</' + 'script>';
+                    const doctype = /^\s*<!doctype[^>]*>/i.exec(source);
+                    const insertionPoint = doctype ? doctype[0].length : 0;
+                    return source.slice(0, insertionPoint) +
+                        bootstrap +
+                        source.slice(insertionPoint);
+                };
+
+                const iframePrototype = HTMLIFrameElement.prototype;
+                if (!Object.prototype.hasOwnProperty.call(iframePrototype, '__sitebinSrcdocGuardInstalled')) {
+                    const srcdocDescriptor = Object.getOwnPropertyDescriptor(iframePrototype, 'srcdoc');
+                    if (srcdocDescriptor && srcdocDescriptor.configurable &&
+                        typeof srcdocDescriptor.set === 'function') {
+                        Object.defineProperty(iframePrototype, 'srcdoc', {
+                            configurable: false,
+                            enumerable: srcdocDescriptor.enumerable,
+                            get: srcdocDescriptor.get,
+                            set: function (value) {
+                                return srcdocDescriptor.set.call(this, injectSrcdocGuard(value));
+                            }
+                        });
+                    }
+
+                    // Restrict this hook to iframe elements; ordinary DOM setAttribute
+                    // behavior is left untouched for all other elements.
+                    const nativeSetAttribute = Element.prototype.setAttribute;
+                    Object.defineProperty(iframePrototype, 'setAttribute', {
+                        configurable: false,
+                        enumerable: false,
+                        writable: false,
+                        value: function (name, value) {
+                            if (String(name).toLowerCase() === 'srcdoc') {
+                                return nativeSetAttribute.call(this, name, injectSrcdocGuard(value));
+                            }
+                            return nativeSetAttribute.call(this, name, value);
+                        }
+                    });
+                    Object.defineProperty(iframePrototype, '__sitebinSrcdocGuardInstalled', {
+                        configurable: false,
+                        enumerable: false,
+                        writable: false,
+                        value: true
+                    });
                 }
-            };
-            const mustBlock = function (form, submitter) {
-                return isTopNavigationTarget(form, submitter) &&
-                    !isAllowedAction(effectiveAction(form, submitter));
-            };
-            document.addEventListener('submit', function (event) {
-                const form = event.target;
-                if (form instanceof HTMLFormElement && mustBlock(form, event.submitter)) {
-                    event.preventDefault();
-                    event.stopImmediatePropagation();
-                }
-            }, true);
-            const prototype = HTMLFormElement.prototype;
-            const nativeSubmit = prototype.submit;
-            Object.defineProperty(prototype, 'submit', {
-                configurable: false,
-                enumerable: false,
-                writable: false,
-                value: function () {
-                    if (mustBlock(this, null)) return;
-                    return nativeSubmit.call(this);
-                }
-            });
+            }
+
+            installFormOriginGuard($encodedOrigin);
         })();
     """.trimIndent()
 }

