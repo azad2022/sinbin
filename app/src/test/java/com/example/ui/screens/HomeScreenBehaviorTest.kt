@@ -104,6 +104,17 @@ class HomeScreenBehaviorTest {
     }
 
     @Test
+    fun monthlyLeaderboardPrizesMatchTheFivePublishedAwardTiers() {
+        assertEquals(listOf(1, 2, 3, 4, 5), MONTHLY_LEADERBOARD_PRIZES.map { it.rank })
+        assertEquals(
+            listOf(20_000, 15_000, 10_000, 7_000, 5_000),
+            MONTHLY_LEADERBOARD_PRIZES.map { it.coins }
+        )
+        assertEquals(57_000, MONTHLY_LEADERBOARD_TOTAL_PRIZE_COINS)
+        assertTrue(MONTHLY_LEADERBOARD_PRIZES.all { it.positionLabel.length <= 8 })
+    }
+
+    @Test
     fun leaderboardPodiumOrdersRowsAsBronzeGoldSilverForVisualPlacement() {
         val entries = listOf(
             WeeklyLeaderboardEntry(rank = 5, userHandle = "fifth", completedViews = 3),
