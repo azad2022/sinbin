@@ -175,6 +175,22 @@ jobs:
           grep -Fq 'fontSize = if (displayRank == 1) 25.sp else 22.sp' app/src/main/java/com/example/ui/screens/HomeScreen.kt
           grep -Fq 'fontSize = 16.sp' app/src/main/java/com/example/ui/screens/HomeScreen.kt
 
+      - name: Verify monthly leaderboard reward payout implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          migration="supabase/migrations/20261124160000_sitebin_monthly_leaderboard_rewards.sql"
+          test -s "$migration"
+          test -s "supabase/tests/sitebin_monthly_leaderboard_rewards.sql"
+          grep -Fq "MONTHLY_LEADERBOARD_REWARD" "$migration"
+          grep -Fq "first_eligible_month" "$migration"
+          grep -Fq "settled_at" "$migration"
+          grep -Fq "pg_advisory_xact_lock" "$migration"
+          grep -Fq "cron.schedule(" "$migration"
+          grep -Fq "MONTHLY_LEADERBOARD_REWARD(\"جایزه برترین‌های ماه\", true)" app/src/main/java/com/example/data/model/Models.kt
+          grep -Fq "TransactionType.MONTHLY_LEADERBOARD_REWARD" app/src/main/java/com/example/ui/screens/WalletScreen.kt
+          grep -Fq "monthlyRewardPayoutTimingAndWalletTransactionAreExplicit" app/src/test/java/com/example/ui/screens/HomeScreenBehaviorTest.kt
+
       - name: Unit tests
         run: gradle --no-daemon testBazaarDebugUnitTest testMyketDebugUnitTest
 

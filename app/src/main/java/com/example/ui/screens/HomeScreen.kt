@@ -341,6 +341,9 @@ internal val MONTHLY_LEADERBOARD_PRIZES = listOf(
 internal val MONTHLY_LEADERBOARD_TOTAL_PRIZE_COINS: Int =
     MONTHLY_LEADERBOARD_PRIZES.sumOf { it.coins }
 
+internal const val MONTHLY_LEADERBOARD_PAYOUT_NOTE =
+    "واریز خودکار پس از پایان ماه"
+
 internal const val LEADERBOARD_DISPLAY_ORDER_NOTE =
     "ترتیب نمایش لینک‌ها در مرورگر SiteBin بر اساس میزان بازدید روزانه کاربران محاسبه می‌شود."
 
@@ -544,6 +547,16 @@ private fun MonthlyLeaderboardPrizeCard() {
                     )
                 }
             }
+
+            Text(
+                text = MONTHLY_LEADERBOARD_PAYOUT_NOTE,
+                modifier = Modifier.fillMaxWidth(),
+                color = Color.White.copy(alpha = 0.74f),
+                style = MaterialTheme.typography.labelSmall,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                maxLines = 1,
+                softWrap = false
+            )
         }
     }
 }
