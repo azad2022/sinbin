@@ -137,7 +137,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
     val campaigns by viewModel.campaigns.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
     val dailyBonus by viewModel.dailyBonus.collectAsState()
-    val weeklyLeaderboard by viewModel.weeklyLeaderboard.collectAsState()
+    val rolling30Leaderboard by viewModel.rolling30Leaderboard.collectAsState()
     val referralStatus by viewModel.referralStatus.collectAsState()
     val isRefreshingReferralStatus by viewModel.isRefreshingReferralStatus.collectAsState()
     val referralStatusLoadFailed by viewModel.referralStatusLoadFailed.collectAsState()
@@ -384,7 +384,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                                         .apply()
                                 },
                                 dailyBonus = dailyBonus,
-                                weeklyLeaderboard = weeklyLeaderboard,
+                                rolling30Leaderboard = rolling30Leaderboard,
                                 showDailyBonusCelebration = showDailyBonusCelebration,
                                 onDailyBonusCelebrationConsumed = {
                                     val date = dailyBonus?.grantDate
@@ -467,7 +467,7 @@ fun MainAppContent(viewModel: SiteBinViewModel) {
                             SettingsScreen(
                                 account = account,
                                 activeCampaignsCount = campaigns.count { it.status.name == "ACTIVE" },
-                                weeklyLeaderboard = weeklyLeaderboard,
+                                rolling30Leaderboard = rolling30Leaderboard,
                                 isDarkTheme = isDarkTheme,
                                 onToggleDarkTheme = { viewModel.setDarkTheme(it) },
                                 notificationsEnabled = notificationsEnabled,

@@ -1,0 +1,248 @@
+name: Session 2 - Supabase Local Database Verification
+
+on:
+  push:
+    branches:
+      - db/daily-sequential-featured-lifecycle-20261123
+      - db/session2-finalize-20261123
+      - db/session2-verified-20261123
+    paths:
+      - "supabase/**"
+      - ".github/workflows/session2-database-ci.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "supabase/**"
+      - ".github/workflows/session2-database-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sitebin-session2-db-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay-and-test:
+    name: Replay migrations and run isolated PostgreSQL acceptance tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_TELEMETRY_DISABLED: "1"
+      DO_NOT_TRACK: "1"
+
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 3.2.0
+
+      - name: Initialize local-only Supabase configuration when absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase --version
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          test -d supabase/migrations
+          test -d supabase/tests
+          test -f supabase/ci/bootstrap_platform.sql
+
+          # The production project has a pre-existing RLS event trigger that
+          # predates the tracked migration history. Disable automatic replay
+          # during 'supabase start' so CI can install that prerequisite first.
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("supabase/config.toml")
+          lines = path.read_text().splitlines()
+          section_start = next(
+              (i for i, line in enumerate(lines) if line.strip() == "[db.migrations]"),
+              None,
+          )
+
+          if section_start is None:
+              lines.extend(["", "[db.migrations]", "enabled = false"])
+          else:
+              section_end = next(
+                  (i for i in range(section_start + 1, len(lines)) if lines[i].lstrip().startswith("[")),
+                  len(lines),
+              )
+              enabled_line = next(
+                  (i for i in range(section_start + 1, section_end) if lines[i].strip().startswith("enabled")),
+                  None,
+              )
+              if enabled_line is None:
+                  lines.insert(section_start + 1, "enabled = false")
+              else:
+                  lines[enabled_line] = "enabled = false"
+
+          path.write_text("\n".join(lines) + "\n")
+          PY
+          grep -F -A2 '[db.migrations]' supabase/config.toml
+          echo "Local migration and integration test directories verified."
+
+      - name: Start disposable local Supabase without automatic migration replay
+        run: supabase start
+
+      - name: Install PostgreSQL client
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Install the pre-existing platform RLS prerequisite locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
+            exit 1
+          fi
+          # This connects only to the local disposable DB. The script sources
+          # the same versioned SQL migration that records the prerequisite.
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/bootstrap_platform.sql
+
+      - name: Replay the clean baseline up to the corrupted historical migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          later_dir="$RUNNER_TEMP/sitebin-later-migrations"
+          mkdir -p "$later_dir"
+          shopt -s nullglob
+          for migration in supabase/migrations/*.sql; do
+            filename="${migration##*/}"
+            version="${filename%%_*}"
+            if [[ "$version" > "20261003165012" ]]; then
+              mv "$migration" "$later_dir/"
+            fi
+          done
+          echo "SITEBIN_LATER_MIGRATIONS=$later_dir" >> "$GITHUB_ENV"
+          # Only migrations before the already-applied but corrupted historical
+          # version are replayed in this stage.
+          supabase migration up --local
+
+      - name: Restore the already-applied historical migration from its recorded payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
+            exit 1
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/restore_applied_20261003170402.sql
+          # The historical migration was staged with the other later files so
+          # the baseline replay could not execute its contaminated source file.
+          # Return only its original path before migration repair: the CLI requires
+          # a matching migration filename even though the SQL was restored above.
+          historical_migration="$SITEBIN_LATER_MIGRATIONS/20261003170402_sitebin_financial_refund_and_auth_hardening.sql"
+          if [[ ! -s "$historical_migration" ]]; then
+            echo "Expected exactly the staged historical migration: $historical_migration" >&2
+            exit 1
+          fi
+          mv "$historical_migration" supabase/migrations/
+          test -s supabase/migrations/20261003170402_sitebin_financial_refund_and_auth_hardening.sql
+
+          # This is local-only bookkeeping: recovered SQL is already applied and
+          # the original historical version is now present for the CLI's file check.
+          supabase migration repair 20261003170402 --status applied --local
+
+      - name: Seed historical demo-owner prerequisites in disposable database only
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
+            exit 1
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_owners.sql
+
+      - name: Replay all remaining forward migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for migration in "$SITEBIN_LATER_MIGRATIONS"/*.sql; do
+            mv "$migration" supabase/migrations/
+          done
+          supabase migration up --local --include-all
+          supabase migration list --local
+
+      - name: Seed the historical demo campaign pool in disposable database only
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to seed demo campaigns outside the local disposable Supabase database." >&2
+            exit 1
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/ci/seed_historical_demo_pool.sql
+
+      - name: Run every isolated SQL acceptance suite and concurrency test
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          DB_URL="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          if [[ -z "$DB_URL" || "$DB_URL" != *"127.0.0.1:54322"* ]]; then
+            echo "Refusing to run SQL outside the local disposable Supabase database." >&2
+            exit 1
+          fi
+
+          failures=0
+          total=0
+
+          shopt -s nullglob
+          test_files=(supabase/tests/*.sql)
+          if [[ "${#test_files[@]}" -eq 0 ]]; then
+            echo "No SQL integration test files found." >&2
+            exit 1
+          fi
+
+          for test_file in "${test_files[@]}"; do
+            total=$((total + 1))
+            echo "::group::PostgreSQL integration test: $test_file"
+            if psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f "$test_file"; then
+              echo "PASS: $test_file"
+            else
+              echo "FAIL: $test_file" >&2
+              failures=$((failures + 1))
+            fi
+            echo "::endgroup::"
+          done
+
+          echo "::group::Concurrent campaign reservation test"
+          if DB_URL="$DB_URL" bash supabase/tests/sitebin_sequential_campaign_concurrency.sh; then
+            echo "PASS: concurrent single-capacity reservation"
+          else
+            echo "FAIL: concurrent single-capacity reservation" >&2
+            failures=$((failures + 1))
+          fi
+          echo "::endgroup::"
+
+          echo "SQL suites executed: $total"
+          echo "Failed suites: $failures"
+          if [[ "$failures" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Verify local migration ledger after replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase migration list --local
+          echo "PASS: the disposable local database reports its replayed migration ledger."
+
+      - name: Stop disposable local Supabase
+        if: always()
+        run: supabase stop --no-backup

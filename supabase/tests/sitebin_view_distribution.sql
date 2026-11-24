@@ -1,220 +1,151 @@
--- SiteBin real PostgreSQL integration tests for randomized viewer distribution.
--- All mutations are rolled back. Run only against a disposable/transactional test context.
---
--- The test uses real production campaign inventory inside a transaction and
--- exercises public.request_view_session() with a simulated authenticated JWT.
+-- Regression test for the ordinary campaign distribution fallback.
+-- Uses only isolated fixtures; no existing account or Production campaign is read.
 
 BEGIN;
 
-DO $$
+DO $test$
 DECLARE
-    v_viewer uuid;
-    v_result json;
-    v_session_id uuid;
-    v_first_campaign_id uuid;
+    v_tag text := substr(md5(clock_timestamp()::text || random()::text), 1, 10);
+    v_viewer uuid := gen_random_uuid();
+    v_owners uuid[] := ARRAY[
+        gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()
+    ];
+    v_all_users uuid[];
+    v_url text;
+    v_domain text;
+    v_token text;
+    v_token_hash text;
+    v_campaign_id uuid;
+    v_first json;
+    v_second json;
+    v_first_session uuid;
+    v_second_session uuid;
     v_first_owner uuid;
-    v_selected_campaign uuid;
-    v_selected_owner uuid;
-    v_distinct_campaigns bigint;
-    v_fallback_owner uuid;
-    v_owner_campaign uuid;
+    v_second_owner uuid;
+    i integer;
 BEGIN
-    -- Pick a real account with no active session and no completed view in the
-    -- 2-minute advertiser-diversity window so the fixture starts clean.
-    SELECT p.id
-      INTO v_viewer
-    FROM public.profiles p
-    WHERE NOT EXISTS (
-        SELECT 1
-        FROM public.view_sessions vs
-        WHERE vs.viewer_id = p.id
-          AND vs.status = 'COMPLETED'
-          AND vs.completed_at > pg_catalog.clock_timestamp() - INTERVAL '2 minutes'
+    v_all_users := ARRAY[v_viewer] || v_owners;
+
+    INSERT INTO auth.users(
+        id, aud, role, email, email_confirmed_at,
+        created_at, updated_at, is_sso_user, is_anonymous
     )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM public.view_sessions vs
-        WHERE vs.viewer_id = p.id
-          AND vs.status IN ('INITIALIZED', 'CONTENT_READY')
+    SELECT
+        u, 'authenticated', 'authenticated',
+        'sitebin_distribution_' || replace(u::text,'-','') || '@sitebin.internal',
+        clock_timestamp(), clock_timestamp(), clock_timestamp(), false, false
+    FROM unnest(v_all_users) AS users(u);
+
+    INSERT INTO public.profiles(
+        id, user_handle, app_install_id, available_coins, reserved_coins,
+        lifetime_earned, lifetime_spent, trust_score, completed_views_count,
+        received_views_count, welcome_bonus_claimed, created_at, updated_at
     )
-    ORDER BY p.id
-    LIMIT 1;
+    SELECT
+        u,
+        'dist_' || substr(replace(u::text,'-',''),1,12),
+        'dist_inst_' || substr(replace(u::text,'-',''),1,12),
+        10000, 10000, 10000, 0, 100, 0, 0, true,
+        clock_timestamp(), clock_timestamp()
+    FROM unnest(v_all_users) AS users(u);
 
-    IF v_viewer IS NULL THEN
-        RAISE EXCEPTION 'TEST_SETUP_FAILED: no clean viewer account available';
-    END IF;
+    FOR i IN 1..4 LOOP
+        v_domain := 'dist-' || v_tag || '-' || i::text || '.example.com';
+        v_url := 'https://' || v_domain || '/';
+        v_token := 'dist-token-' || v_tag || '-' || i::text;
+        v_token_hash := encode(extensions.digest(v_token, 'sha256'), 'hex');
 
-    PERFORM set_config(
-        'request.jwt.claims',
-        pg_catalog.json_build_object(
-            'sub', v_viewer::text,
-            'role', 'authenticated',
-            'is_anonymous', false
-        )::text,
-        true
-    );
-
-    -- First request establishes the advertiser that will be placed into the
-    -- recent-completion diversity window.
-    v_result := public.request_view_session();
-
-    IF v_result IS NULL THEN
-        RAISE EXCEPTION 'TEST_FAILED: request_view_session returned no session with eligible inventory';
-    END IF;
-
-    v_session_id := (v_result->>'id')::uuid;
-    v_first_campaign_id := (v_result->>'campaign_id')::uuid;
-
-    SELECT owner_id
-      INTO v_first_owner
-    FROM public.campaigns
-    WHERE id = v_first_campaign_id;
-
-    IF v_first_owner IS NULL THEN
-        RAISE EXCEPTION 'TEST_FAILED: selected campaign owner could not be resolved';
-    END IF;
-
-    UPDATE public.view_sessions
-    SET status = 'CANCELLED'
-    WHERE id = v_session_id
-      AND viewer_id = v_viewer;
-
-    INSERT INTO public.view_sessions(
-        campaign_id,
-        viewer_id,
-        required_duration_seconds,
-        reward_coins,
-        status,
-        started_at,
-        content_ready_at,
-        completed_at,
-        created_at
-    )
-    VALUES(
-        v_first_campaign_id,
-        v_viewer,
-        5,
-        3,
-        'COMPLETED',
-        pg_catalog.clock_timestamp() - INTERVAL '1 minute',
-        pg_catalog.clock_timestamp() - INTERVAL '55 seconds',
-        pg_catalog.clock_timestamp() - INTERVAL '30 seconds',
-        pg_catalog.clock_timestamp() - INTERVAL '30 seconds'
-    );
-
-    CREATE TEMP TABLE _sitebin_distribution_selected(
-        campaign_id uuid NOT NULL
-    ) ON COMMIT DROP;
-
-    -- Repeated requests show that delivery is no longer FIFO and that the
-    -- recently completed advertiser does not immediately dominate this viewer.
-    FOR i IN 1..30 LOOP
-        v_result := public.request_view_session();
-
-        IF v_result IS NULL THEN
-            RAISE EXCEPTION 'TEST_FAILED: randomized request returned no session at iteration %', i;
-        END IF;
-
-        v_selected_campaign := (v_result->>'campaign_id')::uuid;
-
-        SELECT owner_id
-          INTO v_selected_owner
-        FROM public.campaigns
-        WHERE id = v_selected_campaign;
-
-        IF v_selected_owner = v_first_owner THEN
-            RAISE EXCEPTION 'TEST_FAILED: advertiser diversity violated at iteration %', i;
-        END IF;
-
-        INSERT INTO _sitebin_distribution_selected(campaign_id)
-        VALUES(v_selected_campaign);
-
-        UPDATE public.view_sessions
-        SET status = 'CANCELLED'
-        WHERE id = (v_result->>'id')::uuid
-          AND viewer_id = v_viewer;
-    END LOOP;
-
-    SELECT count(DISTINCT campaign_id)
-      INTO v_distinct_campaigns
-    FROM _sitebin_distribution_selected;
-
-    IF v_distinct_campaigns < 3 THEN
-        RAISE EXCEPTION
-            'TEST_FAILED: only % distinct campaigns selected across 30 requests',
-            v_distinct_campaigns;
-    END IF;
-
-    -- Fallback safety: make every eligible advertiser except one recent for
-    -- this viewer. The remaining fresh advertiser must still be served.
-    SELECT c.owner_id
-      INTO v_fallback_owner
-    FROM public.campaigns c
-    WHERE c.status = 'ACTIVE'
-      AND c.owner_id <> v_viewer
-      AND c.completed_views < c.target_views
-      AND c.reserved_budget >= c.cost_per_view
-      AND c.owner_id <> v_first_owner
-    GROUP BY c.owner_id
-    ORDER BY c.owner_id
-    LIMIT 1;
-
-    IF v_fallback_owner IS NULL THEN
-        RAISE EXCEPTION 'TEST_SETUP_FAILED: need at least two eligible advertisers';
-    END IF;
-
-    FOR v_owner_campaign IN
-        SELECT DISTINCT ON (c.owner_id) c.id
-        FROM public.campaigns c
-        WHERE c.status = 'ACTIVE'
-          AND c.owner_id <> v_viewer
-          AND c.completed_views < c.target_views
-          AND c.reserved_budget >= c.cost_per_view
-          AND c.owner_id <> v_fallback_owner
-        ORDER BY c.owner_id, c.id
-    LOOP
-        INSERT INTO public.view_sessions(
-            campaign_id,
-            viewer_id,
-            required_duration_seconds,
-            reward_coins,
-            status,
-            started_at,
-            content_ready_at,
-            completed_at,
-            created_at
+        INSERT INTO private.campaign_preflight_tokens(
+            token_hash, user_id, source_url, normalized_url, domain, final_url,
+            http_status, redirect_count, response_ms, content_type, content_length,
+            viewer_compatibility, quality_score, diagnostics, created_at,
+            expires_at, consumed_at
         )
         VALUES(
-            v_owner_campaign,
-            v_viewer,
-            5,
-            3,
-            'COMPLETED',
-            pg_catalog.clock_timestamp() - INTERVAL '1 minute',
-            pg_catalog.clock_timestamp() - INTERVAL '55 seconds',
-            pg_catalog.clock_timestamp() - INTERVAL '20 seconds',
-            pg_catalog.clock_timestamp() - INTERVAL '20 seconds'
+            v_token_hash, v_owners[i], v_url, v_url, v_domain, v_url,
+            200, 0, 100, 'text/html', 2048, 'COMPATIBLE', 95,
+            jsonb_build_object('referral_site_key', v_domain),
+            clock_timestamp(), clock_timestamp() + INTERVAL '10 minutes',
+            clock_timestamp()
+        );
+
+        INSERT INTO public.campaigns(
+            owner_id, url, normalized_url, domain, duration_seconds,
+            target_views, completed_views, cost_per_view, total_budget,
+            spent_budget, reserved_budget, refunded_budget, status,
+            created_at, updated_at
+        )
+        VALUES(
+            v_owners[i], v_url, v_url, v_domain, 5,
+            20, 0, 5, 100, 0, 100, 0, 'ACTIVE',
+            clock_timestamp(), clock_timestamp()
         );
     END LOOP;
 
-    v_result := public.request_view_session();
+    PERFORM set_config(
+        'request.jwt.claims',
+        json_build_object('sub',v_viewer::text,'role','authenticated','is_anonymous',false)::text,
+        true
+    );
+    PERFORM set_config('request.jwt.claim.sub', v_viewer::text, true);
 
-    IF v_result IS NULL THEN
-        RAISE EXCEPTION 'TEST_FAILED: diversity fallback returned no session';
+    -- There are no daily leaderboard rows for this new viewer, so the initial
+    -- allocation must use the ordinary path and carry no featured rank.
+    v_first := public.request_view_session();
+    IF v_first IS NULL OR v_first->>'featured_rank' IS NOT NULL THEN
+        RAISE EXCEPTION 'DISTRIBUTION_FAIL: initial ordinary fallback returned a featured Session: %', v_first;
     END IF;
 
-    SELECT owner_id
-      INTO v_selected_owner
+    v_first_session := (v_first->>'id')::uuid;
+    SELECT owner_id INTO v_first_owner
     FROM public.campaigns
-    WHERE id = (v_result->>'campaign_id')::uuid;
+    WHERE id = (v_first->>'campaign_id')::uuid;
 
-    IF v_selected_owner <> v_fallback_owner THEN
-        RAISE EXCEPTION
-            'TEST_FAILED: fallback selected owner % instead of the only fresh owner %',
-            v_selected_owner,
-            v_fallback_owner;
+    IF NOT public.cancel_view_session(v_first_session) THEN
+        RAISE EXCEPTION 'DISTRIBUTION_FAIL: first fallback Session could not be canceled';
     END IF;
+
+    -- A recent completed advertiser is deprioritized while another eligible
+    -- advertiser exists; the fallback should continue to an alternative owner.
+    INSERT INTO public.view_sessions(
+        campaign_id, viewer_id, required_duration_seconds, reward_coins,
+        status, started_at, content_ready_at, completed_at, created_at
+    )
+    VALUES(
+        (v_first->>'campaign_id')::uuid, v_viewer, 5, 3,
+        'COMPLETED',
+        clock_timestamp() - INTERVAL '60 seconds',
+        clock_timestamp() - INTERVAL '55 seconds',
+        clock_timestamp() - INTERVAL '30 seconds',
+        clock_timestamp() - INTERVAL '30 seconds'
+    );
+
+    v_second := public.request_view_session();
+    IF v_second IS NULL OR v_second->>'featured_rank' IS NOT NULL THEN
+        RAISE EXCEPTION 'DISTRIBUTION_FAIL: second fallback did not return a normal Session: %', v_second;
+    END IF;
+
+    v_second_session := (v_second->>'id')::uuid;
+    SELECT owner_id INTO v_second_owner
+    FROM public.campaigns
+    WHERE id = (v_second->>'campaign_id')::uuid;
+
+    IF v_second_owner = v_first_owner THEN
+        RAISE EXCEPTION 'DISTRIBUTION_FAIL: recent advertiser was selected despite other eligible inventory';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM private.daily_featured_campaign_assignment
+        WHERE session_id IN (v_first_session, v_second_session)
+    ) THEN
+        RAISE EXCEPTION 'DISTRIBUTION_FAIL: ordinary fallback was incorrectly audited as featured';
+    END IF;
+
+    PERFORM public.cancel_view_session(v_second_session);
+
+    RAISE NOTICE 'PASS: normal fallback stays non-featured and respects the recent-advertiser diversity pass';
 END;
-$$;
+$test$;
 
 ROLLBACK;

@@ -19,8 +19,8 @@ class OnboardingScreenBehaviorTest {
         assertTrue(publicChannels.subtitle.contains("بله"))
 
         val leaderboard = siteBinOnboardingSteps[5]
-        assertEquals("لیدربورد هفتگی", leaderboard.title)
-        assertTrue(leaderboard.subtitle.contains("بازدیدهای معتبر بیشتری"))
-        assertTrue(leaderboard.subtitle.contains("صفحات ابتدایی مرورگر"))
+        assertEquals("لیدربورد ۳۰ روز اخیر", leaderboard.title)
+        assertTrue(leaderboard.subtitle.contains("۳۰ روز اخیر"))
+        assertTrue(leaderboard.subtitle.contains("رتبه‌بندی روزانه"))
     }
 }

@@ -101,8 +101,8 @@ internal val siteBinOnboardingSteps = listOf(
             iconColor = SiteBinTeal
         ),
         OnboardingStep(
-            title = "لیدربورد هفتگی",
-            subtitle = "بازدیدهای معتبر بیشتری کامل کن تا به رتبه‌های برتر برسی؛ لینک کمپین واجد شرایطت می‌تواند در صفحات ابتدایی مرورگر نمایش ویژه بگیرد.",
+            title = "لیدربورد ۳۰ روز اخیر",
+            subtitle = "بازدیدهای معتبر بیشتری در ۳۰ روز اخیر کامل کن تا در جدول برتر شوی؛ نمایش ویژهٔ کمپین‌ها بر اساس رتبه‌بندی روزانه و شرایط سرور انجام می‌شود.",
             icon = Icons.Default.EmojiEvents,
             iconColor = SiteBinGold
         )

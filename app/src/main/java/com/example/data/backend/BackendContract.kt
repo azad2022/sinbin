@@ -10,7 +10,7 @@ import com.example.data.model.CoinStoreProvider
 import com.example.data.model.CoinPurchaseConfirmation
 import com.example.data.model.DurationOption
 import com.example.data.model.DailyBonusResult
-import com.example.data.model.WeeklyLeaderboardEntry
+import com.example.data.model.Rolling30LeaderboardEntry
 import com.example.data.model.UserAccount
 import com.example.data.model.ViewCompletionResult
 import com.example.data.model.ViewSession
@@ -103,8 +103,8 @@ interface ServerAuthoritativeEngine {
         deviceEvidence: DeviceEvidence? = null
     ): Result<DailyBonusResult>
 
-    /** Fetches the server-authoritative daily successful-view leaderboard for a UTC date. */
-    suspend fun fetchWeeklyLeaderboard(weekStart: String): Result<List<WeeklyLeaderboardEntry>>
+    /** Fetches the server-authoritative rolling 30-day successful-view leaderboard. */
+    suspend fun fetchRolling30Leaderboard(): Result<List<Rolling30LeaderboardEntry>>
     
     /** Returns the server-authoritative seven-day auto-view entitlement state. */
     suspend fun getAutoViewStatus(callerUserId: String? = null): Result<AutoViewStatus>
