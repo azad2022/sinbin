@@ -274,7 +274,7 @@ class SafeWebViewPostOriginGuardTest {
             )
             failure.get()?.let { throw AssertionError(it) }
             assertEquals(
-                "complete|true|true|true|true|true|https://attacker.invalid|_top|true|true|true|true|https://attacker.invalid|_top|https://sitebin.test",
+                "complete|true|true|true|true|true|true|https://attacker.invalid|_top|true|true|true|true|https://attacker.invalid|_top|https://sitebin.test",
                 result.get()
             )
         } finally {
