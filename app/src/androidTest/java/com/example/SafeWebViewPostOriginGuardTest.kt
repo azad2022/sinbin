@@ -156,7 +156,10 @@ class SafeWebViewPostOriginGuardTest {
                                         }
 
                                         const attempted = body.getAttribute('data-post-attempted') === 'true';
-                                        const afterOrigin = body.getAttribute('data-origin-after-submit');
+                                        const guardInstalled = body.getAttribute('data-guard-installed') === 'true';
+                                        const afterSubmitReturned = body.getAttribute('data-after-submit-returned') === 'true';
+                                        const parentAccess = body.getAttribute('data-parent-access') === 'true';
+                                        const actionOrigin = body.getAttribute('data-action-origin');
                                         const target = body.getAttribute('data-effective-target');
                                         if (!attempted) {
                                             report('failed|srcdoc inline form script did not execute');
@@ -165,7 +168,10 @@ class SafeWebViewPostOriginGuardTest {
 
                                         done({
                                             attempted: attempted,
-                                            afterOrigin: afterOrigin,
+                                            guardInstalled: guardInstalled,
+                                            afterSubmitReturned: afterSubmitReturned,
+                                            parentAccess: parentAccess,
+                                            actionOrigin: actionOrigin,
                                             target: target,
                                             frameUrl: childWindow.location.href
                                         });
@@ -179,14 +185,21 @@ class SafeWebViewPostOriginGuardTest {
                                     '<!doctype html><html><head><base target="_top"></head><body>' +
                                     '<script>' +
                                     'document.body.setAttribute("data-post-attempted", "true");' +
+                                    'const guardInstalled = Object.prototype.hasOwnProperty.call(' +
+                                    'HTMLFormElement.prototype, "__sitebinFormOriginGuardInstalled");' +
+                                    'let parentAccess = false;' +
+                                    'try { parentAccess = window.parent.document.body !== null; } catch (_) {}' +
                                     'document.body.setAttribute("data-effective-target", ' +
                                     'document.querySelector("base").target);' +
                                     'const childForm = document.createElement("form");' +
                                     'childForm.method = "POST";' +
                                     'childForm.action = "https://attacker.invalid/srcdoc-post";' +
                                     'document.body.appendChild(childForm);' +
+                                    'document.body.setAttribute("data-action-origin", new URL(childForm.action).origin);' +
                                     'childForm.submit();' +
-                                    'document.body.setAttribute("data-origin-after-submit", location.origin);' +
+                                    'document.body.setAttribute("data-after-submit-returned", "true");' +
+                                    'document.body.setAttribute("data-guard-installed", String(guardInstalled));' +
+                                    'document.body.setAttribute("data-parent-access", String(parentAccess));' +
                                     '</' + 'script></body></html>';
 
                                 if (useAttribute) {
@@ -207,10 +220,16 @@ class SafeWebViewPostOriginGuardTest {
                                         directSubmitBlocked + '|' +
                                         submitterOverrideBlocked + '|' +
                                         propertyResult.attempted + '|' +
-                                        propertyResult.afterOrigin + '|' +
+                                        propertyResult.guardInstalled + '|' +
+                                        propertyResult.afterSubmitReturned + '|' +
+                                        propertyResult.parentAccess + '|' +
+                                        propertyResult.actionOrigin + '|' +
                                         propertyResult.target + '|' +
                                         attributeResult.attempted + '|' +
-                                        attributeResult.afterOrigin + '|' +
+                                        attributeResult.guardInstalled + '|' +
+                                        attributeResult.afterSubmitReturned + '|' +
+                                        attributeResult.parentAccess + '|' +
+                                        attributeResult.actionOrigin + '|' +
                                         attributeResult.target + '|' +
                                         location.origin
                                     );
@@ -255,7 +274,7 @@ class SafeWebViewPostOriginGuardTest {
             )
             failure.get()?.let { throw AssertionError(it) }
             assertEquals(
-                "complete|true|true|true|https://sitebin.test|_top|true|https://sitebin.test|_top|https://sitebin.test",
+                "complete|true|true|true|true|true|https://attacker.invalid|_top|true|true|true|true|https://attacker.invalid|_top|https://sitebin.test",
                 result.get()
             )
         } finally {
