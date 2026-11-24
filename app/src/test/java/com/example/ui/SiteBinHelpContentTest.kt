@@ -2,6 +2,7 @@ package com.example.ui
 
 import com.example.ui.screens.siteBinHelpPricing
 import com.example.ui.screens.siteBinHelpSections
+import com.example.ui.screens.formatHelpGuideNumber
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -48,19 +49,30 @@ class SiteBinHelpContentTest {
         assertFalse(keywordText.contains("این قابلیت به معنی ارسال خودکار جست‌وجو یا کلیک در Google یا موتور جست‌وجوی دیگری نیست"))
 
         val referralText = siteBinHelpSections.first { it.id == "referrals" }.paragraphs.joinToString(" ")
-        assertTrue(referralText.contains("۱۰۰ بازدید معتبر"))
-        assertTrue(referralText.contains("۵۰۰ وب‌سایت متفاوت"))
-        assertTrue(referralText.contains("۲۰٬۰۰۰ سکه"))
+        assertTrue(referralText.contains("100 بازدید معتبر"))
+        assertTrue(referralText.contains("500 وب‌سایت متفاوت"))
+        assertTrue(referralText.contains("20,000 سکه"))
         assertTrue(referralText.contains("یک‌سطحی"))
         assertTrue(referralText.contains("قابل تغییر نیست"))
         assertTrue(referralText.contains("دامنهٔ ثبت‌پذیر"))
-        assertTrue(referralText.contains("۲۰٬۵۰۰ سکه"))
+        assertTrue(referralText.contains("20,500 سکه"))
         assertTrue(referralText.contains("وضعیت حساب کاربری"))
 
 
         val coinsText = siteBinHelpSections.first { it.id == "coins" }.paragraphs.joinToString(" ")
         assertTrue(coinsText.contains("حداقل یک بازدید"))
         assertTrue(coinsText.contains("اولین بازدید موفق"))
+    }
+
+    @Test
+    fun guideUsesEnglishDigitsAcrossAllDocumentedText() {
+        val allGuideText = siteBinHelpSections.joinToString(" ") { section ->
+            listOf(section.title, section.subtitle).plus(section.paragraphs).joinToString(" ")
+        }
+
+        assertFalse(allGuideText.any { it in '\u06F0'..'\u06F9' || it in '\u0660'..'\u0669' })
+        assertFalse(allGuideText.contains('\u066C'))
+        assertEquals("1,234", formatHelpGuideNumber(1234))
     }
 
     @Test

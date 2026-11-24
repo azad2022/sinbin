@@ -197,8 +197,8 @@ fun CampaignsScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = "سفارش جدید")
-                Text("سفارش جدید", fontWeight = FontWeight.Bold)
+                Icon(Icons.Default.Add, contentDescription = "سفارش بازدید")
+                Text("سفارش بازدید", fontWeight = FontWeight.Bold)
             }
         }
     }

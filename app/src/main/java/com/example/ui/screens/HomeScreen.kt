@@ -320,6 +320,9 @@ private fun DailyBonusBanner(
 }
 
 
+internal const val LEADERBOARD_DISPLAY_ORDER_NOTE =
+    "ترتیب نمایش لینک‌ها در مرورگر SiteBin بر اساس میزان بازدید روزانه کاربران محاسبه می‌شود."
+
 internal fun weeklyLeaderboardTopFive(
     entries: List<com.example.data.model.WeeklyLeaderboardEntry>
 ): List<com.example.data.model.WeeklyLeaderboardEntry> =
@@ -512,6 +515,16 @@ private fun WeeklyLeaderboardCard(
                     }
                 }
             }
+
+            Text(
+                text = LEADERBOARD_DISPLAY_ORDER_NOTE,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("weekly_leaderboard_display_order_note"),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.72f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
         }
     }
 }

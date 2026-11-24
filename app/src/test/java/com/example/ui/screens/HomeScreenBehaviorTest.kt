@@ -96,6 +96,14 @@ class HomeScreenBehaviorTest {
     }
 
     @Test
+    fun leaderboardDocumentsDailyBrowserLinkOrdering() {
+        assertEquals(
+            "ترتیب نمایش لینک‌ها در مرورگر SiteBin بر اساس میزان بازدید روزانه کاربران محاسبه می‌شود.",
+            LEADERBOARD_DISPLAY_ORDER_NOTE
+        )
+    }
+
+    @Test
     fun leaderboardPodiumOrdersRowsAsBronzeGoldSilverForVisualPlacement() {
         val entries = listOf(
             WeeklyLeaderboardEntry(rank = 5, userHandle = "fifth", completedViews = 3),
