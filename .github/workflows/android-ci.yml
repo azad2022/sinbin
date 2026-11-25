@@ -313,7 +313,7 @@ jobs:
       (
         github.event_name == 'push' &&
         github.ref == 'refs/heads/main' &&
-        github.event.head_commit.message == 'release: build production artifacts'
+        startsWith(github.event.head_commit.message, 'release: build production artifacts')
       )
     environment: release
     runs-on: ubuntu-latest
