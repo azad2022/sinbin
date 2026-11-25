@@ -300,9 +300,8 @@ fun SafeWebView(
                 handler: SslErrorHandler?,
                 error: SslError?
             ) {
-                // Always cancel an untrusted certificate. Never call proceed().
-                handler?.cancel()
-
+                // Determine the document scope before cancelling, then mark a main-frame
+                // failure before cancel() can enqueue a generic onReceivedError callback.
                 val failedUrl = error?.url
                 val isMainFrameFailure =
                     UrlSecurityPolicy.isSameDocumentUrl(failedUrl, mainFrameNavigationUrl) ||
@@ -322,14 +321,19 @@ fun SafeWebView(
                     )
                 }
 
+                if (isMainFrameFailure && !sslErrorReported) {
+                    sslErrorReported = true
+                    mainFrameLoadFailed = true
+                    contentReadyReported = false
+                    cancelPublicChannelReadyCheck()
+                }
+
+                // Certificate validation is never bypassed, including for a subresource.
+                handler?.cancel()
+
                 // A failed image, font, script or iframe is isolated to that request.
                 // It must not invalidate an otherwise healthy top-level website.
-                if (!isMainFrameFailure || sslErrorReported) return
-
-                sslErrorReported = true
-                mainFrameLoadFailed = true
-                contentReadyReported = false
-                cancelPublicChannelReadyCheck()
+                if (!isMainFrameFailure || sslErrorReported.not()) return
                 currentOnSslErrorOccurred("گواهی TLS سند اصلی وب‌سایت معتبر نیست.")
             }
 
