@@ -75,6 +75,11 @@ import java.util.Locale
 internal const val VIEWER_PAGE_LOAD_TIMEOUT_MS = 6_000L
 internal const val VIEWER_PUBLIC_CHANNEL_PAGE_LOAD_TIMEOUT_MS = 15_000L
 
+internal fun shouldAutoSkipAfterSslError(
+    sessionId: String?,
+    handledSessionId: String?
+): Boolean = !sessionId.isNullOrBlank() && sessionId != handledSessionId
+
 internal fun formatViewerCountdown(remainingSeconds: Int): String {
     val safeRemainingSeconds = remainingSeconds.coerceAtLeast(0)
     return String.format(
@@ -119,6 +124,8 @@ fun ViewerScreen(
     var pageErrorMsg by remember { mutableStateOf<String?>(null) }
     var isPageLoading by remember { mutableStateOf(true) }
     var reloadAttempt by remember { mutableStateOf(0) }
+    var handledSslErrorSessionId by remember { mutableStateOf<String?>(null) }
+    var isSkippingAfterSslError by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewerState, autoViewEnabled, autoAdvanceCancelled) {
         if (viewerState is ViewerState.Completed && autoViewEnabled && !autoAdvanceCancelled) {
@@ -141,14 +148,17 @@ fun ViewerScreen(
     LaunchedEffect(currentSession?.id) {
         reloadAttempt = 0
         isPageLoading = currentSession != null
+        isSkippingAfterSslError = false
     }
 
     // A slow destination must not keep the viewer waiting indefinitely. The session is
     // cancelled through the authoritative ViewModel path and the next site is requested.
-    LaunchedEffect(currentSession?.id, isPageLoading) {
+    LaunchedEffect(currentSession?.id, isPageLoading, isSkippingAfterSslError) {
         val loadingSession = currentSession ?: return@LaunchedEffect
         val loadingSessionId = loadingSession.id
-        if (!isPageLoading || viewerState is ViewerState.Completed) return@LaunchedEffect
+        if (!isPageLoading || isSkippingAfterSslError || viewerState is ViewerState.Completed) {
+            return@LaunchedEffect
+        }
         val loadTimeoutMs = if (UrlSecurityPolicy.publicChannelPlatform(loadingSession.targetUrl) != null) {
             VIEWER_PUBLIC_CHANNEL_PAGE_LOAD_TIMEOUT_MS
         } else {
@@ -158,6 +168,7 @@ fun ViewerScreen(
         delay(loadTimeoutMs)
         if (
             isPageLoading &&
+            !isSkippingAfterSslError &&
             currentSession?.id == loadingSessionId &&
             viewerState is ViewerState.Loading
         ) {
@@ -320,6 +331,18 @@ fun ViewerScreen(
                     onErrorOccurred = { error ->
                         isPageLoading = false
                         pageErrorMsg = error
+                    },
+                    onSslErrorOccurred = {
+                        val sessionId = currentSession.id
+                        if (shouldAutoSkipAfterSslError(sessionId, handledSslErrorSessionId)) {
+                            handledSslErrorSessionId = sessionId
+                            isSkippingAfterSslError = true
+                            isPageLoading = true
+                            pageErrorMsg = null
+                            // This cancels the server-authoritative session without reward
+                            // and requests the next eligible website immediately.
+                            onSkip()
+                        }
                     }
                 )
             }
@@ -338,12 +361,20 @@ fun ViewerScreen(
                     ) {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                         Text(
-                            text = "در حال بارگذاری ایمن وب‌سایت...",
+                            text = if (isSkippingAfterSslError) {
+                                "گواهی SSL معتبر نیست؛ در حال عبور از وب‌سایت..."
+                            } else {
+                                "در حال بارگذاری ایمن وب‌سایت..."
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            text = "تایمر پس از نمایش کامل صفحه آغاز می‌شود",
+                            text = if (isSkippingAfterSslError) {
+                                "در حال دریافت وب‌سایت بعدی..."
+                            } else {
+                                "تایمر پس از نمایش کامل صفحه آغاز می‌شود"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -404,8 +404,8 @@ jobs:
         run: |
           set -euo pipefail
           expected_package="sitebin.azerakhsh.ir"
-          expected_version_code="12"
-          expected_version_name="1.0.4"
+          expected_version_code="13"
+          expected_version_name="1.0.5"
           expected_sha256="6F259D3C4557BA4B4E4C9489F38BCD85E7EC9F4641C87346F9578BD0F4FF2900"
           grep -Fq "versionCode = ${expected_version_code}" app/build.gradle.kts
           grep -Fq "versionName = \"${expected_version_name}\"" app/build.gradle.kts

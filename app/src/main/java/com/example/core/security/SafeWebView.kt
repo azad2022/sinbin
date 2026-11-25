@@ -2,6 +2,7 @@ package com.example.core.security
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
 import android.os.Handler
@@ -46,7 +47,8 @@ fun SafeWebView(
     onPageStarted: () -> Unit = {},
     onPageContentReady: () -> Unit = {},
     onUrlBlocked: (String, String) -> Unit = { _, _ -> },
-    onErrorOccurred: (String) -> Unit = {}
+    onErrorOccurred: (String) -> Unit = {},
+    onSslErrorOccurred: (String) -> Unit = onErrorOccurred
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -61,11 +63,13 @@ fun SafeWebView(
     var contentReadyReported by remember { mutableStateOf(false) }
     var pageLoadGeneration by remember { mutableStateOf(0) }
     var mainFrameLoadFailed by remember { mutableStateOf(false) }
+    var sslErrorReported by remember { mutableStateOf(false) }
 
     val currentOnPageStarted by rememberUpdatedState(onPageStarted)
     val currentOnPageContentReady by rememberUpdatedState(onPageContentReady)
     val currentOnUrlBlocked by rememberUpdatedState(onUrlBlocked)
     val currentOnErrorOccurred by rememberUpdatedState(onErrorOccurred)
+    val currentOnSslErrorOccurred by rememberUpdatedState(onSslErrorOccurred)
 
     val safeClient = remember {
         object : WebViewClient() {
@@ -184,6 +188,7 @@ fun SafeWebView(
                 pageLoadGeneration += 1
                 cancelPublicChannelReadyCheck()
                 mainFrameLoadFailed = false
+                sslErrorReported = false
                 currentPageStartedAt = SystemClock.elapsedRealtime()
                 contentReadyReported = false
                 currentOnPageStarted()
@@ -214,7 +219,11 @@ fun SafeWebView(
                 errorResponse: WebResourceResponse?
             ) {
                 super.onReceivedHttpError(view, request, errorResponse)
-                if (request?.isForMainFrame == true && (errorResponse?.statusCode ?: 0) >= 400) {
+                if (
+                    request?.isForMainFrame == true &&
+                    !mainFrameLoadFailed &&
+                    (errorResponse?.statusCode ?: 0) >= 400
+                ) {
                     mainFrameLoadFailed = true
                     contentReadyReported = false
                     cancelPublicChannelReadyCheck()
@@ -227,12 +236,35 @@ fun SafeWebView(
                 handler: SslErrorHandler?,
                 error: SslError?
             ) {
-                // Strict SSL Enforcement: never proceed with invalid certs
+                // Never bypass certificate validation. Android exposes this callback at resource
+                // level (without an isForMainFrame flag), so any failed TLS resource invalidates
+                // the current viewing session instead of leaving a partially loaded page stuck.
+                if (sslErrorReported) {
+                    handler?.cancel()
+                    return
+                }
+
+                // Mark the page failed before cancel(), because cancellation may also surface as
+                // a generic main-frame load error. That secondary callback must not show the
+                // manual retry overlay or race the automatic next-site transition.
+                sslErrorReported = true
                 mainFrameLoadFailed = true
                 contentReadyReported = false
                 cancelPublicChannelReadyCheck()
                 handler?.cancel()
-                currentOnErrorOccurred("گواهی امنیتی این وب‌سایت نامعتبر است (SSL Error).")
+
+                val failedHost = error?.url?.let { failedUrl ->
+                    runCatching { Uri.parse(failedUrl).host }.getOrNull()
+                } ?: "unknown"
+                val primaryError = error?.primaryError ?: -1
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.w(
+                        "SiteBinWebView",
+                        "ssl_error host=$failedHost primaryError=$primaryError"
+                    )
+                }
+
+                currentOnSslErrorOccurred("گواهی امنیتی این وب‌سایت معتبر نیست (SSL Error).")
             }
 
             override fun onReceivedError(
@@ -241,7 +273,7 @@ fun SafeWebView(
                 error: WebResourceError?
             ) {
                 super.onReceivedError(view, request, error)
-                if (request?.isForMainFrame == true) {
+                if (request?.isForMainFrame == true && !mainFrameLoadFailed) {
                     mainFrameLoadFailed = true
                     contentReadyReported = false
                     cancelPublicChannelReadyCheck()
