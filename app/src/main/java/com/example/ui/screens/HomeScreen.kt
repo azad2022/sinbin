@@ -344,6 +344,9 @@ internal val MONTHLY_LEADERBOARD_TOTAL_PRIZE_COINS: Int =
 internal const val MONTHLY_LEADERBOARD_PAYOUT_NOTE =
     "واریز خودکار پس از پایان ماه"
 
+internal const val ROLLING_30D_LEADERBOARD_TITLE =
+    "برترین بازدیدکنندگان یک ماه اخیر"
+
 internal const val LEADERBOARD_DISPLAY_ORDER_NOTE =
     "ترتیب نمایش لینک‌ها در مرورگر SiteBin بر اساس میزان بازدید روزانه کاربران محاسبه می‌شود."
 
@@ -680,7 +683,7 @@ private fun WeeklyLeaderboardCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "برترین بازدیدکنندگان این هفته",
+                    text = ROLLING_30D_LEADERBOARD_TITLE,
                     style = MaterialTheme.typography.titleLarge,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
