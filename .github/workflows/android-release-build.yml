@@ -1,0 +1,172 @@
+name: SiteBin Android Release Build
+
+on:
+  push:
+    branches:
+      - 'release-build/**'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    environment: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate release signing secrets
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_KEYSTORE_BASE64"
+          test -n "$RELEASE_STORE_PASSWORD"
+          test -n "$RELEASE_KEY_PASSWORD"
+          test -n "$RELEASE_KEY_ALIAS"
+          echo "Release signing secrets are present"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platform-tools" "platforms;android-36.1" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Materialize temporary Release keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PATH: ${{ runner.temp }}/sitebin-release.jks
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+
+      - name: Verify official Release keystore identity before build
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEYSTORE_PATH: ${{ runner.temp }}/sitebin-release.jks
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha256="6F259D3C4557BA4B4E4C9489F38BCD85E7EC9F4641C87346F9578BD0F4FF2900"
+          output="$(keytool -list -v \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass "$RELEASE_STORE_PASSWORD" \
+            -alias "$RELEASE_KEY_ALIAS" 2>/dev/null)"
+          actual_sha256="$(printf '%s\n' "$output" |
+            sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' |
+            head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          test -n "$actual_sha256"
+          test "$actual_sha256" = "$expected_sha256" || {
+            echo "Release keystore certificate fingerprint mismatch."
+            echo "Expected: $expected_sha256"
+            echo "Actual:   $actual_sha256"
+            exit 1
+          }
+          echo "Official Release keystore identity verified before build"
+
+      - name: Build both store-specific Release APKs
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/sitebin-release.jks
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:assembleBazaarRelease :app:assembleMyketRelease
+          for flavor in bazaar myket; do
+            source_apk="app/build/outputs/apk/$flavor/release/app-$flavor-release.apk"
+            target_apk="app/build/outputs/apk/$flavor/release/sitebin.azerakhsh.apk"
+            test -f "$source_apk"
+            mv "$source_apk" "$target_apk"
+          done
+
+      - name: Verify actual Release APK package, version and certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_package="sitebin.azerakhsh.ir"
+          expected_version_code="13"
+          expected_version_name="1.0.5"
+          expected_sha256="6F259D3C4557BA4B4E4C9489F38BCD85E7EC9F4641C87346F9578BD0F4FF2900"
+          grep -Fq "versionCode = ${expected_version_code}" app/build.gradle.kts
+          grep -Fq "versionName = \"${expected_version_name}\"" app/build.gradle.kts
+          for flavor in bazaar myket; do
+            apk="app/build/outputs/apk/$flavor/release/sitebin.azerakhsh.apk"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk"
+            python3 - "$apk" "$expected_package" "$expected_sha256" "$expected_version_code" "$expected_version_name" <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          apk, expected_package, expected_sha256, expected_version_code, expected_version_name = sys.argv[1:]
+          android_home = os.environ["ANDROID_HOME"]
+          apksigner = os.path.join(android_home, "build-tools", "36.0.0", "apksigner")
+          cert = subprocess.run(
+              [apksigner, "verify", "--print-certs", apk],
+              capture_output=True, text=True, check=True,
+          )
+          cert_output = cert.stdout + cert.stderr
+          match = re.search(r"SHA-256 digest: ([0-9A-Fa-f:]+)", cert_output)
+          assert match, "APK certificate SHA-256 digest was not found"
+          actual_sha256 = match.group(1).replace(":", "").upper()
+          assert actual_sha256 == expected_sha256, f"unexpected Release certificate: {actual_sha256}"
+
+          aapt = os.path.join(android_home, "build-tools", "36.0.0", "aapt")
+          package_output = subprocess.run(
+              [aapt, "dump", "badging", apk],
+              capture_output=True, text=True, check=True,
+          ).stdout
+          assert f"package: name='{expected_package}'" in package_output, "unexpected APK package name"
+          assert (
+              f"versionCode='{expected_version_code}' versionName='{expected_version_name}'"
+              in package_output
+          ), "unexpected production versionCode/versionName"
+          print(f"Verified {apk}: package, version and official Release certificate")
+          PY
+          done
+
+      - name: Generate Release APK checksums
+        run: |
+          set -euo pipefail
+          sha256sum \
+            app/build/outputs/apk/bazaar/release/sitebin.azerakhsh.apk \
+            app/build/outputs/apk/myket/release/sitebin.azerakhsh.apk
+
+      - name: Upload signed Release APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: sitebin-android-release-1.0.5
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/bazaar/release/sitebin.azerakhsh.apk
+            app/build/outputs/apk/myket/release/sitebin.azerakhsh.apk
+
+      - name: Remove temporary Release keystore
+        if: always()
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/sitebin-release.jks
+        run: rm -f "$KEYSTORE_PATH"
