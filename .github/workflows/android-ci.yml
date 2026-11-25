@@ -195,7 +195,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          migration="supabase/migrations/20261125080000_sitebin_viewer_recovery_idempotency.sql"
+          migration="supabase/migrations/20261125081317_sitebin_viewer_recovery_idempotency.sql"
           test -s "$migration"
           grep -Fq "status IN ('INITIALIZED', 'CONTENT_READY')" "$migration"
           grep -Fq "status = 'CANCELLED'" "$migration"
