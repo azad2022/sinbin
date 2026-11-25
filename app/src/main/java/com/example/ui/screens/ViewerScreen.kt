@@ -454,16 +454,24 @@ fun ViewerScreen(
                             Button(
                                 onClick = {
                                     pageErrorMsg = null
-                                    isPageLoading = true
                                     val errorState = viewerState as? ViewerState.Error
-                                    if (
+                                    when {
                                         currentSession == null ||
-                                        errorState?.stage == "cancel" ||
-                                        errorState?.stage == "request"
-                                    ) {
-                                        onSkip()
-                                    } else {
-                                        reloadAttempt += 1
+                                            errorState?.stage == "cancel" ||
+                                            errorState?.stage == "request" -> {
+                                            isPageLoading = true
+                                            onSkip()
+                                        }
+                                        errorState?.stage == "complete" -> {
+                                            // Retry the same idempotent server completion without
+                                            // reloading a page that was already shown successfully.
+                                            isPageLoading = false
+                                            onContentReady()
+                                        }
+                                        else -> {
+                                            isPageLoading = true
+                                            reloadAttempt += 1
+                                        }
                                     }
                                 }
                             ) {
