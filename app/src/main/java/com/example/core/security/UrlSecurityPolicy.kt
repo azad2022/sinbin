@@ -169,7 +169,7 @@ object UrlSecurityPolicy {
         // 3. File Download Check
         val path = javaUri.path?.lowercase(Locale.ROOT) ?: ""
         for (ext in BLOCKED_FILE_EXTENSIONS) {
-            if (path.endsWith(ext) || trimmed.lowercase(Locale.ROOT).contains(ext)) {
+            if (path.endsWith(ext)) {
                 return PolicyResult.Blocked(trimmed, "دانلود مستقیم فایل در سایت بین مجاز نیست.")
             }
         }
@@ -251,6 +251,48 @@ object UrlSecurityPolicy {
             tld.all { it.isLetter() } ||
                 (tld.startsWith("xn--") && tld.length > 4 && tld.drop(4).all { it.isLetterOrDigit() || it == '-' })
             )
+    }
+
+    fun isSameOrigin(firstUrl: String?, secondUrl: String?): Boolean {
+        fun origin(raw: String?): Triple<String, String, Int>? {
+            if (raw.isNullOrBlank()) return null
+            val parsed = runCatching {
+                val candidate = if (raw.trim().contains("://")) raw.trim() else "https://${raw.trim()}"
+                URI(candidate)
+            }.getOrNull() ?: return null
+            val scheme = parsed.scheme?.lowercase(Locale.ROOT) ?: return null
+            if (scheme != "https" || parsed.userInfo != null) return null
+            val host = parsed.host?.lowercase(Locale.ROOT) ?: return null
+            if (host.isBlank()) return null
+            val port = if (parsed.port == -1) 443 else parsed.port
+            return Triple(scheme, host, port)
+        }
+
+        val first = origin(firstUrl) ?: return false
+        val second = origin(secondUrl) ?: return false
+        return first == second
+    }
+
+    /** Exact document URL comparison used to classify WebView SSL failures. */
+    fun isSameDocumentUrl(firstUrl: String?, secondUrl: String?): Boolean {
+        fun document(raw: String?): List<String>? {
+            if (raw.isNullOrBlank()) return null
+            val uri = runCatching { URI(raw.trim()) }.getOrNull() ?: return null
+            if (!uri.scheme.equals("https", ignoreCase = true) || uri.userInfo != null) return null
+            val host = uri.host?.lowercase(Locale.ROOT) ?: return null
+            val port = if (uri.port == -1) 443 else uri.port
+            return listOf(
+                uri.scheme.lowercase(Locale.ROOT),
+                host,
+                port.toString(),
+                uri.rawPath.ifEmpty { "/" },
+                uri.rawQuery.orEmpty()
+            )
+        }
+
+        val first = document(firstUrl) ?: return false
+        val second = document(secondUrl) ?: return false
+        return first == second
     }
 
     fun normalizeUrl(rawUrl: String): String {
