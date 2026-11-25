@@ -191,6 +191,18 @@ jobs:
           grep -Fq "TransactionType.MONTHLY_LEADERBOARD_REWARD" app/src/main/java/com/example/ui/screens/WalletScreen.kt
           grep -Fq "monthlyRewardPayoutTimingAndWalletTransactionAreExplicit" app/src/test/java/com/example/ui/screens/HomeScreenBehaviorTest.kt
 
+      - name: Verify WebView recovery migration is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          migration="supabase/migrations/20261125081317_sitebin_viewer_recovery_idempotency.sql"
+          test -s "$migration"
+          grep -Fq "status IN ('INITIALIZED', 'CONTENT_READY')" "$migration"
+          grep -Fq "status = 'CANCELLED'" "$migration"
+          grep -Fq "content_ready_at = COALESCE" "$migration"
+          grep -Fq "GRANT EXECUTE ON FUNCTION public.signal_content_ready(UUID) TO authenticated" "$migration"
+          echo "Viewer recovery/idempotency migration verified"
+
       - name: Unit tests
         run: gradle --no-daemon testBazaarDebugUnitTest testMyketDebugUnitTest
 
@@ -404,8 +416,8 @@ jobs:
         run: |
           set -euo pipefail
           expected_package="sitebin.azerakhsh.ir"
-          expected_version_code="13"
-          expected_version_name="1.0.5"
+          expected_version_code="14"
+          expected_version_name="1.0.6"
           expected_sha256="6F259D3C4557BA4B4E4C9489F38BCD85E7EC9F4641C87346F9578BD0F4FF2900"
           grep -Fq "versionCode = ${expected_version_code}" app/build.gradle.kts
           grep -Fq "versionName = \"${expected_version_name}\"" app/build.gradle.kts

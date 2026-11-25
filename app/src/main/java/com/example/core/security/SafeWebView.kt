@@ -21,6 +21,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebViewRenderProcessClient
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -48,7 +49,8 @@ fun SafeWebView(
     onPageContentReady: () -> Unit = {},
     onUrlBlocked: (String, String) -> Unit = { _, _ -> },
     onErrorOccurred: (String) -> Unit = {},
-    onSslErrorOccurred: (String) -> Unit = onErrorOccurred
+    onSslErrorOccurred: (String) -> Unit = onErrorOccurred,
+    onMainFrameNavigationBlocked: (String, String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -70,11 +72,15 @@ fun SafeWebView(
     val currentOnUrlBlocked by rememberUpdatedState(onUrlBlocked)
     val currentOnErrorOccurred by rememberUpdatedState(onErrorOccurred)
     val currentOnSslErrorOccurred by rememberUpdatedState(onSslErrorOccurred)
+    val currentOnMainFrameNavigationBlocked by rememberUpdatedState(onMainFrameNavigationBlocked)
+    val currentExpectedUrl by rememberUpdatedState(url)
 
     val safeClient = remember {
         object : WebViewClient() {
             private val mainHandler = Handler(Looper.getMainLooper())
             private var pendingPublicChannelReadyCheck: Runnable? = null
+            private var mainFrameNavigationUrl: String? = null
+            private var visualStateRequestedGeneration: Int = -1
 
             private fun cancelPublicChannelReadyCheck() {
                 pendingPublicChannelReadyCheck?.let(mainHandler::removeCallbacks)
@@ -83,7 +89,8 @@ fun SafeWebView(
 
             private fun reportContentVisible(pageUrl: String?) {
                 if (contentReadyReported || mainFrameLoadFailed) return
-                if (pageUrl?.startsWith("https://", ignoreCase = true) != true) return
+                val visibleUrl = pageUrl ?: return
+                if (!UrlSecurityPolicy.isSameOrigin(visibleUrl, currentExpectedUrl)) return
 
                 contentReadyReported = true
                 cancelPublicChannelReadyCheck()
@@ -94,7 +101,7 @@ fun SafeWebView(
                 }
                 if (BuildConfig.DEBUG) {
                     val host = runCatching {
-                        pageUrl.substringAfter("://").substringBefore("/")
+                        visibleUrl.substringAfter("://").substringBefore("/")
                     }.getOrDefault("unknown")
                     android.util.Log.d(
                         "SiteBinPerf",
@@ -102,6 +109,28 @@ fun SafeWebView(
                     )
                 }
                 currentOnPageContentReady()
+            }
+
+            private fun requestVisualState(view: WebView?, pageUrl: String?) {
+                val targetView = view ?: return
+                val generation = pageLoadGeneration
+                if (visualStateRequestedGeneration == generation) return
+                if (!UrlSecurityPolicy.isSameOrigin(pageUrl, currentExpectedUrl)) return
+
+                visualStateRequestedGeneration = generation
+                targetView.postVisualStateCallback(
+                    generation.toLong(),
+                    object : WebView.VisualStateCallback() {
+                        override fun onComplete(requestId: Long) {
+                            if (
+                                generation != pageLoadGeneration ||
+                                targetView !== webViewRef ||
+                                mainFrameLoadFailed
+                            ) return
+                            reportContentVisible(pageUrl)
+                        }
+                    }
+                )
             }
 
             /**
@@ -146,7 +175,7 @@ fun SafeWebView(
                             if (rawResult?.trim() == "true") {
                                 pendingPublicChannelReadyCheck = null
                                 reportContentVisible(pageUrl)
-                            } else if (SystemClock.elapsedRealtime() - startedAt >= 12_000L) {
+                            } else if (SystemClock.elapsedRealtime() - startedAt >= 20_000L) {
                                 pendingPublicChannelReadyCheck = null
                                 currentOnErrorOccurred("محتوای عمومی ایتا یا بله در مهلت مجاز نمایش داده نشد.")
                             } else {
@@ -163,29 +192,65 @@ fun SafeWebView(
                 view: WebView?,
                 request: WebResourceRequest?
             ): Boolean {
-                val targetUrl = request?.url?.toString() ?: return true
+                val webRequest = request ?: return true
+                val targetUrl = webRequest.url.toString()
+                val isMainFrame = webRequest.isForMainFrame
                 val check = UrlSecurityPolicy.evaluateUrl(targetUrl)
 
-                return when (check) {
-                    is PolicyResult.Allowed -> {
-                        // Allow navigation within the same internal WebView sandbox
-                        false
+                if (check is PolicyResult.Allowed) {
+                    if (
+                        isMainFrame &&
+                        !UrlSecurityPolicy.isSameOrigin(targetUrl, currentExpectedUrl)
+                    ) {
+                        currentOnMainFrameNavigationBlocked(
+                            targetUrl,
+                            "تغییر مقصد سند اصلی به دامنه‌ای خارج از نشست مجاز نیست."
+                        )
+                        return true
                     }
-                    is PolicyResult.Blocked -> {
-                        // Block external app escapes (Telegram, Google Play, Market, custom schemes, APKs)
-                        currentOnUrlBlocked(targetUrl, check.reason)
-                        true
-                    }
-                    is PolicyResult.Controlled -> {
-                        currentOnUrlBlocked(targetUrl, check.reason)
-                        true
-                    }
+
+                    // Third-party HTTPS subframes may use different origins. The session
+                    // origin restriction applies only to top-level navigation.
+                    return false
                 }
+
+                val reason = when (check) {
+                    is PolicyResult.Blocked -> check.reason
+                    is PolicyResult.Controlled -> check.reason
+                    is PolicyResult.Allowed -> ""
+                }
+                if (isMainFrame) {
+                    currentOnMainFrameNavigationBlocked(targetUrl, reason)
+                } else {
+                    currentOnUrlBlocked(targetUrl, reason)
+                }
+                return true
             }
 
             override fun onPageStarted(view: WebView?, pageUrl: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, pageUrl, favicon)
+
+                if (pageUrl.equals("about:blank", ignoreCase = true)) {
+                    mainFrameNavigationUrl = null
+                    return
+                }
+
+                // This callback covers top-level POST navigations that are not guaranteed
+                // to pass through shouldOverrideUrlLoading.
+                if (!UrlSecurityPolicy.isSameOrigin(pageUrl, currentExpectedUrl)) {
+                    mainFrameLoadFailed = true
+                    cancelPublicChannelReadyCheck()
+                    view?.stopLoading()
+                    currentOnMainFrameNavigationBlocked(
+                        pageUrl.orEmpty(),
+                        "مقصد سند اصلی با دامنهٔ مجاز این نشست تطبیق ندارد."
+                    )
+                    return
+                }
+
+                mainFrameNavigationUrl = pageUrl
                 pageLoadGeneration += 1
+                visualStateRequestedGeneration = -1
                 cancelPublicChannelReadyCheck()
                 mainFrameLoadFailed = false
                 sslErrorReported = false
@@ -198,8 +263,8 @@ fun SafeWebView(
                 super.onPageCommitVisible(view, pageUrl)
                 // Social channel pages may still be an empty JavaScript shell at this point.
                 if (UrlSecurityPolicy.publicChannelPlatform(pageUrl) != null) return
-                // Existing website behavior remains unchanged for regular sites.
-                reportContentVisible(pageUrl)
+                // Wait until the committed frame is ready for the next draw.
+                requestVisualState(view, pageUrl)
             }
 
             override fun onPageFinished(view: WebView?, pageUrl: String?) {
@@ -207,9 +272,9 @@ fun SafeWebView(
                 if (UrlSecurityPolicy.publicChannelPlatform(pageUrl) != null) {
                     waitForPublicChannelContent(view, pageUrl)
                 } else {
-                    // Compatibility fallback for regular sites whose implementation does not
-                    // dispatch onPageCommitVisible reliably.
-                    reportContentVisible(pageUrl)
+                    // Compatibility fallback for implementations that do not dispatch
+                    // onPageCommitVisible; visual readiness is still verified.
+                    requestVisualState(view, pageUrl)
                 }
             }
 
@@ -236,35 +301,42 @@ fun SafeWebView(
                 handler: SslErrorHandler?,
                 error: SslError?
             ) {
-                // Never bypass certificate validation. Android exposes this callback at resource
-                // level (without an isForMainFrame flag), so any failed TLS resource invalidates
-                // the current viewing session instead of leaving a partially loaded page stuck.
-                if (sslErrorReported) {
-                    handler?.cancel()
-                    return
-                }
+                // Determine the document scope before cancelling, then mark a main-frame
+                // failure before cancel() can enqueue a generic onReceivedError callback.
+                val failedUrl = error?.url
+                val isMainFrameFailure =
+                    UrlSecurityPolicy.isSameDocumentUrl(failedUrl, mainFrameNavigationUrl) ||
+                    UrlSecurityPolicy.isSameDocumentUrl(failedUrl, currentExpectedUrl) ||
+                    UrlSecurityPolicy.isSameDocumentUrl(failedUrl, view?.url)
 
-                // Mark the page failed before cancel(), because cancellation may also surface as
-                // a generic main-frame load error. That secondary callback must not show the
-                // manual retry overlay or race the automatic next-site transition.
-                sslErrorReported = true
-                mainFrameLoadFailed = true
-                contentReadyReported = false
-                cancelPublicChannelReadyCheck()
-                handler?.cancel()
-
-                val failedHost = error?.url?.let { failedUrl ->
-                    runCatching { Uri.parse(failedUrl).host }.getOrNull()
+                val failedHost = failedUrl?.let { value ->
+                    runCatching { Uri.parse(value).host }.getOrNull()
                 } ?: "unknown"
                 val primaryError = error?.primaryError ?: -1
+
                 if (BuildConfig.DEBUG) {
+                    val scope = if (isMainFrameFailure) "main_frame" else "subresource"
                     android.util.Log.w(
                         "SiteBinWebView",
-                        "ssl_error host=$failedHost primaryError=$primaryError"
+                        "ssl_error scope=$scope host=$failedHost primaryError=$primaryError"
                     )
                 }
 
-                currentOnSslErrorOccurred("گواهی امنیتی این وب‌سایت معتبر نیست (SSL Error).")
+                val shouldReportMainFrameFailure = isMainFrameFailure && !sslErrorReported
+                if (shouldReportMainFrameFailure) {
+                    sslErrorReported = true
+                    mainFrameLoadFailed = true
+                    contentReadyReported = false
+                    cancelPublicChannelReadyCheck()
+                }
+
+                // Certificate validation is never bypassed, including for a subresource.
+                handler?.cancel()
+
+                // A failed image, font, script or iframe is isolated to that request.
+                // It must not invalidate an otherwise healthy top-level website.
+                if (!shouldReportMainFrameFailure) return
+                currentOnSslErrorOccurred("گواهی TLS سند اصلی وب‌سایت معتبر نیست.")
             }
 
             override fun onReceivedError(
@@ -387,30 +459,26 @@ fun SafeWebView(
                 WebView(ctx).apply {
                     webViewRef = this
 
-                    // WebView 153/154 have a documented, device/GPU-specific black-rendering
-                    // regression. Apply software drawing only to those affected release families;
-                    // keep hardware drawing for other versions to preserve video/WebGL performance.
-                    val webViewMajorVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        WebView.getCurrentWebViewPackage()
-                            ?.versionName
-                            ?.substringBefore('.')
-                            ?.toIntOrNull()
+                    // Preserve the provider's default hardware-accelerated rendering.
+                    // Do not force a software layer based only on provider version: GPU
+                    // regressions are device-specific and software drawing can harm performance.
+                    val webViewProviderVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        WebView.getCurrentWebViewPackage()?.versionName ?: "unknown"
                     } else {
-                        null
+                        "system-default"
                     }
-                    if (webViewMajorVersion != null && webViewMajorVersion in 153..154) {
-                        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-                        if (BuildConfig.DEBUG) {
-                            android.util.Log.w(
-                                "SiteBinWebView",
-                                "Using software drawing for known WebView $webViewMajorVersion rendering regression."
-                            )
-                        }
+                    if (BuildConfig.DEBUG) {
+                        android.util.Log.d(
+                            "SiteBinWebView",
+                            "provider=$webViewProviderVersion renderer=platform_default"
+                        )
                     }
 
                     // Security Hardening & Performance Configurations.
                     settings.apply {
                         javaScriptEnabled = true
+                        // Third-party cookies remain at the WebView default (disabled)
+                        // until a documented compatibility case justifies a scoped policy.
                         domStorageEnabled = true
                         allowFileAccess = false
                         allowContentAccess = false
@@ -438,6 +506,44 @@ fun SafeWebView(
 
                     webViewClient = safeClient
                     webChromeClient = safeChromeClient
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val rendererHandler = Handler(Looper.getMainLooper())
+                        setWebViewRenderProcessClient(object : WebViewRenderProcessClient() {
+                            private var terminationRunnable: Runnable? = null
+
+                            override fun onRenderProcessUnresponsive(
+                                view: WebView,
+                                renderer: android.webkit.WebViewRenderProcess?
+                            ) {
+                                terminationRunnable?.let(rendererHandler::removeCallbacks)
+                                val pendingTermination = Runnable {
+                                    if (webViewRef === view) {
+                                        if (BuildConfig.DEBUG) {
+                                            android.util.Log.e(
+                                                "SiteBinWebView",
+                                                "Renderer remained unresponsive for 5s; terminating it."
+                                            )
+                                        }
+                                        renderer?.terminate()
+                                    }
+                                }
+                                terminationRunnable = pendingTermination
+                                rendererHandler.postDelayed(pendingTermination, 5_000L)
+                            }
+
+                            override fun onRenderProcessResponsive(
+                                view: WebView,
+                                renderer: android.webkit.WebViewRenderProcess?
+                            ) {
+                                terminationRunnable?.let(rendererHandler::removeCallbacks)
+                                terminationRunnable = null
+                                if (BuildConfig.DEBUG) {
+                                    android.util.Log.d("SiteBinWebView", "Renderer became responsive again.")
+                                }
+                            }
+                        })
+                    }
 
                     targetLoadKey = contentKey
                     loadUrl(url)

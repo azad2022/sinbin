@@ -62,7 +62,12 @@ sealed class ViewerState {
     ) : ViewerState()
     data class Completed(val session: ViewSession, val rewardEarned: Long) : ViewerState()
     data class Blocked(val rawUrl: String, val reason: String) : ViewerState()
-    data class Error(val message: String) : ViewerState()
+    data class Error(
+        val message: String,
+        val session: ViewSession? = null,
+        val stage: String = "unknown",
+        val retryable: Boolean = true
+    ) : ViewerState()
 }
 
 sealed interface WebsitePreflightState {
@@ -440,6 +445,11 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                     android.util.Log.d("SiteBinPerf", "operation=request_view_session elapsedMs=$elapsedMs")
                 }
 
+                if (sessionResult.isFailure) {
+                    val error = sessionResult.exceptionOrNull()
+                    showMessage(error?.message ?: "ارتباط با سرور برای دریافت وب‌سایت برقرار نشد.")
+                    return@launch
+                }
                 val nextSession = sessionResult.getOrNull()
                 if (nextSession == null) {
                     showMessage("در حال حاضر وب‌سایت جدیدی برای مشاهده موجود نیست. لطفاً دقایقی دیگر امتحان کنید.")
@@ -457,21 +467,36 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
 
     fun onWebViewContentVisible() {
         val currentState = _viewerState.value
-        if (currentState !is ViewerState.Loading) return
+        if (currentState !is ViewerState.Loading && currentState !is ViewerState.Error) return
 
-        val session = currentState.session
-        if (contentReadySessionId == session.id) return
+        val retryingCompletion = currentState is ViewerState.Error &&
+            currentState.stage == "complete"
+        val session = when (currentState) {
+            is ViewerState.Loading -> currentState.session
+            is ViewerState.Error -> currentState.session
+            else -> null
+        } ?: return
 
-        contentReadySessionId = session.id
+        if (!retryingCompletion && contentReadySessionId == session.id) return
+        if (!retryingCompletion) contentReadySessionId = session.id
+
         viewModelScope.launch {
+            if (retryingCompletion) {
+                completeViewerSession(session)
+                return@launch
+            }
+
             val result = repository.signalContentReady(session.id)
             if (result.isSuccess && result.getOrNull() == true) {
                 startCountdown(session)
             } else {
                 contentReadySessionId = null
                 _viewerState.value = ViewerState.Error(
-                    result.exceptionOrNull()?.message
-                        ?: "سرور هنوز شروع معتبر بازدید را تأیید نکرده است."
+                    message = result.exceptionOrNull()?.message
+                        ?: "سرور هنوز شروع معتبر بازدید را تأیید نکرده است.",
+                    session = session,
+                    stage = "content_ready",
+                    retryable = true
                 )
             }
         }
@@ -497,16 +522,24 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
 
-            // Server-authoritative view completion validation
-            val result = repository.completeViewSession(session)
-            result.onSuccess { completion ->
-                _viewerState.value = ViewerState.Completed(session, completion.reward)
-                // A completed view unlocks today's daily bonus server-side.
-                // Startup/foreground reconciliation remains as a network-recovery path.
-                repository.claimDailyBonus()
-            }.onFailure { err ->
-                _viewerState.value = ViewerState.Error(err.message ?: "اعتبارسنجی بازدید توسط سرور ناموفق بود.")
-            }
+            completeViewerSession(session)
+        }
+    }
+
+    private suspend fun completeViewerSession(session: ViewSession) {
+        val result = repository.completeViewSession(session)
+        result.onSuccess { completion ->
+            _viewerState.value = ViewerState.Completed(session, completion.reward)
+            repository.claimDailyBonus()
+        }.onFailure { error ->
+            // Retain the session and retry the same server idempotency key if the
+            // response was lost after a successful financial commit.
+            _viewerState.value = ViewerState.Error(
+                message = error.message ?: "اعتبارسنجی بازدید توسط سرور ناموفق بود.",
+                session = session,
+                stage = "complete",
+                retryable = true
+            )
         }
     }
 
@@ -549,10 +582,42 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 val activeSession = currentViewerSession()
                 contentReadySessionId = null
                 if (activeSession != null) {
-                    repository.cancelViewSession(activeSession.id)
+                    val cancelResult = repository.cancelViewSession(activeSession.id)
+                    if (cancelResult.isFailure || cancelResult.getOrNull() != true) {
+                        // If completion won the race against cancellation, reconcile by
+                        // retrying the same idempotent completion request.
+                        if (cancelResult.isSuccess && cancelResult.getOrNull() == false) {
+                            val completion = repository.completeViewSession(activeSession)
+                            if (completion.isSuccess) {
+                                _viewerState.value = ViewerState.Completed(
+                                    activeSession,
+                                    completion.getOrThrow().reward
+                                )
+                                return@launch
+                            }
+                        }
+                        _viewerState.value = ViewerState.Error(
+                            message = cancelResult.exceptionOrNull()?.message
+                                ?: "سرور لغو نشست قبلی را تأیید نکرد؛ برای جلوگیری از تکرار همان سایت، درخواست بعدی ارسال نشد.",
+                            session = activeSession,
+                            stage = "cancel",
+                            retryable = true
+                        )
+                        return@launch
+                    }
                 }
 
                 val nextResult = repository.getNextViewSession()
+                if (nextResult.isFailure) {
+                    _viewerState.value = ViewerState.Error(
+                        message = nextResult.exceptionOrNull()?.message
+                            ?: "ارتباط با سرور برای دریافت سایت بعدی برقرار نشد.",
+                        stage = "request",
+                        retryable = true
+                    )
+                    return@launch
+                }
+
                 val next = nextResult.getOrNull()
                 if (next != null) {
                     contentReadySessionId = null
@@ -560,7 +625,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
                 } else {
                     _viewerState.value = ViewerState.Idle
                     _currentScreen.value = AppScreen.HOME
-                    showMessage("وب‌سایت دیگری یافت نشد.")
+                    showMessage("وب‌سایت دیگری برای مشاهده یافت نشد.")
                 }
             } finally {
                 endAction("skip_current_site")
@@ -625,6 +690,7 @@ class SiteBinViewModel(application: Application) : AndroidViewModel(application)
             is ViewerState.Loading -> state.session
             is ViewerState.Viewing -> state.session
             is ViewerState.Completed -> state.session
+            is ViewerState.Error -> state.session
             else -> null
         }
     }

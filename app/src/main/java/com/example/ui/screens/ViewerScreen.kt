@@ -72,13 +72,21 @@ import com.example.ui.theme.SiteBinSuccess
 import kotlinx.coroutines.delay
 import java.util.Locale
 
-internal const val VIEWER_PAGE_LOAD_TIMEOUT_MS = 6_000L
-internal const val VIEWER_PUBLIC_CHANNEL_PAGE_LOAD_TIMEOUT_MS = 15_000L
+internal const val VIEWER_PAGE_LOAD_TIMEOUT_MS = 15_000L
+internal const val VIEWER_PUBLIC_CHANNEL_PAGE_LOAD_TIMEOUT_MS = 30_000L
 
 internal fun shouldAutoSkipAfterSslError(
     sessionId: String?,
     handledSessionId: String?
 ): Boolean = !sessionId.isNullOrBlank() && sessionId != handledSessionId
+
+internal fun viewerSessionForState(viewerState: ViewerState) = when (viewerState) {
+    is ViewerState.Loading -> viewerState.session
+    is ViewerState.Viewing -> viewerState.session
+    is ViewerState.Completed -> viewerState.session
+    is ViewerState.Error -> viewerState.session
+    else -> null
+}
 
 internal fun formatViewerCountdown(remainingSeconds: Int): String {
     val safeRemainingSeconds = remainingSeconds.coerceAtLeast(0)
@@ -136,12 +144,7 @@ fun ViewerScreen(
         }
     }
 
-    val currentSession = when (viewerState) {
-        is ViewerState.Loading -> viewerState.session
-        is ViewerState.Viewing -> viewerState.session
-        is ViewerState.Completed -> viewerState.session
-        else -> null
-    }
+    val currentSession = viewerSessionForState(viewerState)
 
     // Reset the retry counter for every new authoritative viewing session and
     // explicitly put the loading overlay back into the loading state.
@@ -149,14 +152,33 @@ fun ViewerScreen(
         reloadAttempt = 0
         isPageLoading = currentSession != null
         isSkippingAfterSslError = false
+        pageErrorMsg = null
+    }
+
+    val viewerErrorMessage = (viewerState as? ViewerState.Error)?.message
+    LaunchedEffect(viewerErrorMessage) {
+        if (viewerErrorMessage != null) {
+            isPageLoading = false
+            pageErrorMsg = viewerErrorMessage
+        }
     }
 
     // A slow destination must not keep the viewer waiting indefinitely. The session is
     // cancelled through the authoritative ViewModel path and the next site is requested.
-    LaunchedEffect(currentSession?.id, isPageLoading, isSkippingAfterSslError) {
+    val isViewerLoading = viewerState is ViewerState.Loading
+    val isViewerViewing = viewerState is ViewerState.Viewing
+    val isActiveViewerSession = isViewerLoading || isViewerViewing
+
+    LaunchedEffect(
+        currentSession?.id,
+        isPageLoading,
+        isSkippingAfterSslError,
+        isViewerLoading,
+        isViewerViewing
+    ) {
         val loadingSession = currentSession ?: return@LaunchedEffect
         val loadingSessionId = loadingSession.id
-        if (!isPageLoading || isSkippingAfterSslError || viewerState is ViewerState.Completed) {
+        if (!isPageLoading || isSkippingAfterSslError || !isActiveViewerSession) {
             return@LaunchedEffect
         }
         val loadTimeoutMs = if (UrlSecurityPolicy.publicChannelPlatform(loadingSession.targetUrl) != null) {
@@ -170,10 +192,14 @@ fun ViewerScreen(
             isPageLoading &&
             !isSkippingAfterSslError &&
             currentSession?.id == loadingSessionId &&
-            viewerState is ViewerState.Loading
+            isActiveViewerSession
         ) {
-            pageErrorMsg = null
-            onSkip()
+            isPageLoading = false
+            pageErrorMsg = "بارگذاری سند اصلی بیش از مهلت مجاز طول کشید. می‌توانید دوباره تلاش کنید یا سایت را رد کنید."
+            if (isViewerViewing) {
+                isSkippingAfterSslError = true
+                onSkip()
+            }
         }
     }
 
@@ -227,7 +253,7 @@ fun ViewerScreen(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Text(
-                                    text = currentSession?.domain ?: "در حال اتصال...",
+                                    text = currentSession?.domain ?: if (viewerState is ViewerState.Error) "خطای اتصال" else "در حال اتصال...",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface,
@@ -331,6 +357,16 @@ fun ViewerScreen(
                     onErrorOccurred = { error ->
                         isPageLoading = false
                         pageErrorMsg = error
+                        if (viewerState is ViewerState.Viewing) {
+                            isSkippingAfterSslError = true
+                            onSkip()
+                        }
+                    },
+                    onMainFrameNavigationBlocked = { _, reason ->
+                        isPageLoading = true
+                        isSkippingAfterSslError = true
+                        pageErrorMsg = reason
+                        onSkip()
                     },
                     onSslErrorOccurred = {
                         val sessionId = currentSession.id
@@ -418,8 +454,25 @@ fun ViewerScreen(
                             Button(
                                 onClick = {
                                     pageErrorMsg = null
-                                    isPageLoading = true
-                                    reloadAttempt += 1
+                                    val errorState = viewerState as? ViewerState.Error
+                                    when {
+                                        currentSession == null ||
+                                            errorState?.stage == "cancel" ||
+                                            errorState?.stage == "request" -> {
+                                            isPageLoading = true
+                                            onSkip()
+                                        }
+                                        errorState?.stage == "complete" -> {
+                                            // Retry the same idempotent server completion without
+                                            // reloading a page that was already shown successfully.
+                                            isPageLoading = false
+                                            onContentReady()
+                                        }
+                                        else -> {
+                                            isPageLoading = true
+                                            reloadAttempt += 1
+                                        }
+                                    }
                                 }
                             ) {
                                 Text("تلاش مجدد")
