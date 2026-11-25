@@ -219,7 +219,11 @@ fun SafeWebView(
                 errorResponse: WebResourceResponse?
             ) {
                 super.onReceivedHttpError(view, request, errorResponse)
-                if (request?.isForMainFrame == true && (errorResponse?.statusCode ?: 0) >= 400) {
+                if (
+                    request?.isForMainFrame == true &&
+                    !mainFrameLoadFailed &&
+                    (errorResponse?.statusCode ?: 0) >= 400
+                ) {
                     mainFrameLoadFailed = true
                     contentReadyReported = false
                     cancelPublicChannelReadyCheck()
@@ -235,13 +239,19 @@ fun SafeWebView(
                 // Never bypass certificate validation. Android exposes this callback at resource
                 // level (without an isForMainFrame flag), so any failed TLS resource invalidates
                 // the current viewing session instead of leaving a partially loaded page stuck.
-                handler?.cancel()
-                if (sslErrorReported) return
+                if (sslErrorReported) {
+                    handler?.cancel()
+                    return
+                }
 
+                // Mark the page failed before cancel(), because cancellation may also surface as
+                // a generic main-frame load error. That secondary callback must not show the
+                // manual retry overlay or race the automatic next-site transition.
                 sslErrorReported = true
                 mainFrameLoadFailed = true
                 contentReadyReported = false
                 cancelPublicChannelReadyCheck()
+                handler?.cancel()
 
                 val failedHost = error?.url?.let { failedUrl ->
                     runCatching { Uri.parse(failedUrl).host }.getOrNull()
@@ -263,7 +273,7 @@ fun SafeWebView(
                 error: WebResourceError?
             ) {
                 super.onReceivedError(view, request, error)
-                if (request?.isForMainFrame == true) {
+                if (request?.isForMainFrame == true && !mainFrameLoadFailed) {
                     mainFrameLoadFailed = true
                     contentReadyReported = false
                     cancelPublicChannelReadyCheck()
