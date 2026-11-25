@@ -70,9 +70,20 @@ import com.example.ui.ViewerState
 import com.example.ui.theme.SiteBinGold
 import com.example.ui.theme.SiteBinSuccess
 import kotlinx.coroutines.delay
+import java.util.Locale
 
 internal const val VIEWER_PAGE_LOAD_TIMEOUT_MS = 6_000L
 internal const val VIEWER_PUBLIC_CHANNEL_PAGE_LOAD_TIMEOUT_MS = 15_000L
+
+internal fun formatViewerCountdown(remainingSeconds: Int): String {
+    val safeRemainingSeconds = remainingSeconds.coerceAtLeast(0)
+    return String.format(
+        Locale.US,
+        "%02d:%02d",
+        safeRemainingSeconds / 60,
+        safeRemainingSeconds % 60
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -231,7 +242,7 @@ fun ViewerScreen(
                                     color = MaterialTheme.colorScheme.primaryContainer
                                 ) {
                                     Text(
-                                        text = String.format("%02d:%02d", remaining / 60, remaining % 60),
+                                        text = formatViewerCountdown(remaining),
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Black,

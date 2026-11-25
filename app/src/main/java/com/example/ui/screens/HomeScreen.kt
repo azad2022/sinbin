@@ -223,6 +223,10 @@ fun HomeScreen(
             }
 
             item {
+                MonthlyLeaderboardPrizeCard()
+            }
+
+            item {
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
@@ -320,6 +324,29 @@ private fun DailyBonusBanner(
 }
 
 
+internal data class MonthlyLeaderboardPrize(
+    val rank: Int,
+    val positionLabel: String,
+    val coins: Int
+)
+
+internal val MONTHLY_LEADERBOARD_PRIZES = listOf(
+    MonthlyLeaderboardPrize(rank = 1, positionLabel = "نفر اول", coins = 20_000),
+    MonthlyLeaderboardPrize(rank = 2, positionLabel = "نفر دوم", coins = 15_000),
+    MonthlyLeaderboardPrize(rank = 3, positionLabel = "نفر سوم", coins = 10_000),
+    MonthlyLeaderboardPrize(rank = 4, positionLabel = "نفر چهارم", coins = 7_000),
+    MonthlyLeaderboardPrize(rank = 5, positionLabel = "نفر پنجم", coins = 5_000)
+)
+
+internal val MONTHLY_LEADERBOARD_TOTAL_PRIZE_COINS: Int =
+    MONTHLY_LEADERBOARD_PRIZES.sumOf { it.coins }
+
+internal const val MONTHLY_LEADERBOARD_PAYOUT_NOTE =
+    "واریز خودکار پس از پایان ماه"
+
+internal const val LEADERBOARD_DISPLAY_ORDER_NOTE =
+    "ترتیب نمایش لینک‌ها در مرورگر SiteBin بر اساس میزان بازدید روزانه کاربران محاسبه می‌شود."
+
 internal fun weeklyLeaderboardTopFive(
     entries: List<com.example.data.model.WeeklyLeaderboardEntry>
 ): List<com.example.data.model.WeeklyLeaderboardEntry> =
@@ -337,6 +364,283 @@ internal fun weeklyLeaderboardLowerRows(
     entries: List<com.example.data.model.WeeklyLeaderboardEntry>
 ): List<com.example.data.model.WeeklyLeaderboardEntry> =
     weeklyLeaderboardTopFive(entries).filter { it.rank in 4..5 }
+
+@Composable
+private fun MonthlyLeaderboardPrizeCard() {
+    val formatter = NumberFormat.getIntegerInstance(Locale.US)
+    val trophyTransition = rememberInfiniteTransition(label = "monthly_prize_trophy")
+
+    val trophyScale by trophyTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1_250, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "monthly_prize_trophy_scale"
+    )
+    val trophyTilt by trophyTransition.animateFloat(
+        initialValue = -4f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1_700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "monthly_prize_trophy_tilt"
+    )
+    val trophyLift by trophyTransition.animateFloat(
+        initialValue = -2f,
+        targetValue = 2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1_500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "monthly_prize_trophy_lift"
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .testTag("monthly_leaderboard_prizes_card"),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            Color(0xFF21165B),
+                            Color(0xFF45247A),
+                            Color(0xFF713B58)
+                        )
+                    )
+                )
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(11.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color.White.copy(alpha = 0.16f)
+                    ) {
+                        Text(
+                            text = "جوایز ماهانه",
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                    Text(
+                        text = "برترین‌های ماه",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "برای 5 رتبه اول",
+                        color = Color.White.copy(alpha = 0.78f),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+
+                Box(
+                    modifier = Modifier.size(62.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        modifier = Modifier.size(58.dp),
+                        shape = CircleShape,
+                        color = Color(0xFFFFD166).copy(alpha = 0.16f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            Color(0xFFFFD166).copy(alpha = 0.42f)
+                        )
+                    ) {}
+                    Text(
+                        text = "🏆",
+                        fontSize = 36.sp,
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = trophyScale
+                            scaleY = trophyScale
+                            rotationZ = trophyTilt
+                            translationY = trophyLift
+                        }
+                    )
+                }
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFFFFD166).copy(alpha = 0.15f),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    Color(0xFFFFD166).copy(alpha = 0.32f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "مجموع جوایز",
+                        color = Color.White.copy(alpha = 0.86f),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = formatter.format(MONTHLY_LEADERBOARD_TOTAL_PRIZE_COINS),
+                                color = Color(0xFFFFE29A),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                text = "سکه",
+                                color = Color.White.copy(alpha = 0.9f),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                MONTHLY_LEADERBOARD_PRIZES.forEach { prize ->
+                    MonthlyLeaderboardPrizeRow(
+                        prize = prize,
+                        formattedCoins = formatter.format(prize.coins)
+                    )
+                }
+            }
+
+            Text(
+                text = MONTHLY_LEADERBOARD_PAYOUT_NOTE,
+                modifier = Modifier.fillMaxWidth(),
+                color = Color.White.copy(alpha = 0.74f),
+                style = MaterialTheme.typography.labelSmall,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+    }
+}
+
+@Composable
+private fun MonthlyLeaderboardPrizeRow(
+    prize: MonthlyLeaderboardPrize,
+    formattedCoins: String
+) {
+    val rankColor = when (prize.rank) {
+        1 -> Color(0xFFFFD166)
+        2 -> Color(0xFFE1E8F0)
+        3 -> Color(0xFFE4A071)
+        else -> Color.White.copy(alpha = 0.16f)
+    }
+    val rankTextColor = if (prize.rank <= 3) Color(0xFF33234D) else Color.White
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("monthly_leaderboard_prize_rank_" + prize.rank),
+        shape = RoundedCornerShape(13.dp),
+        color = Color.White.copy(alpha = 0.10f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(25.dp),
+                shape = CircleShape,
+                color = rankColor
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = prize.rank.toString(),
+                        color = rankTextColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+
+            Text(
+                text = prize.positionLabel,
+                modifier = Modifier.weight(1f),
+                color = Color.White,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = formattedCoins,
+                        color = Color(0xFFFFE29A),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Text(
+                        text = "سکه",
+                        color = Color.White.copy(alpha = 0.82f),
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun WeeklyLeaderboardCard(
@@ -512,6 +816,16 @@ private fun WeeklyLeaderboardCard(
                     }
                 }
             }
+
+            Text(
+                text = LEADERBOARD_DISPLAY_ORDER_NOTE,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("weekly_leaderboard_display_order_note"),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.72f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
         }
     }
 }

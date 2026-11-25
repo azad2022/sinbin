@@ -43,6 +43,9 @@ import com.example.ui.theme.SiteBinSuccess
 import java.text.NumberFormat
 import java.util.Locale
 
+internal fun formatHelpGuideNumber(number: Int): String =
+    NumberFormat.getIntegerInstance(Locale.US).format(number)
+
 @Composable
 fun HelpGuideScreen(
     onBack: () -> Unit,
@@ -210,19 +213,19 @@ private fun GuideOverviewCard() {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 GuideStatChip(
-                    value = "۳۰۰",
+                    value = "300",
                     label = "هدیه ورود",
                     icon = Icons.Default.MonetizationOn,
                     modifier = Modifier.weight(1f)
                 )
                 GuideStatChip(
-                    value = "۵۰",
+                    value = "50",
                     label = "هدیه روزانه",
                     icon = Icons.Default.Autorenew,
                     modifier = Modifier.weight(1f)
                 )
                 GuideStatChip(
-                    value = "۵–۶۰",
+                    value = "5–60",
                     label = "ثانیه",
                     icon = Icons.Default.Visibility,
                     modifier = Modifier.weight(1f)
@@ -298,7 +301,7 @@ private fun HelpSectionCard(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = NumberFormat.getIntegerInstance(Locale("fa", "IR")).format(number),
+                            text = formatHelpGuideNumber(number),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.primary
@@ -342,7 +345,6 @@ private fun HelpSectionCard(
 
 @Composable
 private fun PricingMatrixCard() {
-    val formatter = NumberFormat.getIntegerInstance(Locale("fa", "IR"))
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -376,10 +378,10 @@ private fun PricingMatrixCard() {
 
             siteBinHelpPricing.forEach { row ->
                 PricingRow(
-                    seconds = formatter.format(row.seconds),
-                    reward = formatter.format(row.viewerReward),
-                    direct = formatter.format(row.directCost),
-                    keyword = formatter.format(row.keywordCost)
+                    seconds = formatHelpGuideNumber(row.seconds),
+                    reward = formatHelpGuideNumber(row.viewerReward),
+                    direct = formatHelpGuideNumber(row.directCost),
+                    keyword = formatHelpGuideNumber(row.keywordCost)
                 )
             }
 
