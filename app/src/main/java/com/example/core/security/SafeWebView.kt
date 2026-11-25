@@ -321,7 +321,8 @@ fun SafeWebView(
                     )
                 }
 
-                if (isMainFrameFailure && !sslErrorReported) {
+                val shouldReportMainFrameFailure = isMainFrameFailure && !sslErrorReported
+                if (shouldReportMainFrameFailure) {
                     sslErrorReported = true
                     mainFrameLoadFailed = true
                     contentReadyReported = false
@@ -333,7 +334,7 @@ fun SafeWebView(
 
                 // A failed image, font, script or iframe is isolated to that request.
                 // It must not invalidate an otherwise healthy top-level website.
-                if (!isMainFrameFailure || sslErrorReported.not()) return
+                if (!shouldReportMainFrameFailure) return
                 currentOnSslErrorOccurred("گواهی TLS سند اصلی وب‌سایت معتبر نیست.")
             }
 
