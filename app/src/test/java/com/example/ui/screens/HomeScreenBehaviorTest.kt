@@ -123,6 +123,11 @@ class HomeScreenBehaviorTest {
     }
 
     @Test
+    fun leaderboardTitleIdentifiesTheRollingThirtyDayWindow() {
+        assertEquals("برترین بازدیدکنندگان یک ماه اخیر", ROLLING_30D_LEADERBOARD_TITLE)
+    }
+
+    @Test
     fun leaderboardPodiumOrdersRowsAsBronzeGoldSilverForVisualPlacement() {
         val entries = listOf(
             WeeklyLeaderboardEntry(rank = 5, userHandle = "fifth", completedViews = 3),
