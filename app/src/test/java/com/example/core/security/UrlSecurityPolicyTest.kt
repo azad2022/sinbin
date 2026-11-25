@@ -54,5 +54,26 @@ class UrlSecurityPolicyTest {
         assertTrue(UrlSecurityPolicy.evaluateUrl("https://[::1]").isBlocked())
     }
 
+    @Test
+    fun sameOriginAllowsPathChangesButRejectsCrossOriginNavigation() {
+        assertTrue(UrlSecurityPolicy.isSameOrigin("https://example.com/start", "https://example.com/next"))
+        assertTrue(UrlSecurityPolicy.isSameOrigin("https://example.com:443/start", "https://example.com/next"))
+        assertTrue(!UrlSecurityPolicy.isSameOrigin("https://www.example.com/start", "https://example.com/next"))
+        assertTrue(!UrlSecurityPolicy.isSameOrigin("http://example.com/start", "https://example.com/next"))
+    }
+
+    @Test
+    fun exactDocumentComparisonDoesNotClassifyOtherSameOriginResourcesAsMainFrame() {
+        assertTrue(UrlSecurityPolicy.isSameDocumentUrl("https://example.com/article?id=1", "https://example.com/article?id=1"))
+        assertTrue(!UrlSecurityPolicy.isSameDocumentUrl("https://example.com/image.png", "https://example.com/article?id=1"))
+        assertTrue(!UrlSecurityPolicy.isSameDocumentUrl("https://cdn.example.net/image.png", "https://example.com/article?id=1"))
+    }
+
+    @Test
+    fun queryParameterContainingArchiveExtensionDoesNotBlockHtmlPage() {
+        assertTrue(UrlSecurityPolicy.evaluateUrl("https://example.com/products?file=archive.zip") is PolicyResult.Allowed)
+        assertTrue(UrlSecurityPolicy.evaluateUrl("https://example.com/download/archive.zip") is PolicyResult.Blocked)
+    }
+
     private fun PolicyResult.isBlocked(): Boolean = this is PolicyResult.Blocked
 }
