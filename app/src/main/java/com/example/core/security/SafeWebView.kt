@@ -89,7 +89,8 @@ fun SafeWebView(
 
             private fun reportContentVisible(pageUrl: String?) {
                 if (contentReadyReported || mainFrameLoadFailed) return
-                if (!UrlSecurityPolicy.isSameOrigin(pageUrl, currentExpectedUrl)) return
+                val visibleUrl = pageUrl ?: return
+                if (!UrlSecurityPolicy.isSameOrigin(visibleUrl, currentExpectedUrl)) return
 
                 contentReadyReported = true
                 cancelPublicChannelReadyCheck()
@@ -100,7 +101,7 @@ fun SafeWebView(
                 }
                 if (BuildConfig.DEBUG) {
                     val host = runCatching {
-                        pageUrl.substringAfter("://").substringBefore("/")
+                        visibleUrl.substringAfter("://").substringBefore("/")
                     }.getOrDefault("unknown")
                     android.util.Log.d(
                         "SiteBinPerf",
