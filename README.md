@@ -38,7 +38,7 @@ The store integration is implemented as mutually exclusive Android product flavo
 
 Both variants intentionally keep the same `sitebin.azerakhsh.ir` application ID, standard APK filename, production Release certificate, shared coin catalog, and server-authoritative ledger. They are alternative distributions, not side-by-side installations. A receipt is bound to its provider in the database; the verifier for one marketplace cannot finalize the other marketplace's order.
 
-The release version on this branch is `1.0.2` / versionCode `10`, advancing from the Cafe Bazaar build `1.0.1` / versionCode `9`. Both variants must be signed with the existing production Release certificate.
+At the point when the separate store flavors were introduced, the release baseline was `1.0.2` / versionCode `10`, advancing from the Cafe Bazaar build `1.0.1` / versionCode `9`. This is historical context; the latest submitted production versions are recorded in the dated Release record above. Both variants must continue to use the existing production Release certificate.
 
 The project currently targets API level 36 (`targetSdk = 36`), which already exceeds the requested API level 34. Do not downgrade it to 34: API 36 preserves the requested minimum and aligns with current Google Play policy for app updates (API 36 required from August 31, 2026).
 
@@ -67,9 +67,45 @@ The production Supabase migration `20261017160243` is applied and verified. The 
 
 On 2026-10-17, the repository owner confirmed that the downloaded Myket build and its payment gateway were manually checked and the app worked without observed issues; the owner also confirmed that both SiteBin variants are now available in Cafe Bazaar and Myket. This is an owner-confirmed publication and smoke-test record. A separately documented test matrix for interrupted payments, receipt recovery, duplicate callbacks, and consume/retry edge cases is not recorded here, so future payment changes must test those cases on a physical device/test account where supported.
 
+## Release record — 2026-11-26 (SiteBin 1.0.6 — Myket and Cafe Bazaar)
+
+This is the latest production release submission recorded by the repository owner. On 2026-11-26, the owner confirmed that the **SiteBin 1.0.6** Myket and Cafe Bazaar builds were submitted to the respective marketplace dashboards as updates. This records submission, not marketplace approval or public availability. Until approval/publication is separately confirmed, describe 1.0.6 as the **latest submitted release** for both stores, not as confirmed live in either storefront.
+
+| Item | Recorded value |
+|---|---|
+| Version name / code | `1.0.6` / `14` |
+| Android application ID | `sitebin.azerakhsh.ir` |
+| Myket variant | `myket` — Myket Billing Client 1.19 |
+| Cafe Bazaar variant | `bazaar` — Poolakey 2.2.0 |
+| Min SDK / Target SDK | API 24 / API 36 (Gradle configuration at the recorded source commit) |
+| APK filename for each store | `sitebin.azerakhsh.apk` |
+| AAB filename for each store | `sitebin.azerakhsh.aab` |
+| Release source commit | `260ee00c7f89e17d98a30fb560015814d6ddec14` |
+| CI workflow | [Run #555 — signed production artifacts](https://github.com/azad2022/sinbin/actions/runs/45576579251) |
+| CI run ID / result | `45576579251` / `success` (2026-11-25) |
+| GitHub Actions artifact | `sitebin-android-release` (artifact ID `15004842658`) |
+| Release artifact ZIP SHA-256 | `a6a5cdd28ea87c36475f5ccd10fb0169e65b5900828ba0b8e93713291f563c3d` |
+| Myket Release APK size | `17,984,231` bytes |
+| Myket Release APK SHA-256 | `c1a09d610db07c74df4fa8d8b3a169598b0abb9b2fae67584a75cd7f9529361e` |
+| Cafe Bazaar Release APK size | `15,074,366` bytes |
+| Cafe Bazaar Release APK SHA-256 | `0b18b4bb4cb778d4c7ceac80438d240087913dfe55d245b88ba3c0e7d17c0845` |
+| Myket Release AAB size | `16,963,148` bytes |
+| Myket Release AAB SHA-256 | `d8e3ab629d925d918e57fae4132d4995652ab4b8e66f18609dda8699e8aabc5c` |
+| Cafe Bazaar Release AAB size | `14,598,767` bytes |
+| Cafe Bazaar Release AAB SHA-256 | `23fe4d281f9c3eb74655149c081eff4ea240e3ecfae8c3be7cf96e2e3e706e5f` |
+| Release certificate SHA-256 | `6F:25:9D:3C:45:57:BA:4B:4E:4C:94:89:F3:8B:CD:85:E7:EC:9F:46:41:C8:73:46:F9:57:8B:D0:F4:FF:29:00` |
+| Marketplace submission status | Owner confirmed both 1.0.6 variants were submitted to their respective update dashboards on 2026-11-26; approval/publication is not yet confirmed |
+
+The CI Release job validated the official Release keystore fingerprint before building. After building, it verified the actual APK package ID, versionCode, versionName, and signing certificate for both store APKs; it also verified the signatures and certificate fingerprints of both AABs. The Android job in the same workflow passed the Unit tests and the live WebView smoke tests for both store flavors. The APK and AAB SHA-256 values above were read from the completed CI job log and independently matched against the four files extracted from the uploaded Release artifact ZIP.
+
+**Owner-reported installation check:** the Myket 1.0.6 APK was installed successfully without the earlier Android package-parsing error. The Cafe Bazaar 1.0.6 installation had also been reported successful. These are owner-reported device checks; device models and Android OS versions were not recorded.
+
+**Status rule:** this record is the current source of truth for the latest submitted versions. When either marketplace approves or publishes the update, append the exact confirmation date and status here; do not silently replace the submission status with “published.” For the next production update, increment `versionCode` above `14`, keep both stores aligned unless an explicit exception is recorded, preserve the application ID and Release signing certificate, and replace all artifact checksums with values from the newly verified CI artifacts.
+
+
 ### Marketplace publication and future-maintenance rules — 2026-10-17
 
-The repository owner confirms that SiteBin version `1.0.2` / `versionCode 10` is currently available in both Iranian app stores: Cafe Bazaar and Myket. These are two marketplace-specific builds of the same SiteBin product, not two functionally separate applications. The intended user experience, campaigns, wallet, coin rules, account continuity, and server-authoritative backend are shared; the intentional implementation difference is the payment SDK and the corresponding receipt-verification route.
+As of 2026-10-17, the repository owner reported that SiteBin `1.0.2` / `versionCode 10` was available in both Cafe Bazaar and Myket. This is a historical marketplace snapshot for that date, not the current release status. The latest submission and pending approval/publication status are recorded in the 2026-11-26 Release record above. These remain two marketplace-specific builds of the same SiteBin product, not two functionally separate applications. The intended user experience, campaigns, wallet, coin rules, account continuity, and server-authoritative backend are shared; the intentional implementation difference is the payment SDK and the corresponding receipt-verification route.
 
 Keep these constraints for every future update:
 
